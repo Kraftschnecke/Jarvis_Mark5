@@ -19,7 +19,7 @@ MODEL = os.getenv("JARVIS_MODEL", "gpt-5.6-luna")
 TTS_MODEL = os.getenv("JARVIS_TTS_MODEL", "gpt-4o-mini-tts")
 
 # Anzeige in "About" der Einstellungen
-VERSION = "Mark 4"
+VERSION = "Mark 5"
 
 # Wie lange (Sekunden) auf eine Antwort des Sprachmodells gewartet wird
 OPENAI_TIMEOUT = float(os.getenv("JARVIS_OPENAI_TIMEOUT", "60"))

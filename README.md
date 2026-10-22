@@ -1,9 +1,9 @@
-# J.A.R.V.I.S. (Mark 4)
+# J.A.R.V.I.S. (Mark 5)
 
 Persönlicher KI-Assistent: Python-Kern, OpenAI-Modell, Neon-PostgreSQL für
 Erinnerungen, Projekte und Konversationen, Web-Oberfläche im Browser.
 
-Stand, Roadmap und Entscheidungen: `PROJEKT_STATUS_MARK4.md`.
+Stand, Roadmap und Entscheidungen: `PROJEKT_STATUS_MARK5.md` (Mark 4: `PROJEKT_STATUS_MARK4.md`).
 
 ## Voraussetzungen
 
