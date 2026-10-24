@@ -86,6 +86,21 @@
     return result;
   }
 
+  // Wecker nach Tag: { "2026-10-23": [wecker, ...] }, je Tag nach Uhrzeit (die Liste "dates" kommt vom Server)
+  function alarmsByDate(alarms) {
+    const result = {};
+    (Array.isArray(alarms) ? alarms : []).forEach((alarm) => {
+      if (!alarm || !Array.isArray(alarm.dates)) return;
+      alarm.dates.forEach((date) => {
+        if (typeof date === "string") (result[date] = result[date] || []).push(alarm);
+      });
+    });
+    Object.keys(result).forEach((date) => {
+      result[date].sort((a, b) => String(a.time).localeCompare(String(b.time)) || String(a.label).localeCompare(String(b.label)));
+    });
+    return result;
+  }
+
   // "Freitag, 23. Oktober" fuer einen Tag im Format JJJJ-MM-TT
   function formatDayLong(key, locale) {
     const [year, month, day] = key.split("-").map(Number);
@@ -138,7 +153,7 @@
   }
 
   const api = { formatNumber, formatGb, formatRate, formatUptime, loadLevel, clampPercent, formatClock, formatDateLong, monthTitle, weekdayNames, calendarWeeks, describeGame,
-                dateKey, eventsByDate, formatDayLong };
+                dateKey, eventsByDate, alarmsByDate, formatDayLong };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.JarvisWidgets = api;
 })(typeof window !== "undefined" ? window : this);

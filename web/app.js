@@ -599,6 +599,8 @@ function renderCalendar(section) {
   let month = today.getMonth();
   let selected = W.dateKey(year, month, today.getDate());
   let byDate = W.eventsByDate(widgetData && widgetData.events);
+  let alarmsByDay = {};
+  let alarmLoading = false;
 
   const head = wEl("div", "w-cal-head");
   const prev = wEl("button", "w-cal-nav", "‹");
@@ -639,6 +641,11 @@ function renderCalendar(section) {
         cell.classList.add("has-events");
         cell.title = byDate[key].map((e) => (e.time ? e.time + " " : "") + e.title).join("\n");
       }
+      if (alarmsByDay[key]) {
+        cell.classList.add("has-alarm");
+        const wakeups = alarmsByDay[key].map((a) => "⏰ " + a.time + " " + a.label).join("\n");
+        cell.title = (cell.title ? cell.title + "\n" : "") + wakeups;
+      }
       cell.addEventListener("click", () => { selected = key; drawGrid(); drawDay(); });
       grid.append(cell);
     });
@@ -648,7 +655,8 @@ function renderCalendar(section) {
     dayHead.textContent = W.formatDayLong(selected);
     list.replaceChildren();
     const events = byDate[selected] || [];
-    if (!events.length) list.append(wEl("li", "w-muted", "Keine Termine."));
+    const alarms = alarmsByDay[selected] || [];
+    if (!events.length && !alarms.length) list.append(wEl("li", "w-muted", "Keine Termine."));
     events.forEach((event) => {
       const item = wEl("li", "w-event");
       const remove = wEl("button", "w-goal-remove", "×");
@@ -696,12 +704,89 @@ function renderCalendar(section) {
       item.append(remove);
       list.append(item);
     });
+    alarms.forEach((alarm) => list.append(alarmItem(alarm)));
+  }
+
+  // Wecker (Step 2.11b): neben den Terminen sichtbar, mit Bearbeiten (✎) und Loeschen (×)
+  function alarmItem(alarm) {
+    const item = wEl("li", "w-event w-alarm");
+    const when = wEl("span", "w-event-when", "⏰ " + alarm.time);
+    const text = wEl("span", "w-event-text", (alarm.repeat ? "↻ " : "") + alarm.label);
+    if (alarm.repeat) text.title = alarm.repeat;
+    const edit = wEl("button", "w-goal-remove w-alarm-edit", "✎");
+    const remove = wEl("button", "w-goal-remove", "×");
+    edit.type = "button"; remove.type = "button";
+    edit.title = "Wecker bearbeiten"; edit.setAttribute("aria-label", "Wecker bearbeiten: " + alarm.label);
+    remove.title = alarm.repeat ? "Ganzen Wecker löschen (" + alarm.repeat + ")" : "Wecker löschen";
+    remove.setAttribute("aria-label", "Wecker löschen: " + alarm.label);
+
+    // Ein Wecker mit Wiederholung verschwindet ganz: erst nach einem zweiten Klick
+    let armed = null;
+    remove.addEventListener("click", async () => {
+      if (alarm.repeat && !armed) {
+        remove.textContent = "✓?";
+        remove.classList.add("armed");
+        status.textContent = "Noch einmal klicken: der ganze Wecker (" + alarm.repeat + ") wird gelöscht.";
+        armed = setTimeout(() => { armed = null; remove.textContent = "×"; remove.classList.remove("armed"); status.textContent = ""; }, 4000);
+        return;
+      }
+      clearTimeout(armed);
+      try {
+        setAlarms((await api("POST", "/api/alarms/delete", { id: alarm.id })).alarms);
+        status.textContent = "";
+      } catch (error) {
+        status.textContent = error.message; armed = null; remove.textContent = "×"; remove.classList.remove("armed");
+      }
+    });
+
+    edit.addEventListener("click", () => {
+      const form = wEl("form", "w-alarm-form");
+      const time = wEl("input", "w-event-time");
+      const name = wEl("input", "w-event-title");
+      const brief = wEl("input", "w-alarm-brief");
+      const briefLabel = wEl("label", "w-alarm-brieflabel");
+      const save = wEl("button", "w-goal-add", "✓");
+      const cancel = wEl("button", "w-goal-remove", "✕");
+      time.type = "time"; time.required = true; time.value = alarm.time; time.setAttribute("aria-label", "Uhrzeit");
+      name.type = "text"; name.maxLength = 40; name.value = alarm.label; name.setAttribute("aria-label", "Name");
+      brief.type = "checkbox"; brief.checked = alarm.briefing;
+      briefLabel.append(brief, " Briefing");
+      save.type = "submit"; save.setAttribute("aria-label", "Speichern");
+      cancel.type = "button"; cancel.setAttribute("aria-label", "Abbrechen");
+      form.append(time, name, briefLabel, save, cancel);
+      item.replaceChildren(form);
+      time.focus();
+      cancel.addEventListener("click", () => { status.textContent = ""; drawDay(); });
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        try {
+          setAlarms((await api("POST", "/api/alarms/update", { id: alarm.id, time: time.value, label: name.value, briefing: brief.checked })).alarms);
+          status.textContent = "";
+        } catch (error) { status.textContent = error.message; }
+      });
+    });
+
+    item.append(when, text, edit, remove);
+    return item;
+  }
+
+  function setAlarms(alarms) {
+    alarmsByDay = W.alarmsByDate(alarms);
+    drawGrid();
+    drawDay();
+  }
+
+  async function refreshAlarms() {
+    if (alarmLoading) return;
+    alarmLoading = true;
+    try { setAlarms((await api("GET", "/api/alarms")).alarms); } catch (error) { /* naechste Runde */ } finally { alarmLoading = false; }
   }
 
   function update(data) {
     byDate = W.eventsByDate(data.events);
     drawGrid();
     drawDay();
+    refreshAlarms();
   }
 
   prev.addEventListener("click", () => { month -= 1; if (month < 0) { month = 11; year -= 1; } drawGrid(); });

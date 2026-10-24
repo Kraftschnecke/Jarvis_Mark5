@@ -62,6 +62,13 @@ assert.strictEqual(W.formatDayLong("2026-10-23"), "Freitag, 23. Oktober");
 assert.deepStrictEqual(W.eventsByDate([{ date: "2026-10-23", title: "a" }, { date: "2026-10-23", title: "b" }, { date: "2026-10-24", title: "c" }, null, { title: "ohne" }]),
   { "2026-10-23": [{ date: "2026-10-23", title: "a" }, { date: "2026-10-23", title: "b" }], "2026-10-24": [{ date: "2026-10-24", title: "c" }] });
 assert.deepStrictEqual(W.eventsByDate(undefined), {});
+// Wecker nach Tag: je Tag nach Uhrzeit, ein taeglicher Wecker steht an jedem seiner Tage
+const alarmA = { id: "a", label: "Wecker", time: "06:30", dates: ["2026-10-26", "2026-10-27"] };
+const alarmB = { id: "b", label: "Zug", time: "05:15", dates: ["2026-10-26"] };
+assert.deepStrictEqual(W.alarmsByDate([alarmA, alarmB]), { "2026-10-26": [alarmB, alarmA], "2026-10-27": [alarmA] });
+assert.deepStrictEqual(W.alarmsByDate([null, {}, { dates: "x" }, { time: "1", label: "x", dates: [5, null] }]), {});
+assert.deepStrictEqual(W.alarmsByDate(undefined), {});
+assert.deepStrictEqual(W.alarmsByDate("x"), {});
 assert.deepStrictEqual(W.eventsByDate("x"), {});
 
 // Leistungs-Widget: Formate und Farbstufen

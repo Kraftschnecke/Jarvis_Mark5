@@ -593,6 +593,15 @@ button.danger-text { color: #d9695f; }
 .w-event-when { color: var(--muted); font-size: 12px; min-width: 52px; }
 .w-event-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .w-event-form { display: flex; flex-wrap: wrap; gap: 6px; }
+.w-alarm .w-event-when { color: var(--accent); min-width: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.w-alarm .w-event-text { flex: 1 1 4em; }
+.w-alarm .w-goal-remove, .w-alarm-form .w-goal-remove { flex: 0 0 auto; padding: 0 3px; }
+.w-alarm-form .w-goal-add { padding: 4px 12px; }
+.w-alarm-edit { font-size: 14px; }
+.w-alarm-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
+.w-alarm-form .w-event-title { flex: 1 1 100%; }
+.w-alarm-brieflabel { flex: 1; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.w-cal-day.has-alarm { text-decoration: underline dotted var(--accent); text-underline-offset: 3px; }
 .w-event-title, .w-event-time {
   background: var(--window); color: var(--text);
   border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px; min-width: 0;

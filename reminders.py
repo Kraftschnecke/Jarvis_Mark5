@@ -299,6 +299,90 @@ class ReminderStore:
             self._calendar_remove(reminder["event_id"])
         return result
 
+    # ---- Wecker im Kalender anzeigen, aendern, loeschen (Step 2.11b)
+    def alarms_overview(self, horizon_days=62):
+        """Alle Wecker fuer die Anzeige: {id, label, due, time, repeat, briefing, dates}. ``dates`` sind die Tage, an
+        denen er in den naechsten ``horizon_days`` Tagen klingelt (hoechstens 100)."""
+        with self._lock:
+            items = self.list("alarm")
+        limit = self.now().date() + timedelta(days=horizon_days)
+        result = []
+        for entry in items:
+            repeat = entry.get("repeat")
+            dates = [entry["due"][:10]]
+            if repeat:
+                rule = recurrence.Rule.from_dict(repeat["rule"])
+                start = datetime.fromisoformat(repeat["start"]).date()
+                dates = []
+                n = repeat["index"]
+                while len(dates) < recurrence.MAX_OCCURRENCES:
+                    day = recurrence.occurrence(start, rule, n)
+                    if recurrence.finished(rule, n, day) or day > limit:
+                        break
+                    dates.append(day.isoformat())
+                    n += 1
+            result.append({"id": entry["id"], "label": entry["text"], "due": entry["due"], "time": entry["due"][11:16],
+                           "briefing": entry.get("briefing") is True, "dates": dates,
+                           "repeat": ReminderStore.repeat_info(entry).get("repeat")})
+        return result
+
+    def delete_alarm(self, alarm_id):
+        """Loescht einen Wecker mit allen Wiederholungen. Gibt seinen Namen zurueck."""
+        with self._lock:
+            for number, entry in enumerate(self.list("alarm"), start=1):
+                if entry["id"] == alarm_id:
+                    return self.cancel(str(number), scope="series", kind="alarm")[0]["text"]
+        raise ReminderError("Diesen Wecker gibt es nicht (mehr).")
+
+    def update_alarm(self, alarm_id, time=None, label=None, briefing=None, day=None):
+        """Aendert Uhrzeit, Namen, Briefing oder (nur bei einmaligen Weckern) das Datum. Nicht genannte Angaben bleiben.
+        Bei einer Serie gilt die neue Uhrzeit fuer alle kuenftigen Termine."""
+        with self._lock:
+            items = self._load()
+            entry = next((r for r in items if r["id"] == alarm_id and r.get("kind") == "alarm"), None)
+            if entry is None:
+                raise ReminderError("Diesen Wecker gibt es nicht (mehr).")
+            updated = dict(entry)
+            if label is not None:
+                text = clean_reminder_text(label) or ALARM_LABEL
+                if len(text) > MAX_TEXT:
+                    raise ReminderError(f"Der Name darf höchstens {MAX_TEXT} Zeichen lang sein.")
+                updated["text"] = text
+            if briefing is not None:
+                if not isinstance(briefing, bool):
+                    raise ReminderError("Briefing muss ja oder nein sein.")
+                updated["briefing"] = briefing
+            clock = entry["due"][11:16]
+            if time is not None:
+                clock = parse_time(time)
+                if clock is None:
+                    raise ReminderError("Die Uhrzeit habe ich nicht verstanden.")
+            chosen = datetime.fromisoformat(entry["due"]).date()
+            if day not in (None, ""):
+                if entry.get("repeat"):
+                    raise ReminderError("Das Datum eines wiederkehrenden Weckers lässt sich nicht ändern. Lösche ihn und stelle einen neuen.")
+                if not widgets._valid_date(day):
+                    raise ReminderError("Das Datum habe ich nicht verstanden.")
+                chosen = datetime.fromisoformat(day).date()
+            now = self.now()
+            due_moment = datetime.fromisoformat(f"{chosen.isoformat()}T{clock}")
+            updated["due"] = due_moment.strftime("%Y-%m-%dT%H:%M")
+            if due_moment <= now:
+                if entry.get("repeat"):
+                    updated = self._advance(updated, now)       # heutiger Termin schon vorbei: der naechste gilt
+                    if updated is None:
+                        raise ReminderError("Dieser Zeitpunkt ist schon vorbei.")
+                elif day in (None, ""):
+                    due_moment += timedelta(days=1)             # nur die Uhrzeit geaendert: gemeint ist morgen
+                    updated["due"] = due_moment.strftime("%Y-%m-%dT%H:%M")
+                else:
+                    raise ReminderError("Dieser Zeitpunkt ist schon vorbei. Nenne mir bitte einen Zeitpunkt in der Zukunft.")
+            if datetime.fromisoformat(updated["due"]) > now + timedelta(days=MAX_DAYS_AHEAD):
+                raise ReminderError(f"Wecker sind höchstens {MAX_DAYS_AHEAD} Tage im Voraus möglich.")
+            updated["event_id"] = None
+            self._save([updated if r["id"] == alarm_id else r for r in items])
+        return updated
+
     def _advance(self, entry, now):
         """Naechster kuenftiger Termin einer wiederkehrenden Erinnerung (mit neuem Kalendereintrag) oder None, wenn
         die Serie zu Ende ist oder es keine Wiederholung gibt. Termine, die schon vorbei sind, werden uebersprungen."""

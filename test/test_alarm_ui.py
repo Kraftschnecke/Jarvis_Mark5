@@ -41,6 +41,14 @@ assert 'key: "ring_timers", type: "toggle"' in page and 'key: "briefing", type: 
 assert 'key: "max_minutes", type: "number", min: 1, max: 60' in page
 assert 'key: "snooze_minutes", type: "number", min: 1, max: 60' in page
 
+# Wecker im Kalender (Step 2.11b): Namen nur als Text, Endpunkte, Bestaetigung bei Wiederholung
+cal = app.split("function alarmItem")[1].split("function update(data)")[0]
+assert "innerHTML" not in cal and "insertAdjacentHTML" not in cal
+for endpoint in ("/api/alarms/delete", "/api/alarms/update", "/api/alarms"):
+    assert endpoint in cal, endpoint
+assert "if (alarm.repeat && !armed)" in cal                      # ganze Serie: erst nach zweitem Klick
+assert "has-alarm" in app and "W.alarmsByDate" in app and ".w-cal-day.has-alarm" in css
+
 node = shutil.which("node")
 if node:
     result = subprocess.run([node, str(PROJECT_DIR / "test" / "alarm_check.js")],

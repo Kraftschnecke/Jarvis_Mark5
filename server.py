@@ -15,6 +15,7 @@ Dinge:
        POST /api/plan/abort   {}  (stoppt einen laufenden Plan vor dem naechsten Schritt)
        GET  /api/background?after=<id>  ->  {"messages": [{"id": 3, "text": "..."}], "last": 3}
                              (ohne "after": nur den aktuellen Stand "last" melden)
+       GET  /api/alarms      ->  alle Wecker fuer den Kalender; POST /api/alarms/update und /api/alarms/delete (Step 2.11b)
        GET  /api/ringing     ->  was gerade laeutet (Wecker/Timer) und wer den Ton macht (Step 2.11)
        POST /api/ringing/stop ->  ausschalten oder schlummern, auch waehrend Jarvis antwortet
        GET  /api/system      ->  PC-Fakten fuer das Widget "PC Facts" (Step 2.8, lokal gelesen)
@@ -512,6 +513,9 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if path == "/api/ringing":
             return self.send_json(200, ringing.default_ringer().state())
 
+        if path == "/api/alarms":
+            return self.send_json(200, {"alarms": reminders.default_store().alarms_overview()})
+
         if path == "/api/background":
             feed = self.server.feed
             feed.collect(self.server.jarvis)
@@ -682,6 +686,22 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 except ValueError as error:
                     return self.send_json(400, {"error": str(error)})
                 return self.send_json(200, self.server.widget_store.get())
+
+            # Wecker im Kalender aendern oder loeschen: kleine lokale Datei, braucht den message_lock nicht
+            if path in ("/api/alarms/delete", "/api/alarms/update"):
+                alarm_id = data.get("id")
+                if not isinstance(alarm_id, str) or not alarm_id or len(alarm_id) > 40:
+                    return self.send_json(400, {"error": "Ungültiger Wecker."})
+                store = reminders.default_store()
+                try:
+                    if path.endswith("delete"):
+                        store.delete_alarm(alarm_id)
+                    else:
+                        store.update_alarm(alarm_id, time=data.get("time"), label=data.get("label"),
+                                           briefing=data.get("briefing"), day=data.get("date"))
+                except reminders.ReminderError as error:
+                    return self.send_json(400, {"error": str(error)})
+                return self.send_json(200, {"alarms": store.alarms_overview()})
 
             # Wecker/Timer ausschalten oder schlummern: soll sofort gehen, auch waehrend Jarvis antwortet
             if path == "/api/ringing/stop":
