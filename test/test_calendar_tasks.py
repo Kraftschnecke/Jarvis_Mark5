@@ -82,7 +82,7 @@ for bad in ("bald", "", None, 5):
 
 # Auswertung fuer Plan-Pruefung: alle Parameter sind benannt (Plan verlangt jeden Wert)
 params = [name for a in add_task.actions for name in a.parameters]
-assert params == ["title", "date", "time"]
+assert params == ["title", "date", "time", "repeat", "interval", "count", "until"]
 
 # Der Router kennt beide Aufgaben und weiss, welcher Tag heute ist
 prompt = router.build_prompt("Trag morgen Zahnarzt ein", registry, today=datetime(2026, 10, 21, 7, 0))

@@ -32,3 +32,12 @@ widgets.tmp
 
 widgets.json
 widgets.tmp
+
+# Tageszaehler fuer Aufrufe (Step 1.4)
+usage.json
+usage_guest.json
+usage.tmp
+usage_guest.tmp
+
+# Erinnerungen (Mark 5, Step 2.9)
+reminders.json

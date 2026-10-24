@@ -88,7 +88,7 @@ for task in registry.get_all():
     assert any(line.startswith(f"- {task.goal}") for line in task_section), task.task_type
 
 # 3) Hinweis "ich frage vorher nach" genau bei den Aufgaben der Stufe confirm
-asking = {t.goal for t in registry.get_all() if t.task_type in ("START_PROGRAM", "OPEN_FILE")}
+asking = {t.goal for t in registry.get_all() if t.task_type in ("START_PROGRAM", "OPEN_FILE", "READ_PAGE")}
 for task in registry.get_all():
     line = next(l for l in task_section if l.startswith(f"- {task.goal}"))
     assert ("(ich frage vorher nach)" in line) == (task.goal in asking), line

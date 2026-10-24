@@ -47,13 +47,18 @@ def create_get_date_task():
 def create_calculate_task():
     task = Task(
         "CALCULATE",
-        "Eine mathematische Berechnung durchführen"
+        "Eine mathematische Berechnung durchführen (Grundrechenarten, Potenzen, Klammern, Prozent)"
     )
 
     task.add_action(
         Action(
             "calculate",
-            {"expression": None}
+            {
+                "expression": {
+                    "description": "Der Rechenausdruck mit Zahlen, + - * / ** (Potenz), Klammern und % direkt hinter einer Zahl, z.B. 15 Prozent von 80 als 80*15% und 80 plus 19 Prozent als 80*(1+19%). Nur Zahlen und Rechenzeichen, kein Text",
+                    "type": "string"
+                }
+            }
         )
     )
 
@@ -63,7 +68,7 @@ def create_calculate_task():
 def create_get_system_info_task():
     task = Task(
         "GET_SYSTEM_INFO",
-        "Informationen über das aktuelle System ermitteln"
+        "Informationen über den eigenen Computer ermitteln: Prozessor, Arbeitsspeicher, Festplatten, aktuelle Auslastung (CPU, RAM), Akku, Laufzeit und die größten laufenden Programme"
     )
 
     task.add_action(
@@ -223,7 +228,7 @@ def create_cancel_timer_task():
 def create_add_calendar_event_task():
     task = Task(
         "ADD_CALENDAR_EVENT",
-        "Einen Termin in den Kalender eintragen"
+        "Einen Termin in den Kalender eintragen, auch wiederkehrend (jeden Dienstag, für die nächsten 8 Wochen, jährlich zum Geburtstag)"
     )
     task.add_action(
         Action(
@@ -239,6 +244,22 @@ def create_add_calendar_event_task():
                 },
                 "time": {
                     "description": "Die Uhrzeit als HH:MM (24 Stunden). Nennt der Nutzer keine, schreibe ganztaegig",
+                    "type": "string"
+                },
+                "repeat": {
+                    "description": "Nur wenn sich der Eintrag wiederholt: daily, weekly, monthly oder yearly. Jeden Dienstag ist weekly, das Datum ist dann der erste Dienstag. Sonst leer lassen",
+                    "type": "string"
+                },
+                "interval": {
+                    "description": "Abstand der Wiederholung, z.B. 2 für alle zwei Wochen. Leer lassen für jedes Mal",
+                    "type": "string"
+                },
+                "count": {
+                    "description": "Wie oft der Eintrag insgesamt stattfindet, der erste mitgezählt, z.B. 8 bei für die nächsten 8 Wochen. Leer lassen, wenn der Nutzer ein Enddatum oder gar kein Ende nennt",
+                    "type": "string"
+                },
+                "until": {
+                    "description": "Letzter Tag der Wiederholung als YYYY-MM-DD, nur wenn der Nutzer ein Enddatum nennt (bis Weihnachten). Sonst leer lassen",
                     "type": "string"
                 }
             }
@@ -266,10 +287,255 @@ def create_list_calendar_events_task():
     return task
 
 
+def create_get_weather_task():
+    task = Task(
+        "GET_WEATHER",
+        "Das Wetter für einen Ort nennen: aktuell, heute oder die Vorhersage für die nächsten Tage"
+    )
+    task.add_action(
+        Action(
+            "get_weather",
+            {
+                "place": {
+                    "description": "Name des Ortes, z.B. Vaxjo. Nennt der Nutzer keinen Ort, schreibe heimat",
+                    "type": "string"
+                },
+                "day": {
+                    "description": "Der Tag: heute, morgen, uebermorgen oder ein Datum als YYYY-MM-DD (hoechstens 7 Tage voraus, anhand des heutigen Datums ausrechnen). Nennt der Nutzer keinen Tag, schreibe heute",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_get_news_task():
+    task = Task(
+        "GET_NEWS",
+        "Aktuelle Schlagzeilen aus den eingeschalteten News-Quellen nennen (auf Wunsch zu einem Thema) und auf Nachfrage zusammenfassen"
+    )
+    task.add_action(
+        Action(
+            "get_news",
+            {
+                "source": {
+                    "description": "Die Quelle: tagesschau, heise, spiegel, sportschau, espn_nhl (NHL, englisch), oilersnation (Oilers, englisch), gnews (Google-News-Suche zu einem Thema) oder bbc. Nennt der Nutzer keine, schreibe alle",
+                    "type": "string"
+                },
+                "topic": {
+                    "description": "Ein Stichwort, nach dem die Schlagzeilen gefiltert werden. Fragt der Nutzer allgemein nach den News, schreibe alle",
+                    "type": "string"
+                },
+                "count": {
+                    "description": "Wie viele Schlagzeilen (1 bis 10). Nennt der Nutzer keine Zahl, schreibe 5",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_read_page_task():
+    task = Task(
+        "READ_PAGE",
+        "Den Text einer Webseite oder eines Nachrichten-Artikels lesen, um ihn zusammenzufassen oder Fragen dazu zu beantworten"
+    )
+    task.add_action(
+        Action(
+            "read_page",
+            {
+                "item": {
+                    "description": "Die Nummer eines Artikels aus der zuletzt genannten Nachrichten-Liste, z.B. 3 für den dritten Artikel. Nennt der Nutzer keine Nummer, schreibe leer",
+                    "type": "string"
+                },
+                "url": {
+                    "description": "Ein Link (https://...), den der Nutzer selbst genannt hat. Erfinde nie einen Link. Wird eine Nummer benutzt oder nennt der Nutzer keinen Link, schreibe leer",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_convert_task():
+    task = Task(
+        "CONVERT",
+        "Einheiten oder Währungen umrechnen, z.B. Kilometer in Meilen, Celsius in Fahrenheit, Euro in Dollar"
+    )
+    task.add_action(
+        Action(
+            "convert",
+            {
+                "value": {
+                    "description": "Die Zahl, die umgerechnet werden soll, nur als Ziffern, z.B. 100 oder 36.6. Nennt der Nutzer keine Zahl, schreibe 1",
+                    "type": "string"
+                },
+                "from_unit": {
+                    "description": "Die Ausgangseinheit oder Währung, z.B. km, Meilen, Celsius, Pfund, Euro oder USD",
+                    "type": "string"
+                },
+                "to_unit": {
+                    "description": "Die Zieleinheit oder Währung, z.B. mi, Kilometer, Fahrenheit, Gramm, Dollar oder EUR",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_get_world_time_task():
+    task = Task(
+        "GET_WORLD_TIME",
+        "Die aktuelle Uhrzeit und das Datum an einem anderen Ort der Welt nennen (Zeitzonen, Zeitunterschied)"
+    )
+    task.add_action(
+        Action(
+            "get_world_time",
+            {
+                "place": {
+                    "description": "Name des Ortes oder der Stadt, z.B. Edmonton oder Tokio. Statt eines Ortes geht auch eine Zeitzone wie UTC oder Europe/Stockholm",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_wiki_lookup_task():
+    task = Task(
+        "WIKI_LOOKUP",
+        "Etwas in Wikipedia nachschlagen: eine Person, einen Ort, ein Ereignis oder einen Begriff erklären (Wer war ..., Was ist ...)"
+    )
+    task.add_action(
+        Action(
+            "wiki_lookup",
+            {
+                "topic": {
+                    "description": "Der Begriff, die Person oder der Ort, nur das Stichwort ohne Fragewort, z.B. Hermann Hesse oder Quasar",
+                    "type": "string"
+                },
+                "language": {
+                    "description": "Die Sprache der Wikipedia: de oder en. Nennt der Nutzer keine, schreibe de",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_translate_task():
+    task = Task(
+        "TRANSLATE",
+        "Einen Text oder eine Wendung in eine andere Sprache übersetzen (Wie sagt man ... auf Japanisch, Übersetze ins Englische)"
+    )
+    task.add_action(
+        Action(
+            "translate",
+            {
+                "text": {
+                    "description": "Der Text, der übersetzt werden soll, genau so wie der Nutzer ihn nennt, ohne die Übersetzungsaufforderung",
+                    "type": "string"
+                },
+                "target_language": {
+                    "description": "Die Zielsprache, z.B. Englisch, Japanisch oder en",
+                    "type": "string"
+                },
+                "source_language": {
+                    "description": "Die Ausgangssprache, nur wenn der Nutzer sie nennt, sonst leer lassen",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_set_reminder_task():
+    task = Task(
+        "SET_REMINDER",
+        "Eine Erinnerung zu einer Uhrzeit stellen, auch wiederkehrend (Erinnere mich um 19 Uhr an ..., jeden Montag um 8 Uhr). Für Zeiträume wie in 10 Minuten nimm stattdessen einen Timer"
+    )
+    task.add_action(
+        Action(
+            "set_reminder",
+            {
+                "text": {
+                    "description": "Woran erinnert werden soll, kurz, z.B. Wäsche aufhängen",
+                    "type": "string"
+                },
+                "date": {
+                    "description": "Das Datum als YYYY-MM-DD (Angaben wie morgen oder Freitag anhand des heutigen Datums ausrechnen). Nennt der Nutzer kein Datum, lass es leer",
+                    "type": "string"
+                },
+                "time": {
+                    "description": "Die Uhrzeit als HH:MM (24 Stunden). 1900 oder 19 Uhr bedeutet 19:00",
+                    "type": "string"
+                },
+                "repeat": {
+                    "description": "Nur wenn sich der Eintrag wiederholt: daily, weekly, monthly oder yearly. Jeden Dienstag ist weekly, das Datum ist dann der erste Dienstag. Sonst leer lassen",
+                    "type": "string"
+                },
+                "interval": {
+                    "description": "Abstand der Wiederholung, z.B. 2 für alle zwei Wochen. Leer lassen für jedes Mal",
+                    "type": "string"
+                },
+                "count": {
+                    "description": "Wie oft der Eintrag insgesamt stattfindet, der erste mitgezählt, z.B. 8 bei für die nächsten 8 Wochen. Leer lassen, wenn der Nutzer ein Enddatum oder gar kein Ende nennt",
+                    "type": "string"
+                },
+                "until": {
+                    "description": "Letzter Tag der Wiederholung als YYYY-MM-DD, nur wenn der Nutzer ein Enddatum nennt (bis Weihnachten). Sonst leer lassen",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_list_reminders_task():
+    task = Task(
+        "LIST_REMINDERS",
+        "Die offenen Erinnerungen zeigen (Welche Erinnerungen habe ich?)"
+    )
+    task.add_action(Action("list_reminders"))
+    return task
+
+
+def create_cancel_reminder_task():
+    task = Task(
+        "CANCEL_REMINDER",
+        "Eine Erinnerung löschen (nach Nummer oder Stichwort) oder alle Erinnerungen löschen"
+    )
+    task.add_action(
+        Action(
+            "cancel_reminder",
+            {
+                "which": {
+                    "description": "Die Nummer aus der Liste der Erinnerungen (1 = die nächste), ein Stichwort aus dem Text oder alle",
+                    "type": "string"
+                },
+                "scope": {
+                    "description": "Bei einer wiederkehrenden Erinnerung: series, wenn die ganze Serie enden soll (nicht mehr wiederholen, alle Termine). Sonst next, das löscht nur den kommenden Termin",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
 def register_all_tasks(registry):
     registry.register(create_get_time_task())
     registry.register(create_get_date_task())
     registry.register(create_calculate_task())
+    registry.register(create_convert_task())
     registry.register(create_get_system_info_task())
     registry.register(create_open_file_task())
     registry.register(create_get_running_programs_task())
@@ -281,4 +547,13 @@ def register_all_tasks(registry):
     registry.register(create_cancel_timer_task())
     registry.register(create_add_calendar_event_task())
     registry.register(create_list_calendar_events_task())
+    registry.register(create_get_world_time_task())
+    registry.register(create_get_weather_task())
+    registry.register(create_get_news_task())
+    registry.register(create_read_page_task())
+    registry.register(create_wiki_lookup_task())
+    registry.register(create_translate_task())
+    registry.register(create_set_reminder_task())
+    registry.register(create_list_reminders_task())
+    registry.register(create_cancel_reminder_task())
     registry.register(create_search_web_task())

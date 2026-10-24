@@ -16,24 +16,24 @@ html = (WEB / "index.html").read_text(encoding="utf-8")
 app = (WEB / "app.js").read_text(encoding="utf-8")
 css = (WEB / "style.css").read_text(encoding="utf-8")
 
-# 1) Seite: widgets.js vor app.js, Leiste und alle drei Felder anfangs versteckt
+# 1) Seite: widgets.js vor app.js, Leiste und alle fünf Felder anfangs versteckt
 assert html.index('src="widgets.js"') < html.index('src="app.js"')
 assert " hidden" in re.search(r'<aside[^>]*id="widgets"[^>]*>', html).group(0)
-for slot in ("top", "middle", "bottom"):
+for slot in ("top", "middle", "bottom", "fourth", "fifth"):
     assert " hidden" in re.search(r'<section[^>]*id="widget-%s"[^>]*>' % slot, html).group(0), slot
 
 # 2) Standard: oben Uhr, mitte Notizen, unten aus (kein Netz-Abruf ohne dein Zutun)
-assert SettingsManager.DEFAULT_SETTINGS["widgets"] == {"top": "Clock", "middle": "Notes", "bottom": "Off"}
+assert SettingsManager.DEFAULT_SETTINGS["widgets"] == {"top": "Clock", "middle": "Notes", "bottom": "Off", "fourth": "Off", "fifth": "Off"}
 
 # 3) Die Auswahl in den Einstellungen ist genau die Liste, die der Server akzeptiert
 page = app.split('key: "Widgets"')[1].split('key: "Activity"')[0]
-for slot in ("top", "middle", "bottom"):
+for slot in ("top", "middle", "bottom", "fourth", "fifth"):
     row = re.search(r'key: "%s", type: "select", options: \[([^\]]*)\]' % slot, page).group(1)
     options = tuple(re.findall(r'"([^"]+)"', row))
     assert options == SettingsManager.CHOICES[("widgets", slot)], (slot, options)
 # Jede Auswahl hat eine Zeichenfunktion
 renderers = app.split("const WIDGET_RENDERERS = {")[1].split("};")[0]
-for choices in (SettingsManager.CHOICES[("widgets", s)] for s in ("top", "middle", "bottom")):
+for choices in (SettingsManager.CHOICES[("widgets", s)] for s in ("top", "middle", "bottom", "fourth", "fifth")):
     for name in choices:
         if name != "Off":
             assert re.search(r'(^|[\s{,])"?%s"?:' % re.escape(name), renderers), name

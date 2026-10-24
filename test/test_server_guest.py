@@ -105,7 +105,7 @@ assert background_tasks.result_queue.qsize() == 1, "Meldungen des Besitzers duer
 # 3) Alle anderen Adressen sind verboten
 for path in ("/api/projects", "/api/timers", "/api/memories", "/api/actions", "/api/speak", "/api/message",
              "/api/confirm", "/api/plan/abort", "/api/unbekannt", "/api/conversation/open",
-             "/api/widgets", "/api/hockey"):
+             "/api/widgets", "/api/hockey", "/api/weather", "/api/system", "/api/performance"):
     status, body = request("GET", path)
     assert status == 403 and "Gastmodus" in json.loads(body)["error"], (path, status)
 
@@ -156,7 +156,7 @@ timer.cancel_timer_by_id(owner_timer.id)
 background_tasks.get_results()
 
 # 6) Start nur ueber --guest: ohne Schalter ist der Server nicht im Gastmodus
-assert server.JarvisServer.__init__.__defaults__ == (False, None, None)
+assert server.JarvisServer.__init__.__defaults__ == (False, None, None, None, None)
 assert "--guest" in open(PROJECT_DIR / "server.py", encoding="utf-8").read()
 settings_source = open(PROJECT_DIR / "server.py", encoding="utf-8").read().split("EDITABLE_SETTINGS = {")[1].split("}")[0]
 assert "guest" not in settings_source, "der Gastmodus darf nicht ueber Einstellungen schaltbar sein"

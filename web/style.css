@@ -157,6 +157,14 @@ body {
   color: var(--muted);
   margin-bottom: 2px;
 }
+.message a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.message .link-host {
+  font-size: 12px;
+  color: var(--muted);
+}
 .message code {
   background: var(--button);
   padding: 1px 5px;
@@ -618,3 +626,24 @@ body.guest #mic,
 body.guest .wake,
 body.guest .widgets,
 body.guest .widgets-button { display: none !important; }
+
+/* PC Facts und Performance (Step 2.8) */
+.w-facts { display: flex; flex-direction: column; gap: 4px; }
+.w-fact { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.w-fact-label { color: var(--muted); flex: 0 0 auto; }
+.w-fact-value { text-align: right; overflow-wrap: anywhere; }
+.w-perf { display: flex; flex-direction: column; gap: 8px; }
+.w-perf-row[hidden] { display: none; }
+.w-perf-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px; }
+.w-perf-label { color: var(--muted); }
+.w-perf-value { font-variant-numeric: tabular-nums; }
+.w-bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.w-bar-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.4s ease; }
+.w-bar-fill.warn { background: #d8a43a; }
+.w-bar-fill.high { background: #d9534f; }
+.w-perf-line { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* wiederkehrende Termine (Step 2.10) */
+.w-goal-remove { flex: 0 0 auto; }
+.w-series-remove { font-size: 12px; white-space: nowrap; padding: 0 2px; }
+.w-series-remove.armed { color: var(--accent); font-weight: 700; }

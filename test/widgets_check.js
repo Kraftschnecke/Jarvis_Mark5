@@ -64,4 +64,33 @@ assert.deepStrictEqual(W.eventsByDate([{ date: "2026-10-23", title: "a" }, { dat
 assert.deepStrictEqual(W.eventsByDate(undefined), {});
 assert.deepStrictEqual(W.eventsByDate("x"), {});
 
+// Leistungs-Widget: Formate und Farbstufen
+assert.strictEqual(W.formatGb(13.24), "13,2 GB");
+assert.strictEqual(W.formatGb(null), "–");
+assert.strictEqual(W.formatGb(undefined), "–");
+assert.strictEqual(W.formatGb("x"), "–");
+assert.strictEqual(W.formatRate(0), "0 KB/s");
+assert.strictEqual(W.formatRate(512.4), "512 KB/s");
+assert.strictEqual(W.formatRate(1536), "1,5 MB/s");
+assert.strictEqual(W.formatRate(-1), "–");
+assert.strictEqual(W.formatRate("abc"), "–");
+assert.strictEqual(W.formatUptime(59), "0 Min");
+assert.strictEqual(W.formatUptime(300), "5 Min");
+assert.strictEqual(W.formatUptime(3 * 3600 + 12 * 60), "3 Std 12 Min");
+assert.strictEqual(W.formatUptime(86400 + 4 * 3600), "1 Tag 4 Std");
+assert.strictEqual(W.formatUptime(2 * 86400 + 4 * 3600 + 59), "2 Tage 4 Std");
+assert.strictEqual(W.formatUptime(null), "–");
+assert.strictEqual(W.formatUptime(-5), "–");
+assert.strictEqual(W.loadLevel(0), "ok");
+assert.strictEqual(W.loadLevel(69.9), "ok");
+assert.strictEqual(W.loadLevel(70), "warn");
+assert.strictEqual(W.loadLevel(89.9), "warn");
+assert.strictEqual(W.loadLevel(90), "high");
+assert.strictEqual(W.loadLevel(100), "high");
+assert.strictEqual(W.loadLevel(undefined), "ok");
+assert.strictEqual(W.clampPercent(150), 100);
+assert.strictEqual(W.clampPercent(-3), 0);
+assert.strictEqual(W.clampPercent("x"), 0);
+assert.strictEqual(W.clampPercent(42.5), 42.5);
+
 console.log("widgets.js OK");

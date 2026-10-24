@@ -101,8 +101,9 @@ expected = {
     "FIND_PROGRAM": "safe", "SEARCH_WEB": "safe", "START_TIMER": "safe",
     "LIST_TIMERS": "safe", "CANCEL_TIMER": "safe",
     "ADD_CALENDAR_EVENT": "safe", "LIST_CALENDAR_EVENTS": "safe",
-    "SET_VOLUME": "safe",
+    "SET_VOLUME": "safe", "GET_WEATHER": "safe", "GET_NEWS": "safe", "CONVERT": "safe", "WIKI_LOOKUP": "safe", "TRANSLATE": "safe", "SET_REMINDER": "safe", "LIST_REMINDERS": "safe", "CANCEL_REMINDER": "safe", "GET_WORLD_TIME": "safe",
     "OPEN_FILE": "confirm", "START_PROGRAM": "confirm",
+    "READ_PAGE": "confirm",   # ohne Eintrag in der News-Liste: erst fragen (test_page.py prueft die Ausnahme)
 }
 for task_type, level in expected.items():
     assert risk.task_risk(task_of(task_type)) == level, task_type

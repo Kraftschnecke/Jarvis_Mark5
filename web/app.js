@@ -92,6 +92,28 @@ function setStatus(state, text) {
 // Text sicher anzeigen: erst alles als Text einsetzen, dann nur **fett**
 // und `code` in Elemente umwandeln. Nie innerHTML mit fremdem Text.
 function renderText(target, text) {
+  // Links [Text](https://...) zuerst herausnehmen (links.js), der Rest wird wie bisher gesetzt
+  JarvisLinks.splitLinks(text).forEach((piece) => {
+    if (piece.url === undefined) {
+      renderPlain(target, piece.text);
+      return;
+    }
+
+    const anchor = document.createElement("a");
+    anchor.href = piece.url;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    anchor.textContent = piece.label;
+    target.appendChild(anchor);
+
+    const host = document.createElement("span");
+    host.className = "link-host";
+    host.textContent = " (" + piece.host + ")";
+    target.appendChild(host);
+  });
+}
+
+function renderPlain(target, text) {
   const pattern = /(\*\*[^*]+\*\*|`[^`]+`)/g;
 
   text.split(pattern).forEach((part) => {
@@ -508,8 +530,8 @@ micButton.addEventListener("keyup", (event) => {
 // ======================================================================
 
 const widgetsEl = document.getElementById("widgets");
-const WIDGET_SLOTS = ["top", "middle", "bottom"];
-const widgetShown = { top: null, middle: null, bottom: null };   // was gerade gezeichnet ist
+const WIDGET_SLOTS = ["top", "middle", "bottom", "fourth", "fifth"];
+const widgetShown = { top: null, middle: null, bottom: null, fourth: null, fifth: null };   // was gerade gezeichnet ist
 let widgetClock = null;          // Sekundentakt fuer Uhr und Datum
 let hockeyTimer = null;          // Spielplan alle 5 Minuten neu holen
 let widgetData = null;           // Notizen und Ziele vom Server
@@ -631,7 +653,8 @@ function renderCalendar(section) {
       const item = wEl("li", "w-event");
       const remove = wEl("button", "w-goal-remove", "×");
       remove.type = "button";
-      remove.setAttribute("aria-label", "Termin löschen: " + event.title);
+      remove.setAttribute("aria-label", (event.series ? "Nur diesen Termin löschen: " : "Termin löschen: ") + event.title);
+      remove.title = event.series ? "Nur diesen Tag löschen" : "Termin löschen";
       remove.addEventListener("click", async () => {
         try {
           widgetData = await api("POST", "/api/widgets/events/delete", { id: event.id });
@@ -639,7 +662,38 @@ function renderCalendar(section) {
           update(widgetData);
         } catch (error) { status.textContent = error.message; }
       });
-      item.append(wEl("span", "w-event-when", event.time || "ganztägig"), wEl("span", "w-event-text", event.title), remove);
+      const label = wEl("span", "w-event-text", (event.repeat ? "↻ " : "") + event.title);
+      if (event.repeat) label.title = event.repeat;
+      item.append(wEl("span", "w-event-when", event.time || "ganztägig"), label);
+      if (event.series) {
+        // Ganze Serie loeschen: zwei Klicks (der erste fragt nach), damit nichts aus Versehen verschwindet
+        const series = wEl("button", "w-goal-remove w-series-remove", "↻×");
+        series.type = "button";
+        series.title = "Ganze Serie löschen (" + event.repeat + ")";
+        series.setAttribute("aria-label", "Ganze Serie löschen: " + event.title);
+        let armed = null;
+        series.addEventListener("click", async () => {
+          if (!armed) {
+            series.textContent = "✓?";
+            series.classList.add("armed");
+            status.textContent = "Noch einmal klicken: die ganze Serie wird gelöscht.";
+            armed = setTimeout(() => {
+              armed = null; series.textContent = "↻×"; series.classList.remove("armed"); status.textContent = "";
+            }, 4000);
+            return;
+          }
+          clearTimeout(armed);
+          try {
+            widgetData = await api("POST", "/api/widgets/events/delete_series", { series: event.series });
+            status.textContent = "";
+            update(widgetData);
+          } catch (error) {
+            status.textContent = error.message; armed = null; series.textContent = "↻×"; series.classList.remove("armed");
+          }
+        });
+        item.append(series);
+      }
+      item.append(remove);
       list.append(item);
     });
   }
@@ -853,7 +907,93 @@ function renderHockey(section, teamName) {
   hockeyTimer = setInterval(load, 5 * 60 * 1000);
 }
 
+// ---- PC Facts und Performance (Step 2.8): der Server liest den Rechner, der Browser zeigt nur an
+function factRow(label, value) {
+  const row = wEl("div", "w-fact");
+  row.append(wEl("span", "w-fact-label", label), wEl("span", "w-fact-value", value));
+  return row;
+}
+
+function renderPcFacts(section) {
+  const body = wEl("div", "w-facts");
+  section.append(wEl("h3", "w-title", "🖥 PC Facts"), body);
+  body.append(wEl("div", "w-muted", "Lade …"));
+  api("GET", "/api/system").then((data) => {
+    if (!body.isConnected) return;
+    const W = window.JarvisWidgets;
+    body.replaceChildren(
+      factRow("System", data.os || "–"),
+      factRow("Prozessor", data.cpu_name || "–"),
+      factRow("Kerne", (data.cpu_cores || "–") + " Kerne / " + (data.cpu_threads || "–") + " Threads"),
+      factRow("RAM", W.formatGb(data.ram_total_gb)),
+    );
+    (data.drives || []).forEach((drive) => {
+      body.append(factRow(drive.name, W.formatNumber(drive.free_gb, 0) + " von " + W.formatNumber(drive.total_gb, 0) + " GB frei"));
+    });
+    body.append(factRow("Computer", data.computer_name || "–"));
+  }).catch((error) => { if (body.isConnected) body.replaceChildren(wEl("div", "w-muted", error.message)); });
+}
+
+function barRow(label) {
+  const row = wEl("div", "w-perf-row");
+  const head = wEl("div", "w-perf-head");
+  const value = wEl("span", "w-perf-value", "–");
+  head.append(wEl("span", "w-perf-label", label), value);
+  const bar = wEl("div", "w-bar");
+  const fill = wEl("div", "w-bar-fill ok");
+  bar.append(fill);
+  row.append(head, bar);
+  return { row, value, fill };
+}
+
+function setBar(bar, percent, text) {
+  const W = window.JarvisWidgets;
+  bar.fill.style.width = W.clampPercent(percent) + "%";
+  bar.fill.className = "w-bar-fill " + W.loadLevel(percent);
+  bar.value.textContent = text;
+}
+
+function renderPerformance(section) {
+  const W = window.JarvisWidgets;
+  const body = wEl("div", "w-perf");
+  const cpu = barRow("CPU"), ram = barRow("RAM"), disk = barRow("Laufwerk"), battery = barRow("Akku");
+  battery.row.hidden = true;
+  const net = wEl("div", "w-perf-line");
+  const uptime = wEl("div", "w-perf-line");
+  const status = wEl("div", "w-status w-muted");
+  body.append(cpu.row, ram.row, disk.row, battery.row, net, uptime, status);
+  section.append(wEl("h3", "w-title", "📊 Performance"), body);
+
+  async function load() {
+    let data;
+    try {
+      data = await api("GET", "/api/performance");
+    } catch (error) {
+      if (body.isConnected) status.textContent = error.message;
+      return;
+    }
+    if (!body.isConnected) return;
+    status.textContent = "";
+    setBar(cpu, data.cpu_percent, W.formatNumber(data.cpu_percent, 0) + " %");
+    setBar(ram, data.ram_percent, W.formatGb(data.ram_used_gb) + " / " + W.formatGb(data.ram_total_gb));
+    setBar(disk, data.disk_percent, W.formatNumber(data.disk_percent, 0) + " %");
+    battery.row.hidden = !data.battery;
+    if (data.battery) setBar(battery, 100 - data.battery.percent, W.formatNumber(data.battery.percent, 0) + " %" + (data.battery.plugged ? " ⚡" : ""));
+    const network = data.network || {};
+    net.textContent = "Netz  ↓ " + W.formatRate(network.down_kb_s) + "   ↑ " + W.formatRate(network.up_kb_s);
+    uptime.textContent = "Läuft seit " + W.formatUptime(data.uptime_seconds);
+  }
+
+  load();
+  // Alle 2 Sekunden, solange das Feld sichtbar ist; wird es ausgetauscht, beendet sich der Takt von selbst
+  const timer = setInterval(() => {
+    if (!body.isConnected) { clearInterval(timer); return; }
+    if (!document.hidden) load();
+  }, 2000);
+}
+
 const WIDGET_RENDERERS = {
+  "PC Facts": renderPcFacts, Performance: renderPerformance,
   Clock: renderClock, Date: renderDate, Calendar: renderCalendar,
   Notes: renderNotes, Goals: renderGoals,
   "Edmonton Oilers": (section) => renderHockey(section, "Oilers"),
@@ -1363,6 +1503,8 @@ const settingsError = document.getElementById("settings-error");
 
 let settings = {};
 let about = { version: "", system: "" };
+let abilitiesInfo = [];
+let usageInfo = null;
 let currentPage = "Appearance";
 
 // live: true = wirkt wirklich und ist aenderbar. Alles andere ist (wie in der
@@ -1381,6 +1523,8 @@ const PAGES = [
     rows: [
       { label: "Address", category: "jarvis", key: "address", type: "text", live: true, maxLength: 30,
         note: "Gilt für Antworten und feste Meldungen, z. B. „Sir“. Ein Wort oder Name, höchstens 30 Zeichen." },
+      { label: "Home place", category: "jarvis", key: "home_place", type: "text", live: true, maxLength: 60,
+        note: "Für „Wie wird das Wetter?“ ohne Ortsangabe und für den Wetter-Satz beim Start. Der Ortsname geht an open-meteo.com. Leer lassen: kein Wetter beim Start." },
     ],
   },
   {
@@ -1412,13 +1556,53 @@ const PAGES = [
     ],
   },
   {
-    key: "Widgets", icon: "🧩", desc: "Die Seitenleiste rechts: drei Felder, jedes einzeln wählbar. Bei „Off“ verschwindet das Feld. Die Leiste erscheint erst bei Fenstern ab etwa 1200 Pixel Breite.",
+    key: "Widgets", icon: "🧩", desc: "Die Seitenleiste rechts: fünf Felder, jedes einzeln wählbar. Bei „Off“ verschwindet das Feld. Die Leiste erscheint erst bei Fenstern ab etwa 1200 Pixel Breite.",
     rows: [
       { label: "Top widget", category: "widgets", key: "top", type: "select", options: ["Off", "Clock", "Date", "Calendar"], live: true },
       { label: "Middle widget", category: "widgets", key: "middle", type: "select", options: ["Off", "Notes", "Goals"], live: true,
         note: "Notizen, Ziele und Kalender-Termine liegen in der Datei widgets.json auf deinem Rechner. Ziele gelten nur für den heutigen Tag, außer du markierst sie mit ↻ als täglich." },
       { label: "Bottom widget", category: "widgets", key: "bottom", type: "select", options: ["Off", "Edmonton Oilers", "Adler Mannheim"], live: true,
         note: "Das laufende oder letzte Spiel und die nächsten (Oilers: vier, Mannheim: drei). Oilers: öffentliche NHL-Schnittstelle, mit Ergebnissen. Mannheim: offizielle Kalenderdatei der Adler, nur Paarungen und Termine, keine Ergebnisse. Nur der Server ruft sie auf, höchstens alle 5 Minuten." },
+      { label: "Fourth widget", category: "widgets", key: "fourth", type: "select", options: ["Off", "PC Facts", "Performance"], live: true,
+        note: "PC Facts: System, Prozessor, Kerne, Arbeitsspeicher und Laufwerke. Performance: CPU, RAM, Laufwerk, Akku (falls vorhanden) und Netzwerk, alle 2 Sekunden. Beides liest nur dein Rechner, es geht nichts ins Internet." },
+      { label: "Fifth widget", category: "widgets", key: "fifth", type: "select", options: ["Off", "PC Facts", "Performance"], live: true },
+    ],
+  },
+  {
+    key: "Abilities", icon: "🛠", desc: "Was J.A.R.V.I.S. tun darf. Ausgeschaltete Fähigkeiten bietet er nicht an, führt sie nicht aus und sagt ehrlich, dass sie aus sind. Zeit, Datum, Rechnen und Systeminfo bleiben immer an.",
+    rows: [
+      { type: "abilities-list", live: true },
+    ],
+  },
+  {
+    key: "News", icon: "📰", desc: "Aus welchen Seiten J.A.R.V.I.S. Schlagzeilen holt, wenn du nach den News fragst. Es werden nur diese festen Seiten abgerufen; eigene Adressen kann man bewusst nicht eintragen. Die Fähigkeit selbst schaltest du unter Abilities.",
+    rows: [
+      { label: "Tagesschau", category: "news", key: "tagesschau", type: "toggle", live: true },
+      { label: "heise online", category: "news", key: "heise", type: "toggle", live: true },
+      { label: "Spiegel", category: "news", key: "spiegel", type: "toggle", live: true },
+      { label: "Sportschau", category: "news", key: "sportschau", type: "toggle", live: true,
+        note: "Sport allgemein, auch Eishockey (DEL). Mit „News zu Eishockey“ filtert J.A.R.V.I.S. danach." },
+      { label: "ESPN NHL", category: "news", key: "espn_nhl", type: "toggle", live: true,
+        note: "NHL-Meldungen auf Englisch, z. B. zu den Oilers." },
+      { label: "Oilers Nation", category: "news", key: "oilersnation", type: "toggle", live: true,
+        note: "Fan-Portal nur über die Edmonton Oilers, englisch." },
+      { label: "Google News (Suche)", category: "news", key: "gnews", type: "toggle", live: true,
+        note: "Sucht zu einem Thema in Google News („News zu Eishockey“). Nur mit Thema; das Stichwort geht dafür an Google. Findet fast alles. Die Links führen über Google; diese Artikel kann J.A.R.V.I.S. nicht selbst lesen, nur du im Browser." },
+      { label: "Bing News (Suche)", category: "news", key: "bingnews", type: "toggle", live: true,
+        note: "Wie die Google-Suche (nur mit Thema, das Stichwort geht an Bing), liefert aber direkte Links zu den Artikeln. Damit kann J.A.R.V.I.S. die Artikel auch selbst lesen und zusammenfassen." },
+      { label: "BBC News", category: "news", key: "bbc", type: "toggle", live: true,
+        note: "Englischsprachig. J.A.R.V.I.S. kann die Schlagzeilen auf Deutsch zusammenfassen." },
+    ],
+  },
+  {
+    key: "Limits", icon: "💶", desc: "Tageslimits für kostenpflichtige Aufrufe an OpenAI. Ist ein Limit erreicht, geht nichts mehr raus, bis um Mitternacht der Zähler wieder bei 0 beginnt. 0 bedeutet kein Limit.",
+    rows: [
+      { label: "AI calls today", type: "readonly", live: true, text: () => usageText("ai") },
+      { label: "Speech calls today", type: "readonly", live: true, text: () => usageText("speech") },
+      { label: "AI calls per day", category: "limits", key: "ai_calls_per_day", type: "number", min: 0, max: 100000, live: true,
+        note: "Jede Antwort braucht meist 2 bis 4 Aufrufe (Router, Antwort, Gedächtnis). Der Gastmodus hat einen eigenen Zähler." },
+      { label: "Speech calls per day", category: "limits", key: "speech_calls_per_day", type: "number", min: 0, max: 100000, live: true,
+        note: "Jedes vorgelesene Stück Text mit der OpenAI-Stimme. Die Browser-Stimme kostet nichts und zählt nicht." },
     ],
   },
   {
@@ -1435,6 +1619,12 @@ const PAGES = [
     ],
   },
 ];
+
+function usageText(kind) {
+  if (!usageInfo) return "–";
+  const limit = usageInfo.limits && usageInfo.limits[kind];
+  return usageInfo[kind] + " von " + (limit ? limit : "unbegrenzt");
+}
 
 function applyAppearance() {
   const theme = (settings.appearance && settings.appearance.theme) || "Dark";
@@ -1467,6 +1657,8 @@ matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyAppe
 function applySettingsState(data) {
   settings = data.settings;
   about = data.about;
+  abilitiesInfo = Array.isArray(data.abilities) ? data.abilities : [];
+  usageInfo = data.usage || null;
   guestMode = data.guest === true;
   document.body.classList.toggle("guest", guestMode);
   if (guestMode) setStatus("ready", "GAST");
@@ -1868,7 +2060,12 @@ function renderSettings() {
   settingsDesc.textContent = page.desc;
   settingsRows.replaceChildren();
 
-  page.rows.forEach((row) => {
+  // Die Liste der Faehigkeiten kommt vom Server (abilities.py), nicht fest im Code
+  const rows = page.rows.flatMap((row) => row.type !== "abilities-list" ? [row] : abilitiesInfo.map((ability) => ({
+    label: ability.label, category: "abilities", key: ability.id, type: "toggle", live: true, note: ability.description,
+  })));
+
+  rows.forEach((row) => {
     if (row.type === "action-list") {
       settingsRows.appendChild(buildActionList());
       return;
@@ -1936,6 +2133,7 @@ async function pollBackground() {
       addMessage("background", item.text, "HINTERGRUND");
       speakReply(item.text);
     });
+    if (data.messages.length) refreshWidgets();      // z.B. eine Erinnerung verschwindet aus dem Kalender
     if (!busy && !ended) setStatus("ready", readyLabel());
   } catch (error) {
     if (!busy && !ended) setStatus("error", "OFFLINE");
@@ -2013,10 +2211,22 @@ async function showStartupReport() {
     /* ohne Timer-Angabe */
   }
 
+  // Wetter am Heimatort: hoechstens 2,5 Sekunden warten, sonst ohne
+  let weather = null;
+  try {
+    weather = (await Promise.race([
+      api("GET", "/api/weather"),
+      new Promise((resolve) => setTimeout(() => resolve({}), 2500)),
+    ])).summary || null;
+  } catch (error) {
+    /* ohne Wetter */
+  }
+
   addMessage("jarvis", window.JarvisStatus.buildStartupReport({
     address: (settings.jarvis && settings.jarvis.address) || "Sir",
     now: new Date(),
     timers,
+    weather,
     memoryEnabled: settings.memory ? settings.memory.enabled : true,
   }));
 }

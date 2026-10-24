@@ -17,10 +17,13 @@ folder = Path(tempfile.mkdtemp())
 sm = SettingsManager(folder / "neu.json")
 assert sm.get_all() == {
     "appearance": {"theme": "Dark", "accent_color": "J.A.R.V.I.S. Blue", "font_size": 13},
-    "jarvis": {"address": "Sir"},
+    "jarvis": {"address": "Sir", "home_place": "Mannheim"},
     "memory": {"enabled": True},
     "voice": {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German", "wake_word": False},
-    "widgets": {"top": "Clock", "middle": "Notes", "bottom": "Off"},
+    "widgets": {"top": "Clock", "middle": "Notes", "bottom": "Off", "fourth": "Off", "fifth": "Off"},
+    "abilities": {"web_search": True, "weather": True, "news": True, "wikipedia": True, "translate": True, "reminders": True, "worldtime": True, "convert": True, "pages": True, "timers": True, "calendar": True, "volume": True, "programs": True, "files": True},
+    "news": {"tagesschau": True, "heise": True, "spiegel": False, "sportschau": False, "espn_nhl": False, "oilersnation": False, "gnews": False, "bingnews": False, "bbc": False},
+    "limits": {"ai_calls_per_day": 500, "speech_calls_per_day": 200},
 }
 assert json.loads((folder / "neu.json").read_text(encoding="utf-8")) == sm.get_all()
 
@@ -38,10 +41,13 @@ old = {
 sm = SettingsManager(folder / "alt.json")
 assert sm.get_all() == {
     "appearance": {"theme": "Light", "accent_color": "Custom", "font_size": 17},
-    "jarvis": {"address": "Chef"},
+    "jarvis": {"address": "Chef", "home_place": "Mannheim"},
     "memory": {"enabled": False},
     "voice": {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German", "wake_word": False},
-    "widgets": {"top": "Clock", "middle": "Notes", "bottom": "Off"},
+    "widgets": {"top": "Clock", "middle": "Notes", "bottom": "Off", "fourth": "Off", "fifth": "Off"},
+    "abilities": {"web_search": True, "weather": True, "news": True, "wikipedia": True, "translate": True, "reminders": True, "worldtime": True, "convert": True, "pages": True, "timers": True, "calendar": True, "volume": True, "programs": True, "files": True},
+    "news": {"tagesschau": True, "heise": True, "spiegel": False, "sportschau": False, "espn_nhl": False, "oilersnation": False, "gnews": False, "bingnews": False, "bbc": False},
+    "limits": {"ai_calls_per_day": 500, "speech_calls_per_day": 200},
 }, sm.get_all()
 # ... und die Datei selbst ist bereinigt
 assert json.loads((folder / "alt.json").read_text(encoding="utf-8")) == sm.get_all()
@@ -71,7 +77,7 @@ assert SettingsManager(folder / "kaputt.json").get("jarvis", "address") == "Sir"
 (folder / "liste.json").write_text("[1, 2]", encoding="utf-8")
 assert SettingsManager(folder / "liste.json").get("memory", "enabled") is True
 (folder / "typ.json").write_text(json.dumps({"jarvis": "Sir", "memory": 5}), encoding="utf-8")
-assert SettingsManager(folder / "typ.json").get_all()["jarvis"] == {"address": "Sir"}
+assert SettingsManager(folder / "typ.json").get_all()["jarvis"] == {"address": "Sir", "home_place": "Mannheim"}
 
 # 4) set/get/reset
 sm = SettingsManager(folder / "set.json")
@@ -98,5 +104,12 @@ assert "address me as Chef" in text and "Sir" not in text
 personality.set_address("Sir")
 assert personality.jarvis_personality() == personality.JARVIS_PERSONALITY
 assert "address me as Sir and not by my name" in personality.JARVIS_PERSONALITY
+
+# Schalter fuer Faehigkeiten: gueltige Werte bleiben, falsche Typen und unbekannte Namen fliegen raus
+(folder / "faehig.json").write_text(json.dumps({"abilities": {"web_search": False, "timers": "nein", "gibtsnicht": True}}), encoding="utf-8")
+sm = SettingsManager(folder / "faehig.json")
+assert sm.get("abilities", "web_search") is False
+assert sm.get("abilities", "timers") is True, "Text statt Wahrheitswert wird verworfen"
+assert "gibtsnicht" not in sm.get_category("abilities")
 
 print("ALL TESTS PASSED")

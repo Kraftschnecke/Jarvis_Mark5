@@ -93,7 +93,51 @@
       .format(new Date(year, month - 1, day));
   }
 
-  const api = { formatClock, formatDateLong, monthTitle, weekdayNames, calendarWeeks, describeGame,
+  // Zahl mit Dezimalkomma: 13.24 -> "13,2"
+  function formatNumber(value, digits) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "–";
+    return number.toLocaleString("de-DE", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+
+  // "13,2 GB"
+  function formatGb(value) {
+    return Number.isFinite(Number(value)) && value !== null ? formatNumber(value, 1) + " GB" : "–";
+  }
+
+  // Netzwerk-Tempo aus KB/s: "0 KB/s", "512 KB/s", "1,5 MB/s"
+  function formatRate(kbPerSecond) {
+    const kb = Number(kbPerSecond);
+    if (!Number.isFinite(kb) || kb < 0) return "–";
+    if (kb >= 1024) return formatNumber(kb / 1024, 1) + " MB/s";
+    return formatNumber(Math.round(kb), 0) + " KB/s";
+  }
+
+  // Laufzeit: "5 Min", "3 Std 12 Min", "2 Tage 4 Std"
+  function formatUptime(seconds) {
+    const total = Number(seconds);
+    if (seconds === null || seconds === undefined || !Number.isFinite(total) || total < 0) return "–";
+    const minutes = Math.floor(total / 60);
+    const days = Math.floor(minutes / 1440);
+    const hours = Math.floor((minutes % 1440) / 60);
+    if (days > 0) return days + (days === 1 ? " Tag " : " Tage ") + hours + " Std";
+    if (hours > 0) return hours + " Std " + (minutes % 60) + " Min";
+    return minutes + " Min";
+  }
+
+  // Farbstufe eines Balkens: bis 70 % ok, bis 90 % warn, darueber high; ungueltig -> 0 %
+  function loadLevel(percent) {
+    const value = Number(percent);
+    if (!Number.isFinite(value) || value < 70) return "ok";
+    return value < 90 ? "warn" : "high";
+  }
+
+  function clampPercent(percent) {
+    const value = Number(percent);
+    return Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
+  }
+
+  const api = { formatNumber, formatGb, formatRate, formatUptime, loadLevel, clampPercent, formatClock, formatDateLong, monthTitle, weekdayNames, calendarWeeks, describeGame,
                 dateKey, eventsByDate, formatDayLong };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.JarvisWidgets = api;

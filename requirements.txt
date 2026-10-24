@@ -3,5 +3,5 @@ psutil==7.2.2
 pycaw==20260921
 prompt_toolkit==3.0.53
 python-dotenv==1.2.3
+tzdata>=2025.2
 psycopg[binary]==3.3.6
-requests==2.34.1

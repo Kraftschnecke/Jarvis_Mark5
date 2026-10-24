@@ -10,6 +10,7 @@ Es ist KEIN Modell-Aufruf: Eine Faehigkeit, die es nicht gibt, kann so nie
 genannt werden, und eine neue Aufgabe erscheint ohne weiteren Eingriff in der Liste.
 """
 
+import abilities
 import risk
 from plan import MAX_STEPS
 from plan_executor import MAX_SECONDS
@@ -49,6 +50,23 @@ def task_lines(task_registry):
     return lines
 
 
+def disabled_lines(task_registry):
+    """Was in den Einstellungen unter Abilities ausgeschaltet ist (sonst nichts)."""
+    labels = []
+
+    for task in task_registry.get_disabled():
+        ability = abilities.ability_of(task.task_type)
+        label = ability.label if ability else task.goal
+
+        if label not in labels:
+            labels.append(label)
+
+    if not labels:
+        return []
+
+    return ["", "**Ausgeschaltet** (einzuschalten in den Einstellungen unter Abilities)"] + [f"- {l}" for l in labels]
+
+
 def command_lines():
     ordered = [c for c in COMMAND_ORDER if c in COMMAND_INTENTS]
     ordered += sorted(c for c in COMMAND_INTENTS if c not in COMMAND_ORDER)
@@ -59,6 +77,7 @@ def command_lines():
 def describe_capabilities(task_registry, address, memory_enabled=True):
     lines = [f"Das kann ich, {address}:", "", "**Aufgaben**"]
     lines += task_lines(task_registry)
+    lines += disabled_lines(task_registry)
 
     lines += [
         "",

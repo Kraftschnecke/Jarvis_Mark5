@@ -20,6 +20,7 @@ import time
 from collections import deque
 from pathlib import Path
 
+import cost_guard
 import risk
 from brain import build_input, respond_to_task
 from config import MODEL
@@ -37,6 +38,7 @@ GUEST_TASKS = ("GET_TIME", "GET_DATE", "CALCULATE", "SEARCH_WEB")
 MAX_MESSAGE_CHARS = 500
 RATE_LIMIT_MESSAGES = 30       # pro Zeitfenster, schuetzt deine OpenAI-Kosten
 RATE_LIMIT_SECONDS = 600
+GUEST_AI_CALLS_PER_DAY = 200   # eigener Zaehler (usage_guest.json), zehrt nicht am Limit des Besitzers
 
 WELCOME = (
     "Willkommen im Gastmodus. Ich kann mich unterhalten, die Uhrzeit und das Datum "
@@ -135,6 +137,11 @@ class GuestJarvis:
 
         try:
             answer = self._answer(message)
+        except cost_guard.LimitReached:
+            return {
+                "status": "response",
+                "content": "Der Gastmodus ist für heute ausgelastet. Bitte versuche es morgen wieder.",
+            }
         except Exception:
             return {
                 "status": "response",

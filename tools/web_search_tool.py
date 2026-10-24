@@ -1,12 +1,13 @@
 import re
 from urllib.parse import urlparse
 
-import requests
 from config import BRAVE_API_KEY
+from net_fetch import NetError, fetch_json
 from tools.tool_result import ToolResult
 from untrusted import clean_text
 
 SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
+SEARCH_HOSTS = ("api.search.brave.com",)
 
 # Ohne Timeout wuerde ein haengender Server Jarvis (und die GUI) blockieren.
 REQUEST_TIMEOUT_SECONDS = 10
@@ -47,21 +48,18 @@ def search_web(query):
         )
 
     try:
-        response = requests.get(
+        data = fetch_json(
             SEARCH_URL,
+            SEARCH_HOSTS,
+            params={"q": query},
             headers={
                 "Accept": "application/json",
                 "X-Subscription-Token": BRAVE_API_KEY
             },
-            params={
-                "q": query
-            },
             timeout=REQUEST_TIMEOUT_SECONDS
         )
 
-        response.raise_for_status()
-
-        results = response.json().get("web", {}).get("results", [])
+        results = data.get("web", {}).get("results", []) if isinstance(data, dict) else []
 
         structured_results = []
 
@@ -82,10 +80,10 @@ def search_web(query):
             data=structured_results
         )
 
-    except requests.exceptions.Timeout:
+    except NetError as error:
         return ToolResult(
             success=False,
-            error="Die Websuche hat nicht rechtzeitig geantwortet."
+            error=f"Die Websuche ist fehlgeschlagen: {error}"
         )
 
     except Exception as error:

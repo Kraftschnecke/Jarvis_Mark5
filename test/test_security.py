@@ -242,50 +242,40 @@ assert task.status == "BLOCKED" and started == []
 calls = []
 
 
-class FakeResponse:
-    def __init__(self, payload):
-        self.payload = payload
-
-    def raise_for_status(self):
-        pass
-
-    def json(self):
-        return self.payload
-
-
-def fake_get(url, **kwargs):
-    calls.append(kwargs)
-    return FakeResponse({"web": {"results": [
+def fake_fetch_json(url, hosts, **kwargs):
+    calls.append({"url": url, "hosts": hosts, **kwargs})
+    return {"web": {"results": [
         {"title": "T", "url": "https://a.example", "description": "D"},
         {"url": "https://b.example"}          # Felder fehlen
-    ]}})
+    ]}}
 
 
-web_search_tool.requests.get = fake_get
+web_search_tool.fetch_json = fake_fetch_json
 
 # Ohne Key: klare Meldung, keine Anfrage
 web_search_tool.BRAVE_API_KEY = None
 result = web_search_tool.search_web("wetter")
 assert not result.success and "BRAVE_API_KEY" in result.error and calls == []
 
-# Mit Key: Timeout gesetzt, Key im Header, fehlende Felder crashen nicht
+# Mit Key: Timeout gesetzt, Key im Header, nur der Brave-Host, fehlende Felder crashen nicht
 web_search_tool.BRAVE_API_KEY = "geheim"
 result = web_search_tool.search_web("wetter")
 assert result.success and len(result.data) == 2
 assert result.data[1] == {"title": "", "url": "https://b.example", "description": ""}
 assert calls[0]["timeout"] == web_search_tool.REQUEST_TIMEOUT_SECONDS
 assert calls[0]["headers"]["X-Subscription-Token"] == "geheim"
+assert calls[0]["hosts"] == ("api.search.brave.com",) and calls[0]["params"] == {"q": "wetter"}
 
 # Keine Treffer ("web" fehlt): leere Liste statt KeyError
-web_search_tool.requests.get = lambda url, **k: FakeResponse({})
+web_search_tool.fetch_json = lambda url, hosts, **k: {}
 result = web_search_tool.search_web("xyz")
 assert result.success and result.data == []
 
-# Timeout: freundliche Meldung
-def timeout_get(url, **kwargs):
-    raise web_search_tool.requests.exceptions.Timeout()
+# Netzfehler (Timeout, kein Netz, Fehlercode): freundliche Meldung mit dem Grund
+def failing(url, hosts, **kwargs):
+    raise web_search_tool.NetError("Der Dienst hat nicht rechtzeitig geantwortet.")
 
-web_search_tool.requests.get = timeout_get
+web_search_tool.fetch_json = failing
 result = web_search_tool.search_web("wetter")
 assert not result.success and "nicht rechtzeitig" in result.error
 

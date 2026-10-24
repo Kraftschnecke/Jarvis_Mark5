@@ -126,7 +126,7 @@ raw = [
     None,
     {"title": "T" * 5000, "url": "https://x.example/" + "a" * 5000, "description": "D" * 5000},
 ] + [{"title": f"r{i}", "url": f"https://e{i}.example", "description": ""} for i in range(30)]
-web_search_tool.requests.get = lambda url, **kw: FakeResponse({"web": {"results": raw}})
+web_search_tool.fetch_json = lambda url, hosts, **kw: {"web": {"results": raw}}
 web_search_tool.BRAVE_API_KEY = "key"
 result = web_search_tool.search_web("wetter")
 assert result.success

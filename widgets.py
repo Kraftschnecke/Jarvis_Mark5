@@ -11,17 +11,20 @@ import re
 import secrets
 import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+import net_fetch
+import recurrence
 
 MAX_NOTES = 5000
 MAX_GOALS = 20
 MAX_GOAL_LENGTH = 200
 MAX_EVENTS = 500
 MAX_EVENT_TITLE = 100
+SERIES_HORIZON_DAYS = 365        # Serien ohne Ende werden immer ein Jahr im Voraus ausgelegt
+MAX_SERIES = 20
+MAX_LABEL = 80
 EVENT_KEEP_DAYS = 31            # Termine, die laenger her sind, werden beim Speichern aufgeraeumt
 
 # Alle Zugriffe auf widgets.json (Seite UND Jarvis-Aufgaben) laufen durch dieses eine Schloss,
@@ -68,13 +71,60 @@ class WidgetStore:
             title, day, at, event_id = item.get("title"), item.get("date"), item.get("time", ""), item.get("id")
             if isinstance(title, str) and isinstance(event_id, str) and isinstance(at, str) \
                     and (at == "" or _TIME.match(at)) and _valid_date(day):
-                clean.append({"id": event_id, "title": title[:MAX_EVENT_TITLE], "date": day, "time": at})
+                event = {"id": event_id, "title": title[:MAX_EVENT_TITLE], "date": day, "time": at}
+                if isinstance(item.get("series"), str) and isinstance(item.get("repeat"), str):
+                    event["series"] = item["series"][:32]
+                    event["repeat"] = item["repeat"][:MAX_LABEL]
+                clean.append(event)
         clean.sort(key=lambda e: (e["date"], e["time"] or "00:00", e["title"]))
         return clean[:MAX_EVENTS]
+
+    @staticmethod
+    def _clean_series(items):
+        """Serien ohne Ende (Geburtstage, woechentliche Termine): nur sie brauchen einen Merker zum Nachlegen."""
+        clean = []
+        for item in items if isinstance(items, list) else []:
+            if not isinstance(item, dict) or not isinstance(item.get("rule"), dict):
+                continue
+            rule = recurrence.Rule.from_dict(item["rule"])
+            at = item.get("time", "")
+            if rule is not None and rule.open_ended and isinstance(item.get("id"), str) and isinstance(item.get("title"), str) \
+                    and isinstance(at, str) and (at == "" or _TIME.match(at)) and _valid_date(item.get("start")) \
+                    and _valid_date(item.get("generated_until")) and isinstance(item.get("label"), str):
+                clean.append({"id": item["id"], "title": item["title"][:MAX_EVENT_TITLE], "time": at, "start": item["start"],
+                              "rule": rule.to_dict(), "label": item["label"][:MAX_LABEL],
+                              "generated_until": item["generated_until"]})
+        return clean[:MAX_SERIES]
+
+    def _extend_series(self, data):
+        """Legt fuer Serien ohne Ende neue Termine bis zu einem Jahr voraus nach. True, wenn sich etwas geaendert hat."""
+        series = self._clean_series(data.get("series"))
+        if not series:
+            return False
+        horizon = self.today() + timedelta(days=SERIES_HORIZON_DAYS)
+        events = self._clean_events(data.get("events"))
+        changed = False
+        for item in series:
+            generated = date.fromisoformat(item["generated_until"])
+            if generated >= horizon:
+                continue
+            start = date.fromisoformat(item["start"])
+            rule = recurrence.Rule.from_dict(item["rule"])
+            for day in recurrence.occurrences(start, rule, horizon):
+                if day > generated and len(events) < MAX_EVENTS:
+                    events.append({"id": secrets.token_hex(4), "title": item["title"], "date": day.isoformat(),
+                                   "time": item["time"], "series": item["id"], "repeat": item["label"]})
+            item["generated_until"] = horizon.isoformat()
+            changed = True
+        if changed:
+            data["series"], data["events"] = series, events
+        return changed
 
     def get(self):
         with self._lock:
             data = self._load()
+            if self._extend_series(data):
+                self._save(data)
         today = self.today().isoformat()
         notes = data.get("notes") if isinstance(data.get("notes"), str) else ""
         goals = data.get("goals") if isinstance(data.get("goals"), dict) else {}
@@ -113,7 +163,8 @@ class WidgetStore:
             self._save(data)
 
     # ---- Kalender-Termine (von der Seite oder von Jarvis)
-    def add_event(self, title, day, at=""):
+    def _check_event(self, title, day, at):
+        """Titel, Datum und Uhrzeit pruefen. Gibt (titel, uhrzeit, datum) zurueck."""
         if not isinstance(title, str) or not isinstance(day, str) or not isinstance(at, str):
             raise ValueError("Ungültiger Termin.")
         title = " ".join(title.split())
@@ -130,6 +181,11 @@ class WidgetStore:
             raise ValueError("Das Datum liegt zu weit weg (höchstens 5 Jahre voraus).")
         if at and not _TIME.match(at):
             raise ValueError("Ungültige Uhrzeit (Format HH:MM).")
+        return title, at, chosen
+
+    def add_event(self, title, day, at=""):
+        title, at, chosen = self._check_event(title, day, at)
+        today = self.today()
         with self._lock:
             data = self._load()
             events = self._clean_events(data.get("events"))
@@ -142,6 +198,62 @@ class WidgetStore:
             data["events"] = events
             self._save(data)
         return event
+
+    def add_series(self, title, day, at="", freq=None, interval=None, count=None, until=None):
+        """Wiederkehrender Termin. Ohne Wiederholung (freq leer) wie add_event. Gibt die angelegten Termine zurueck."""
+        title, at, chosen = self._check_event(title, day, at)
+        today = self.today()
+        rule = recurrence.parse_rule(freq, interval, count, until, chosen)
+        if rule is None:
+            return [self.add_event(title, day, at)]
+        if rule.open_ended:
+            days = recurrence.occurrences(chosen, rule, today + timedelta(days=SERIES_HORIZON_DAYS))
+        else:
+            days = recurrence.occurrences(chosen, rule)
+            if len(days) > recurrence.MAX_OCCURRENCES:
+                raise ValueError(f"Das wären mehr als {recurrence.MAX_OCCURRENCES} Termine. Wähle ein früheres Ende.")
+            if days and days[-1] > recurrence.limit_date(today):
+                raise ValueError(f"Die Serie reicht zu weit in die Zukunft (höchstens {recurrence.MAX_YEARS_AHEAD} Jahre).")
+            if len(days) == 1:
+                return [self.add_event(title, day, at)]
+        label = recurrence.describe(rule, chosen)
+        series_id = secrets.token_hex(4)
+        with self._lock:
+            data = self._load()
+            events = self._clean_events(data.get("events"))
+            cutoff = (today - timedelta(days=EVENT_KEEP_DAYS)).isoformat()
+            events = [e for e in events if e["date"] >= cutoff]
+            if len(events) + len(days) > MAX_EVENTS:
+                raise ValueError(f"Es sind höchstens {MAX_EVENTS} Termine möglich.")
+            series = self._clean_series(data.get("series"))
+            if rule.open_ended and len(series) >= MAX_SERIES:
+                raise ValueError(f"Es sind höchstens {MAX_SERIES} Serien ohne Ende möglich.")
+            created = [{"id": secrets.token_hex(4), "title": title, "date": d.isoformat(), "time": at,
+                        "series": series_id, "repeat": label} for d in days]
+            events.extend(created)
+            data["events"] = events
+            if rule.open_ended:
+                series.append({"id": series_id, "title": title, "time": at, "start": chosen.isoformat(), "rule": rule.to_dict(),
+                               "label": label, "generated_until": (today + timedelta(days=SERIES_HORIZON_DAYS)).isoformat()})
+            data["series"] = series
+            self._save(data)
+        created[0] = dict(created[0], open_ended=rule.open_ended)     # nur fuer die Antwort, wird nicht gespeichert
+        return created
+
+    def delete_series(self, series_id):
+        """Alle Termine einer Serie (und den Merker zum Nachlegen) loeschen."""
+        if not isinstance(series_id, str):
+            raise ValueError("Ungültige Serie.")
+        with self._lock:
+            data = self._load()
+            events = self._clean_events(data.get("events"))
+            kept = [e for e in events if e.get("series") != series_id]
+            series = [s for s in self._clean_series(data.get("series")) if s["id"] != series_id]
+            if len(kept) == len(events):
+                raise ValueError("Diese Serie gibt es nicht.")
+            data["events"], data["series"] = kept, series
+            self._save(data)
+        return len(events) - len(kept)
 
     def delete_event(self, event_id):
         if not isinstance(event_id, str):
@@ -221,35 +333,19 @@ class HockeyError(Exception):
     pass
 
 
-class _SafeRedirects(urllib.request.HTTPRedirectHandler):
-    """Weiterleitungen nur auf erlaubte Hosts und nur per https."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if not _allowed(newurl):
-            raise HockeyError("Weiterleitung auf eine unerlaubte Adresse.")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-def _allowed(url):
-    parts = urllib.parse.urlsplit(url)
-    return parts.scheme == "https" and parts.hostname in ALLOWED_HOSTS
-
-
 def fetch_text(url):
-    """Holt Text aus dem Netz (nur https, nur erlaubte Hosts, Zeit- und Groessenlimit)."""
-    if not _allowed(url):
-        raise HockeyError("Unerlaubte Adresse.")
-    opener = urllib.request.build_opener(_SafeRedirects)
-    request = urllib.request.Request(url, headers={"User-Agent": "Jarvis"})
-    with opener.open(request, timeout=8) as response:
-        raw = response.read(MAX_RESPONSE_BYTES + 1)
-    if len(raw) > MAX_RESPONSE_BYTES:
-        raise HockeyError("Antwort zu groß.")
-    return raw.decode("utf-8")
+    """Holt Text aus dem Netz ueber den gemeinsamen Helfer (net_fetch): nur diese Hosts, nur https."""
+    try:
+        return net_fetch.fetch_text(url, ALLOWED_HOSTS, max_bytes=MAX_RESPONSE_BYTES)
+    except net_fetch.NetError as error:
+        raise HockeyError(str(error)) from error
 
 
 def fetch_json(url):
-    return json.loads(fetch_text(url))
+    try:
+        return json.loads(fetch_text(url))
+    except ValueError as error:
+        raise HockeyError("Die Antwort ist kein gueltiges JSON.") from error
 
 
 def _name(node):

@@ -60,8 +60,10 @@ assert calc("--2") == 2
 assert calc("+4") == 4
 assert calc("-(2 + 3)") == -5
 
+assert calc("2 ** 3") == 8           # Mark 5, Step 2.3: Potenzen und Prozent (mehr in test_calc.py)
+
 for bad in (
-    "2 ** 3", "__import__('os')", "abs(-1)", "x + 1", "True + 1",
+    "__import__('os')", "abs(-1)", "x + 1", "True + 1",
     "1j", "'a' * 3", "[1, 2]", "", "2 +", "10 % 3"
 ):
     try:
@@ -99,6 +101,15 @@ assert "30 Sekunden" in j.process_background_result(
 assert "2 Minuten" in j.process_background_result(
     {"type": "TIMER_FINISHED", "data": {"seconds": 120}}
 )
+named = j.process_background_result(
+    {"type": "TIMER_FINISHED", "data": {"seconds": 300, "name": "Nudeln"}}
+)
+assert "„Nudeln“" in named and "5 Minuten" in named, named
+unnamed = j.process_background_result(
+    {"type": "TIMER_FINISHED", "data": {"seconds": 300, "name": "Timer"}}
+)
+assert "„" not in unnamed, unnamed
+assert "„" not in j.process_background_result({"type": "TIMER_FINISHED", "data": {"seconds": 5}})
 assert j.process_background_result(
     {"type": "TEST_FINISHED", "data": {"message": "x"}}
 ) is None

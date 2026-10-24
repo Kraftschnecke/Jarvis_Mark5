@@ -33,6 +33,11 @@
         ", " + String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0") + " Uhr.",
     ];
 
+    // Wetter-Satz vom Server (Heimatort); fehlt er, steht einfach nichts da
+    if (typeof info.weather === "string" && info.weather.trim() && info.weather.length <= 200) {
+      parts.push(info.weather.trim());
+    }
+
     const timers = Array.isArray(info.timers) ? info.timers : [];
     if (timers.length === 1) {
       parts.push("Ein Timer läuft: " + timers[0].name + " (noch " + formatRemaining(timers[0].remaining) + ").");

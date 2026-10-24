@@ -11,6 +11,10 @@ from config import OPENAI_TIMEOUT, TIMING_ENABLED
 from memory import Memory
 from settings_manager import SettingsManager
 from personality import get_address, set_address, DEFAULT_ADDRESS
+import abilities
+import reminders
+from tools import news_tool, weather_tool
+import cost_guard
 from task_registry import TaskRegistry
 import plan_view
 from capabilities import describe_capabilities
@@ -76,7 +80,9 @@ class Jarvis:
     _plan_running = False
 
     def __init__(self):
-        self.client = OpenAI(timeout=OPENAI_TIMEOUT)
+        # Tageslimit fuer kostenpflichtige Aufrufe (cost_guard.py); die Limits stehen in den Einstellungen
+        self.cost_counter = cost_guard.UsageCounter("usage.json", self._cost_limits)
+        self.client = cost_guard.guard(OpenAI(timeout=OPENAI_TIMEOUT), self.cost_counter)
 
         # Nur wenn JARVIS_TIMING=1: jeder KI-Aufruf wird gemessen (ai_log.py)
         if TIMING_ENABLED:
@@ -86,11 +92,26 @@ class Jarvis:
         self.workspace = Workspace()
         self.pending_project_confirmation = None
         self.settings_manager = SettingsManager()
+        weather_tool.set_default_service(weather_tool.WeatherService(
+            home=lambda: self.settings_manager.get("jarvis", "home_place", "")
+        ))
+        news_tool.set_default_service(news_tool.NewsService(
+            enabled=lambda: [f for f in news_tool.FEEDS if self.settings_manager.get("news", f, False)]
+        ))
         self.apply_settings()
         self.memory = Memory()
         self.memory.load()
-        self.task_registry = TaskRegistry()
+        # Ausgeschaltete Faehigkeiten (Einstellungen -> Abilities) sind fuer Router, Planer und Ausfuehrung unsichtbar
+        self.task_registry = TaskRegistry(
+            is_enabled=lambda task_type: abilities.task_enabled(task_type, self.settings_manager)
+        )
         register_all_tasks(self.task_registry)
+
+    def _cost_limits(self):
+        return {
+            "ai": self.settings_manager.get("limits", "ai_calls_per_day", 500),
+            "speech": self.settings_manager.get("limits", "speech_calls_per_day", 200),
+        }
 
     def apply_settings(self):
         """Uebernimmt Einstellungen, die im Programm gebraucht werden (Anrede)."""
@@ -460,6 +481,16 @@ class Jarvis:
 
     # ---------- Aktionen mit Rueckfrage (Step 4.2) ----------
 
+    def disabled_message(self, task_type):
+        """Feste Antwort (kein Modell): die Faehigkeit ist in den Einstellungen ausgeschaltet."""
+        ability = abilities.ability_of(task_type)
+        name = ability.label if ability else task_type
+
+        return (
+            f"Die Fähigkeit „{name}“ ist ausgeschaltet, {get_address()}. "
+            "Du kannst sie in den Einstellungen unter Abilities einschalten."
+        )
+
     def run_task(self, message, route):
         """Fuehrt eine Aufgabe aus - je nach Risikostufe sofort, nach Rueckfrage oder gar nicht."""
         prepared = prepare_registered_task(
@@ -517,6 +548,13 @@ class Jarvis:
             return f"Verstanden, {get_address()}. Ich habe nichts ausgefuehrt."
 
         task = pending["task"]
+
+        # Wurde die Faehigkeit seit der Rueckfrage ausgeschaltet, wird nichts mehr ausgefuehrt
+        if self.task_registry.is_disabled(task.task_type):
+            action_log.record(task, "refused", "BLOCKED")
+
+            return self.disabled_message(task.task_type)
+
         execute_task(task, confirmed=True)
 
         return respond_to_task(self.client, pending["message"], task)
@@ -669,6 +707,13 @@ class Jarvis:
 
         try:
             return self._process_message(message)
+        except cost_guard.LimitReached as error:
+            # Erwartbar, kein Fehler im Programm: kein Traceback, feste Meldung
+            self.clear_pending()
+
+            text = str(error)
+
+            return {"status": "response", "content": f"{get_address()}, {text[0].lower()}{text[1:]}"}
         except Exception as error:
             if type(error).__name__ in ("APIConnectionError", "APITimeoutError"):
                 # Kein Internet / KI nicht erreichbar: erwartbar, eine Zeile statt Traceback
@@ -753,6 +798,9 @@ class Jarvis:
                     "content": command_result
                 }
 
+        if route["kind"] == "DISABLED":
+            return {"status": "response", "content": self.disabled_message(route["task_type"])}
+
         if route["kind"] == "TASK":
             return self.run_task(message, route)
 
@@ -774,6 +822,20 @@ class Jarvis:
                 f"{get_address()}, der Timer{label} ist nach "
                 f"{format_duration(seconds)} abgelaufen."
             )
+
+        if result["type"] == "REMINDER_DUE":
+            return self.reminder_message(result["data"])
+
+    def reminder_message(self, data):
+        message = f"{get_address()}, Erinnerung: {data.get('text', '')}"
+        notes = []
+        if data.get("missed"):
+            notes.append(f"fällig war sie {reminders.describe_due(data['due'])}, da war ich nicht aktiv")
+        if data.get("next_due"):
+            notes.append(f"die nächste kommt {reminders.describe_due(data['next_due'])}")
+        elif data.get("last_of_series"):
+            notes.append("das war die letzte dieser Serie")
+        return message + (f" ({'; '.join(notes)})" if notes else "")
 
     def check_background_results(self):
         results = self.get_background_results()

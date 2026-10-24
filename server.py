@@ -15,6 +15,8 @@ Dinge:
        POST /api/plan/abort   {}  (stoppt einen laufenden Plan vor dem naechsten Schritt)
        GET  /api/background?after=<id>  ->  {"messages": [{"id": 3, "text": "..."}], "last": 3}
                              (ohne "after": nur den aktuellen Stand "last" melden)
+       GET  /api/system      ->  PC-Fakten fuer das Widget "PC Facts" (Step 2.8, lokal gelesen)
+       GET  /api/performance ->  CPU, RAM, Laufwerk, Akku, Netzwerk fuer das Widget "Performance"
        GET  /api/timers      ->  {"timers": [{"id", "name", "seconds", "remaining"}]}  (laufende Timer, Step 6b)
        POST /api/speak {"text": "..."}  ->  audio/mpeg  (Sprachausgabe mit der eingestellten Stimme, Step 6b)
        POST /api/timer/cancel {"id": 3}  ->  {"cancelled": true|false}  (einen Timer abbrechen)
@@ -46,10 +48,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import abilities
 import action_log
 import speech
 import timer
+import reminders
 import widgets
+from tools import news_tool, system_status_tool, weather_tool
 from config import SERVER_HOST, SERVER_PORT, VERSION
 from memory import MAX_VALUE_LENGTH, VALID_TYPES
 from personality import get_address, is_valid_address
@@ -86,6 +91,7 @@ EDITABLE_SETTINGS = {
     ("appearance", "font_size"): lambda v: _is_int(v, 11, 20),
     ("appearance", "accent_color"): lambda v: v in ACCENT_COLORS,
     ("jarvis", "address"): is_valid_address,
+    ("jarvis", "home_place"): lambda v: isinstance(v, str) and v == v.strip() and len(v) <= 60 and v.isprintable(),
     ("memory", "enabled"): lambda v: isinstance(v, bool),
     ("voice", "output"): lambda v: isinstance(v, bool),
     ("voice", "speed"): lambda v: v in SettingsManager.CHOICES[("voice", "speed")],
@@ -97,13 +103,24 @@ EDITABLE_SETTINGS = {
     ("widgets", "top"): lambda v: v in SettingsManager.CHOICES[("widgets", "top")],
     ("widgets", "middle"): lambda v: v in SettingsManager.CHOICES[("widgets", "middle")],
     ("widgets", "bottom"): lambda v: v in SettingsManager.CHOICES[("widgets", "bottom")],
+    ("widgets", "fourth"): lambda v: v in SettingsManager.CHOICES[("widgets", "fourth")],
+    ("widgets", "fifth"): lambda v: v in SettingsManager.CHOICES[("widgets", "fifth")],
 }
+# Schalter fuer Faehigkeiten: eine Zeile je Eintrag in abilities.ABILITIES
+EDITABLE_SETTINGS[("limits", "ai_calls_per_day")] = lambda v: _is_int(v, 0, 100000)
+EDITABLE_SETTINGS[("limits", "speech_calls_per_day")] = lambda v: _is_int(v, 0, 100000)
+for _feed_id in news_tool.FEEDS:
+    EDITABLE_SETTINGS[("news", _feed_id)] = lambda v: isinstance(v, bool)
+for _ability in abilities.ABILITIES:
+    EDITABLE_SETTINGS[("abilities", _ability.id)] = lambda v: isinstance(v, bool)
 
 
 def settings_state(jarvis):
     return {
         "guest": bool(getattr(jarvis, "guest", False)),
         "settings": jarvis.settings_manager.get_all(),
+        "abilities": abilities.describe_all(jarvis.settings_manager),
+        "usage": jarvis.cost_counter.snapshot() if getattr(jarvis, "cost_counter", None) else None,
         "about": {
             "version": VERSION,
             "system": (
@@ -387,12 +404,14 @@ class JarvisServer(ThreadingHTTPServer):
     # kurz hintereinander: auf Windows kann sonst eine Verbindung ins Leere laufen.
     request_queue_size = 128
 
-    def __init__(self, address, jarvis, guest=False, widget_store=None, hockey=None):
+    def __init__(self, address, jarvis, guest=False, widget_store=None, hockey=None, weather=None, monitor=None):
         super().__init__(address, JarvisHandler)
         self.jarvis = jarvis
         self.guest = guest
         self.widget_store = widget_store or widgets.default_store()
         self.hockey = hockey or widgets.HockeyFeed()
+        self.weather = weather or weather_tool.default_service()
+        self.monitor = monitor or system_status_tool.PerformanceMonitor()
         self.feed = BackgroundFeed()
         # Jarvis ist nicht fuer mehrere gleichzeitige Nachrichten gebaut.
         self.message_lock = threading.Lock()
@@ -517,6 +536,29 @@ class JarvisHandler(BaseHTTPRequestHandler):
             except widgets.HockeyError as error:
                 return self.send_json(502, {"error": str(error)})
 
+        # PC-Fakten und Leistungsdaten fuer die Widgets (lokal gelesen, kein Internet)
+        if path == "/api/system":
+            try:
+                return self.send_json(200, system_status_tool.facts())
+            except Exception:
+                return self.send_json(502, {"error": "Die Systemdaten konnten nicht gelesen werden."})
+
+        if path == "/api/performance":
+            try:
+                return self.send_json(200, self.server.monitor.sample())
+            except Exception:
+                return self.send_json(502, {"error": "Die Leistungsdaten konnten nicht gelesen werden."})
+
+        if path == "/api/weather":
+            # Kurzer Satz fuer den Startbericht. Nie ein Fehler: ohne Wetter faellt der Satz einfach weg.
+            summary = None
+            if abilities.task_enabled("GET_WEATHER", self.server.jarvis.settings_manager):
+                try:
+                    summary = self.server.weather.summary()
+                except Exception:
+                    summary = None
+            return self.send_json(200, {"summary": summary})
+
         if path == "/api/memories":
             try:
                 return self.send_json(200, memories_state(self.server.jarvis))
@@ -613,7 +655,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
             # Notizen und Ziele speichern: kleine lokale Datei, braucht den message_lock nicht
             if path in ("/api/widgets/notes", "/api/widgets/goals", "/api/widgets/events",
-                        "/api/widgets/events/delete"):
+                        "/api/widgets/events/delete", "/api/widgets/events/delete_series"):
                 store = self.server.widget_store
                 try:
                     if path.endswith("notes"):
@@ -622,6 +664,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
                         store.set_goals(data.get("items"))
                     elif path.endswith("delete"):
                         store.delete_event(data.get("id"))
+                    elif path.endswith("delete_series"):
+                        store.delete_series(data.get("series"))
                     else:
                         store.add_event(data.get("title"), data.get("date"), data.get("time", ""))
                 except ValueError as error:
@@ -686,13 +730,16 @@ def main(argv=None):
         # Bewusst KEIN Jarvis-Objekt: keine Datenbank, kein Gedaechtnis, keine Projekte.
         from openai import OpenAI
         from config import OPENAI_TIMEOUT
-        from guest import GuestJarvis
+        import cost_guard
+        from guest import GUEST_AI_CALLS_PER_DAY, GuestJarvis
 
-        jarvis = GuestJarvis(OpenAI(timeout=OPENAI_TIMEOUT))
+        counter = cost_guard.UsageCounter("usage_guest.json", lambda: {"ai": GUEST_AI_CALLS_PER_DAY, "speech": 1})
+        jarvis = GuestJarvis(cost_guard.guard(OpenAI(timeout=OPENAI_TIMEOUT), counter))
     else:
         from jarvis import Jarvis
 
         jarvis = Jarvis()
+        reminders.start_scheduler()         # Erinnerungen (Step 2.9): nur im normalen Modus, nie im Gastmodus
 
     server = JarvisServer((SERVER_HOST, args.port), jarvis, guest=args.guest)
     url = f"http://localhost:{server.server_address[1]}"
@@ -705,6 +752,7 @@ def main(argv=None):
     except KeyboardInterrupt:
         print(f"\nJ.A.R.V.I.S.: Shutting down, {get_address()}")
     finally:
+        reminders.stop_scheduler()
         server.server_close()
 
 

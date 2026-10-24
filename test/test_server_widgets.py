@@ -56,7 +56,16 @@ class FakeHockey:
 
 
 store = widgets.WidgetStore(folder / "w.json", today=lambda: date(2026, 10, 21))
-httpd = server.JarvisServer(("127.0.0.1", 0), jarvis, widget_store=store, hockey=FakeHockey())
+class FakeMonitor:
+    fail = False
+
+    def sample(self):
+        if FakeMonitor.fail:
+            raise RuntimeError("psutil kaputt")
+        return {"cpu_percent": 12.5, "ram_percent": 40.0}
+
+
+httpd = server.JarvisServer(("127.0.0.1", 0), jarvis, widget_store=store, hockey=FakeHockey(), monitor=FakeMonitor())
 port = httpd.server_address[1]
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
@@ -134,5 +143,20 @@ assert status == 502 and "nicht erreichbar" in data["error"]
 # Ein manipulierter Wert in settings.json fuehrt nie zu einem Abruf
 jarvis.settings_manager.set("widgets", "bottom", "http://evil.example")
 assert request("GET", "/api/hockey") == (200, {"team": None})
+
+# PC Facts und Performance: lokal gelesen, ohne Parameter, Fehler ohne Einzelheiten nach aussen
+status, data = request("GET", "/api/performance")
+assert status == 200 and data == {"cpu_percent": 12.5, "ram_percent": 40.0}
+status, data = request("GET", "/api/system")
+assert status == 200 and "cpu_name" in data and "ram_total_gb" in data and isinstance(data["drives"], list)
+FakeMonitor.fail = True
+status, data = request("GET", "/api/performance")
+assert status == 502 and "psutil" not in data["error"]
+assert request("POST", "/api/performance", {})[0] in (404, 405)
+# Neue Felder: der Server akzeptiert nur die erlaubten Werte
+check = server.EDITABLE_SETTINGS
+for slot in ("fourth", "fifth"):
+    assert check[("widgets", slot)]("Performance") and check[("widgets", slot)]("PC Facts") and check[("widgets", slot)]("Off")
+    assert not check[("widgets", slot)]("Edmonton Oilers") and not check[("widgets", slot)]("<b>x</b>")
 
 print("ALL TESTS PASSED")

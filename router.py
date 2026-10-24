@@ -82,6 +82,14 @@ def normalize_route(raw, task_registry):
 
         # isinstance zuerst: eine Liste als task_type wuerde im Register
         # sonst einen Fehler ausloesen
+        # Ausgeschaltete Faehigkeit (Einstellungen -> Abilities): keine Ausfuehrung, Jarvis sagt es ehrlich
+        if isinstance(task_type, str) and task_registry.is_disabled(task_type):
+            route = chat_route()
+            route["kind"] = "DISABLED"
+            route["task_type"] = task_type
+
+            return route
+
         if isinstance(task_type, str) and task_registry.get(task_type) is not None:
             parameters = raw.get("parameters")
 
@@ -138,6 +146,22 @@ def describe_tasks(task_registry):
     return "\n".join(lines)
 
 
+def describe_disabled(task_registry):
+    """Ausgeschaltete Aufgaben: das Modell soll sie erkennen, damit Jarvis sagen kann, dass sie aus sind."""
+    disabled = task_registry.get_disabled()
+
+    if not disabled:
+        return ""
+
+    lines = "\n".join(f"- {task.task_type}: {task.goal}" for task in disabled)
+
+    return (
+        "\n  SWITCHED OFF by the user. If the message asks for one of these, still choose TASK and set\n"
+        "  its \"task_type\"; J.A.R.V.I.S. will then tell the user that it is switched off.\n"
+        "  Never choose PLAN when one of these is needed.\n\n" + lines + "\n"
+    )
+
+
 def build_prompt(message, task_registry, today=None):
     today = today or datetime.now()
     # Wochentag selbst benennen: strftime("%A") richtet sich nach der Spracheinstellung des Rechners
@@ -188,7 +212,7 @@ Kinds:
   return them under "parameters".
 
 {describe_tasks(task_registry)}
-
+{describe_disabled(task_registry)}
 - PLAN
   The message asks for TWO OR MORE of the known tasks above to be done one
   after the other, for example "start Notepad and tell me the time".

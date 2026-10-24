@@ -9,6 +9,7 @@ eleganter, trocken-hoeflicher Butler). Es wird keine bestimmte reale Stimme
 nachgebaut.
 """
 
+import cost_guard
 from config import TTS_MODEL
 
 # Auswahl in den Einstellungen -> Name der Stimme bei OpenAI
@@ -68,6 +69,8 @@ def synthesize(client, text, voice_label):
             timeout=REQUEST_TIMEOUT,
         )
         audio = response.content
+    except cost_guard.LimitReached as error:
+        raise SpeechError(str(error)) from None
     except Exception as error:
         raise SpeechError(f"Die Sprachausgabe hat nicht geklappt ({type(error).__name__}).") from None
 

@@ -10,6 +10,7 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
 import widgets
+import net_fetch
 from widgets import HockeyError, HockeyFeed, WidgetStore, parse_games, pick_games
 
 folder = Path(tempfile.mkdtemp())
@@ -160,7 +161,7 @@ except HockeyError:
 assert set(widgets.TEAMS) == {"Edmonton Oilers", "Adler Mannheim"}
 assert widgets.TEAMS["Edmonton Oilers"]["next"] == 4 and widgets.TEAMS["Adler Mannheim"]["next"] == 3
 for source in widgets.TEAMS.values():
-    assert widgets._allowed(source["url"]), source
+    net_fetch.check_url(source["url"], widgets.ALLOWED_HOSTS)
 
 # Das Netz-Hilfsprogramm spricht nur mit den erlaubten Hosts
 try:
@@ -306,15 +307,15 @@ result = feed.get("Adler Mannheim")
 assert result["scores"] is False and len(result["next"]) == 3 and result["current"]["state"] == "live"
 assert HockeyFeed(fetch=lambda url: json.dumps(season), clock=lambda: 0).get("Edmonton Oilers")["scores"] is True
 
-# ---- Weiterleitungen nur auf erlaubte Hosts
+# ---- Weiterleitungen nur auf erlaubte Hosts (Regeln stehen in net_fetch, Test dort: test_net_fetch.py)
 import urllib.request
-redirects = widgets._SafeRedirects()
+redirects = net_fetch.SafeRedirects(widgets.ALLOWED_HOSTS)
 req = urllib.request.Request("https://adler-mannheim.de/x")
 for target in ("https://evil.example/x", "http://adler-mannheim.de/x", "file:///etc/passwd", "https://adler-mannheim.de.evil.example/"):
     try:
         redirects.redirect_request(req, None, 302, "Found", {}, target)
         raise AssertionError(target)
-    except HockeyError:
+    except net_fetch.NetError:
         pass
 assert redirects.redirect_request(req, None, 302, "Found", {}, "https://www.adler-mannheim.de/y") is not None
 

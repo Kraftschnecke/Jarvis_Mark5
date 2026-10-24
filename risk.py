@@ -22,6 +22,8 @@ Wichtig fuer die Sicherheit:
 import re
 from pathlib import Path
 
+import reminders
+from tools import page_tool
 from tools.file_tool import BLOCKED_EXTENSIONS, URI_PATTERN
 
 SAFE = "safe"
@@ -35,11 +37,21 @@ ACTION_RISK = {
     "get_current_time": SAFE,
     "get_current_date": SAFE,
     "calculate": SAFE,
+    "convert": SAFE,              # rechnet nur; Waehrungskurse kommen von der EZB
     "get_system_info": SAFE,
     "get_running_programs": SAFE,
     "find_program": SAFE,
     "search_web": SAFE,
+    "get_news": SAFE,             # liest nur oeffentliche Schlagzeilen aus festen Feeds
+    "read_page": SAFE,            # Grundstufe; action_risk() hebt fremde Adressen auf CONFIRM (siehe unten)
+    "translate": SAFE,            # reine Textaufbereitung, kein Netz; uebersetzt wird in der Antwort
+    "wiki_lookup": SAFE,          # liest nur Wikipedia; der Suchbegriff geht an wikipedia.org
+    "get_world_time": SAFE,       # rechnet die Zeit; nur der Ortsname geht an die Ortssuche (Open-Meteo)
+    "get_weather": SAFE,          # liest nur oeffentliche Wetterdaten (Open-Meteo)
     "start_timer": SAFE,
+    "set_reminder": SAFE,         # lokaler Eintrag (reminders.json) plus Kalender, wie ein Termin
+    "list_reminders": SAFE,
+    "cancel_reminder": SAFE,      # eine einzelne; "alle" hebt action_risk() auf CONFIRM
     "list_timers": SAFE,
     "cancel_timer": SAFE,        # bricht nur einen eigenen Timer ab
     # schreibt nur in widgets.json, auf der Seite per Klick wieder loeschbar
@@ -68,6 +80,10 @@ def _open_file_is_forbidden(path):
     return extension in BLOCKED_EXTENSIONS
 
 
+def _is_series_scope(value):
+    return isinstance(value, str) and value.strip().casefold() in ("series", "serie", "all", "alle", "ganze serie")
+
+
 def higher(a, b):
     """Die riskantere von zwei Stufen."""
     return a if _ORDER[a] >= _ORDER[b] else b
@@ -80,6 +96,17 @@ def action_risk(action):
         action.parameters.get("path")
     ):
         return FORBIDDEN
+
+    # Eine Seite lesen: nur Artikel aus der zuletzt genannten News-Liste direkt. Jede andere Adresse
+    # (selbst getippt oder vom Modell vorgeschlagen) wird erst nach deinem "Ja" geoeffnet.
+    if action.name == "cancel_reminder" and (
+        reminders.is_all(action.parameters.get("which"))
+        or _is_series_scope(action.parameters.get("scope"))
+    ):
+        return higher(level, CONFIRM)        # alle Erinnerungen oder eine ganze Serie auf einmal: erst fragen
+
+    if action.name == "read_page" and not page_tool.is_known_address(action.parameters):
+        return higher(level, CONFIRM)
 
     return level
 

@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
 
+import abilities
+from tools import news_tool
+
 
 class SettingsManager:
     """Central persistent settings store for J.A.R.V.I.S."""
@@ -15,6 +18,7 @@ class SettingsManager:
         },
         "jarvis": {
             "address": "Sir",
+            "home_place": "Mannheim",
         },
         "memory": {
             "enabled": True,
@@ -34,6 +38,17 @@ class SettingsManager:
             "top": "Clock",
             "middle": "Notes",
             "bottom": "Off",
+            "fourth": "Off",          # PC Facts / Performance (Mark 5, Step 2.8)
+            "fifth": "Off",
+        },
+        # Schalter fuer Faehigkeiten (Mark 5, Step 1.3), Liste und Voreinstellung in abilities.py
+        "abilities": abilities.default_settings(),
+        # News-Quellen (Mark 5, Step 2.2): je Quelle an/aus, Liste in tools/news_tool.py
+        "news": news_tool.default_settings(),
+        # Tageslimits fuer kostenpflichtige OpenAI-Aufrufe (Mark 5, Step 1.4), 0 = kein Limit
+        "limits": {
+            "ai_calls_per_day": 500,
+            "speech_calls_per_day": 200,
         },
     }
 
@@ -102,6 +117,8 @@ class SettingsManager:
         ("widgets", "top"): ("Off", "Clock", "Date", "Calendar"),
         ("widgets", "middle"): ("Off", "Notes", "Goals"),
         ("widgets", "bottom"): ("Off", "Edmonton Oilers", "Adler Mannheim"),
+        ("widgets", "fourth"): ("Off", "PC Facts", "Performance"),
+        ("widgets", "fifth"): ("Off", "PC Facts", "Performance"),
     }
 
     def _fits(self, category, key, value):
