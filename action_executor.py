@@ -3,6 +3,7 @@ from timer import (
     format_duration, TimerError,
 )
 import reminders
+import ringing
 import widgets
 from tools.volume_tool import set_volume
 from tools.time_tool import get_current_time, get_current_date
@@ -29,6 +30,16 @@ def describe_day(iso_date):
     from datetime import date
     day = date.fromisoformat(iso_date)
     return f"{WEEKDAYS[day.weekday()]}, {day.day:02d}.{day.month:02d}.{day.year}"
+
+
+def _yes_no(value):
+    """"ja"/"nein"-Angabe des Modells -> True/False, sonst None (= Voreinstellung)."""
+    text = str(value).strip().casefold() if isinstance(value, (str, bool)) else ""
+    if text in ("ja", "yes", "true", "an", "mit", "gern", "gerne"):
+        return True
+    if text in ("nein", "no", "false", "aus", "ohne", "nicht"):
+        return False
+    return None
 
 
 def execute_action(action):
@@ -167,6 +178,66 @@ def execute_action(action):
         continues = [{"text": r["text"], "next": reminders.describe_due(r["next_due"])} for r in removed if r["next_due"]]
         if continues:
             data["only_next_removed_series_continues"] = continues
+        return ToolResult(success=True, data=data)
+
+    if action.name == "set_alarm":
+        briefing = _yes_no(action.parameters.get("briefing"))
+        if briefing is None:
+            briefing = ringing.default_ringer().briefing_default
+        try:
+            entry = reminders.default_store().add(
+                action.parameters.get("label"), action.parameters.get("date"), action.parameters.get("time"),
+                action.parameters.get("repeat"), action.parameters.get("interval"),
+                action.parameters.get("count"), action.parameters.get("until"), kind="alarm", briefing=briefing)
+        except reminders.ReminderError as error:
+            return ToolResult(success=False, error=str(error))
+        data = {"label": entry["text"], "when": reminders.describe_due(entry["due"]),
+                "date": describe_day(entry["due"][:10]), "time": entry["due"][11:16],
+                "reads_briefing_when_stopped": bool(briefing)}
+        data.update({k: v for k, v in reminders.ReminderStore.repeat_info(entry).items() if v is not None})
+        if entry["rolled"]:
+            data["note"] = "Die Uhrzeit war heute schon vorbei, deshalb gilt der Wecker für morgen."
+        return ToolResult(success=True, data=data)
+
+    if action.name == "list_alarms":
+        items = reminders.default_store().list("alarm")
+        shown = [dict({"number": n, "label": r["text"], "when": reminders.describe_due(r["due"]),
+                       "reads_briefing_when_stopped": bool(r.get("briefing"))},
+                      **{k: v for k, v in reminders.ReminderStore.repeat_info(r).items() if v is not None})
+                 for n, r in enumerate(items, start=1)]
+        return ToolResult(success=True, data={"alarms": shown} if shown else {"alarms": [], "info": "Es ist kein Wecker gestellt."})
+
+    if action.name == "cancel_alarm":
+        try:
+            removed = reminders.default_store().cancel(
+                action.parameters.get("which"), action.parameters.get("scope") or "next", kind="alarm")
+        except reminders.ReminderError as error:
+            return ToolResult(success=False, error=str(error))
+        data = {"cancelled": [r["text"] for r in removed if not r["next_due"]]}
+        continues = [{"label": r["text"], "next": reminders.describe_due(r["next_due"])} for r in removed if r["next_due"]]
+        if continues:
+            data["only_next_removed_series_continues"] = continues
+        return ToolResult(success=True, data=data)
+
+    if action.name == "stop_ringing":
+        ringer = ringing.default_ringer()
+        if not ringer.is_ringing():
+            return ToolResult(success=True, data={"info": "Es läutet gerade nichts."})
+        what = str(action.parameters.get("what") or "").strip().casefold()
+        kind = "alarm" if what in ("alarm", "wecker") else "timer" if what == "timer" else None
+        wanted = action.parameters.get("snooze_minutes")
+        if isinstance(wanted, str) and wanted.strip().isdigit() or isinstance(wanted, int) and not isinstance(wanted, bool):
+            stopped, minutes = ringer.snooze(wanted, kind=kind)
+            return ToolResult(success=True, data={"stopped": [r["label"] for r in stopped], "rings_again_in_minutes": minutes})
+        stopped = ringer.stop(kind=kind)
+        data = {"stopped": [r["label"] for r in stopped]}
+        if any(r["kind"] == "alarm" and r["briefing"] for r in stopped) and ringer.briefing_provider:
+            try:
+                text = ringer.briefing_provider()
+            except Exception:
+                text = None
+            if text:
+                data["briefing_to_read_aloud"] = text
         return ToolResult(success=True, data=data)
 
     if action.name == "list_calendar_events":

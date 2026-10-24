@@ -2,6 +2,7 @@ import secrets
 import threading
 import time
 import traceback
+from datetime import timedelta
 
 from openai import OpenAI
 import action_log
@@ -12,7 +13,11 @@ from memory import Memory
 from settings_manager import SettingsManager
 from personality import get_address, set_address, DEFAULT_ADDRESS
 import abilities
+import briefing
 import reminders
+import ringing
+import timer as timer_module
+import widgets
 from tools import news_tool, weather_tool
 import cost_guard
 from task_registry import TaskRegistry
@@ -118,6 +123,40 @@ class Jarvis:
         set_address(
             self.settings_manager.get("jarvis", "address", DEFAULT_ADDRESS)
         )
+        # Wecker und Timer laeuten (Step 2.11): Einstellungen, Briefing und Schlummern an den Ringer haengen
+        settings = self.settings_manager
+        ringer = ringing.default_ringer()
+        ringer.configure(
+            sound=settings.get("alarm", "sound", "Computer"),
+            ring_timers=settings.get("alarm", "ring_timers", True),
+            max_minutes=settings.get("alarm", "max_minutes", ringing.DEFAULT_MAX_MINUTES),
+            snooze_minutes=settings.get("alarm", "snooze_minutes", ringing.DEFAULT_SNOOZE_MINUTES),
+            briefing=settings.get("alarm", "briefing", True),
+        )
+        ringer.briefing_provider = self.wakeup_briefing
+        ringer.snooze_handler = self.snooze_ring
+
+    def wakeup_briefing(self):
+        """Kurzer Tagesueberblick fuer das Ausschalten eines Weckers (Wetter nur, wenn die Faehigkeit an ist)."""
+        weather = None
+        if abilities.task_enabled("GET_WEATHER", self.settings_manager):
+            weather = lambda: weather_tool.default_service().summary()
+        now = reminders.default_store().now()
+        return briefing.build_briefing(
+            now, get_address(),
+            events=lambda: widgets.default_store().events_on(now.strftime("%Y-%m-%d")),
+            reminder_items=lambda: reminders.default_store().list(),
+            weather=weather,
+        )
+
+    def snooze_ring(self, ring, minutes):
+        """Schlummern: derselbe Wecker/Timer laeutet in `minutes` Minuten noch einmal."""
+        if ring["kind"] == "timer":
+            timer_module.start_timer(minutes * 60, ring["label"])
+            return
+        target = reminders.default_store().now() + timedelta(minutes=minutes)
+        reminders.default_store().add(
+            ring["label"], target.strftime("%Y-%m-%d"), target.strftime("%H:%M"), kind="alarm", briefing=ring["briefing"])
 
     def memory_enabled(self):
         return bool(
@@ -737,6 +776,12 @@ class Jarvis:
 
     def _process_message(self, message):
 
+        # Laeutet gerade etwas, schaltet "Wecker aus" sofort ab, ohne KI-Aufruf (schnell und kostenlos)
+        quick = ringing.handle_message(message, get_address())
+
+        if quick is not None:
+            return {"status": "response", "content": quick}
+
         # "Welchen Timer meinst du?" gilt nur fuer die direkt folgende Nachricht
         timer_answer = answer_timer_choice(message)
 
@@ -826,6 +871,14 @@ class Jarvis:
         if result["type"] == "REMINDER_DUE":
             return self.reminder_message(result["data"])
 
+        if result["type"] == "ALARM_DUE":
+            return self.alarm_message(result["data"])
+
+        if result["type"] == "RINGING_EXPIRED":
+            data = result["data"]
+            noun = "Wecker" if data.get("kind") == "alarm" else "Timer"
+            return f"{get_address()}, ich habe den {noun} „{data.get('label', '')}“ nach {data.get('minutes')} Minuten von selbst ausgeschaltet."
+
     def reminder_message(self, data):
         message = f"{get_address()}, Erinnerung: {data.get('text', '')}"
         notes = []
@@ -835,6 +888,20 @@ class Jarvis:
             notes.append(f"die nächste kommt {reminders.describe_due(data['next_due'])}")
         elif data.get("last_of_series"):
             notes.append("das war die letzte dieser Serie")
+        return message + (f" ({'; '.join(notes)})" if notes else "")
+
+    def alarm_message(self, data):
+        clock = data["due"][11:16]
+        label = data.get("text", "")
+        name = "" if label == reminders.ALARM_LABEL else f" „{label}“"
+        message = f"{get_address()}, Wecker{name}: es ist {clock} Uhr."
+        notes = []
+        if data.get("missed"):
+            notes.append("er hätte schon früher klingeln sollen, ich war nicht aktiv")
+        if data.get("next_due"):
+            notes.append(f"der nächste klingelt {reminders.describe_due(data['next_due'])}")
+        elif data.get("last_of_series"):
+            notes.append("das war der letzte dieser Serie")
         return message + (f" ({'; '.join(notes)})" if notes else "")
 
     def check_background_results(self):

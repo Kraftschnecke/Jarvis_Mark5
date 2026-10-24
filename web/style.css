@@ -478,6 +478,16 @@ button.danger-text { color: #d9695f; }
 .action-state { margin-top: 6px; font-size: 12px; color: var(--muted); }
 
 .setting-control[type="checkbox"] { flex: none; }
+.ringing { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; padding: 10px 14px;
+  background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--radius); animation: ringing-pulse 1s ease-in-out infinite; }
+.ringing[hidden] { display: none; }
+.ringing-title { font-weight: 700; color: var(--accent); }
+.ringing-detail { color: var(--muted); font-variant-numeric: tabular-nums; flex: 1; min-width: 6em; }
+.ringing-hint { flex-basis: 100%; font-size: 0.85rem; color: var(--text); }
+.ringing-hint[hidden] { display: none; }
+.ringing-off { font-weight: 700; }
+@keyframes ringing-pulse { 50% { box-shadow: 0 0 0 3px var(--accent-soft); } }
+@media (prefers-reduced-motion: reduce) { .ringing { animation: none; } }
 .timers { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0 0; }
 .timers[hidden] { display: none; }
 .timer-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--base); border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 0.85rem; }
@@ -622,6 +632,7 @@ body.guest .sidebar,
 body.guest .menu-button,
 body.guest #open-settings,
 body.guest .timers,
+body.guest .ringing,
 body.guest #mic,
 body.guest .wake,
 body.guest .widgets,

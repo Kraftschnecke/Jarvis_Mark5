@@ -15,6 +15,10 @@ Wiederholungen (Step 2.10): Eine wiederkehrende Erinnerung ist EIN Eintrag mit e
 nur den naechsten Termin zeigt. Beim Ausloesen wird der naechste angelegt, bis Anzahl oder Enddatum erreicht sind.
 Verpasste Termine einer Serie kommen nur einmal ("verpasst"), danach geht es mit dem naechsten kuenftigen weiter.
 
+Wecker (Step 2.11): Ein Wecker ist derselbe Eintrag mit ``kind = "alarm"``: kein Kalendereintrag, Standardname
+"Wecker", darf taeglich/werktags ohne Ende wiederholen, und wenn er rechtzeitig ausloest, laeutet er (ringing.py),
+bis man ihn ausschaltet. Ein verpasster Wecker (Jarvis lief nicht) laeutet NICHT mehr, er meldet sich nur.
+
 Zeiten sind die Ortszeit dieses Rechners.
 """
 
@@ -27,6 +31,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import recurrence
+import ringing
 import widgets
 from background_tasks import submit_result
 from untrusted import clean_text
@@ -41,7 +46,9 @@ WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"
 
 _FILE_LOCK = threading.RLock()
 _DUE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
-_ALL_WORDS = {"alle", "alles", "all", "everything", "alle erinnerungen", "all reminders"}
+_ALL_WORDS = {"alle", "alles", "all", "everything", "alle erinnerungen", "all reminders", "alle wecker",
+              "alle alarme", "all alarms"}
+ALARM_LABEL = "Wecker"
 
 
 class ReminderError(ValueError):
@@ -90,7 +97,7 @@ def is_all(which):
 def describe_due(due, today=None):
     """'2026-10-22T19:00' -> 'heute um 19:00' / 'morgen um 19:00' / 'am Freitag, 23.10. um 19:00'."""
     moment = datetime.fromisoformat(due)
-    today = (today or datetime.now()).date()
+    today = (today or (_default_store.now if _default_store is not None else datetime.now)()).date()
     clock = moment.strftime("%H:%M")
     if moment.date() == today:
         return f"heute um {clock}"
@@ -124,6 +131,10 @@ class ReminderStore:
                 event = item.get("event_id")
                 entry = {"id": item["id"], "text": item["text"][:MAX_TEXT], "due": item["due"],
                          "event_id": event if isinstance(event, str) else None}
+                if item.get("kind") == "alarm":
+                    entry["kind"] = "alarm"
+                    entry["briefing"] = item.get("briefing") is True
+                    entry["event_id"] = None
                 repeat = self._clean_repeat(item.get("repeat"))
                 if repeat:
                     entry["repeat"] = repeat
@@ -165,18 +176,22 @@ class ReminderStore:
             pass                        # schon vom Nutzer geloescht
 
     # ---- Anlegen, zeigen, loeschen
-    def add(self, text, day, at, freq=None, interval=None, count=None, until=None):
-        """Neue Erinnerung. Gibt {id, text, due, event_id, rolled, repeat?} zurueck, sonst ReminderError.
+    def add(self, text, day, at, freq=None, interval=None, count=None, until=None, kind="reminder", briefing=False):
+        """Neue Erinnerung (oder Wecker mit kind="alarm"). Gibt {id, text, due, event_id, rolled, repeat?} zurueck,
+        sonst ReminderError.
 
         freq/interval/count/until machen sie wiederkehrend (siehe recurrence.parse_rule)."""
+        alarm = kind == "alarm"
         text = clean_reminder_text(text)
+        if not text and alarm:
+            text = ALARM_LABEL
         if not text:
             raise ReminderError("Woran soll ich dich erinnern?")
         if len(text) > MAX_TEXT:
             raise ReminderError(f"Der Text darf höchstens {MAX_TEXT} Zeichen lang sein.")
         clock = parse_time(at)
         if clock is None:
-            raise ReminderError("Um wie viel Uhr soll ich dich erinnern?")
+            raise ReminderError("Um wie viel Uhr soll ich dich wecken?" if alarm else "Um wie viel Uhr soll ich dich erinnern?")
         now = self.now().replace(second=0, microsecond=0)
 
         rolled = False
@@ -199,7 +214,7 @@ class ReminderStore:
 
         repeat = None
         try:
-            rule = recurrence.parse_rule(freq, interval, count, until, chosen)
+            rule = recurrence.parse_rule(freq, interval, count, until, chosen, dense_open=alarm)
             if rule is not None and not (rule.count == 1):
                 if not rule.open_ended:
                     days = recurrence.occurrences(chosen, rule)
@@ -211,6 +226,9 @@ class ReminderStore:
                         rule = None
                 if rule is not None:
                     repeat = {"rule": rule.to_dict(), "start": chosen.isoformat(), "index": 0}
+                    first = recurrence.first_date(chosen, rule)      # werktags am Samstag: der erste Termin ist der Montag
+                    if first != chosen:
+                        due = f"{first.isoformat()}T{clock}"
         except ValueError as error:
             raise ReminderError(str(error)) from error
 
@@ -218,7 +236,11 @@ class ReminderStore:
             items = self._load()
             if len(items) >= MAX_OPEN:
                 raise ReminderError(f"Es sind höchstens {MAX_OPEN} offene Erinnerungen möglich.")
-            entry = {"id": secrets.token_hex(4), "text": text, "due": due, "event_id": self._calendar_add(text, due)}
+            entry = {"id": secrets.token_hex(4), "text": text, "due": due,
+                     "event_id": None if alarm else self._calendar_add(text, due)}
+            if alarm:
+                entry["kind"] = "alarm"
+                entry["briefing"] = bool(briefing)
             if repeat:
                 entry["repeat"] = repeat
             items.append(entry)
@@ -229,21 +251,24 @@ class ReminderStore:
                 raise ReminderError(f"Die Erinnerung konnte nicht gespeichert werden: {error}") from error
         return dict(entry, rolled=rolled)
 
-    def list(self):
+    def list(self, kind="reminder"):
+        """Offene Eintraege der Art ``kind`` ("reminder" oder "alarm"); kind=None liefert alles."""
         with self._lock:
-            return self._load()
+            return [r for r in self._load() if kind is None or r.get("kind", "reminder") == kind]
 
-    def cancel(self, which, scope="next"):
+    def cancel(self, which, scope="next", kind="reminder"):
         """Loescht nach Nummer (1 = die naechste), Textteil oder "alle". Gibt die betroffenen zurueck, je mit
         ``next_due``: bei einer wiederkehrenden Erinnerung loescht scope "next" nur den kommenden Termin (die Serie
         laeuft weiter), scope "series" und "alle" beenden sie."""
+        alarm = kind == "alarm"
         with self._lock:
-            items = self._load()
+            everything = self._load()
+            items = [r for r in everything if r.get("kind", "reminder") == kind]
             if not items:
-                raise ReminderError("Es gibt keine offenen Erinnerungen.")
+                raise ReminderError("Es ist kein Wecker gestellt." if alarm else "Es gibt keine offenen Erinnerungen.")
             text = " ".join(which.split()) if isinstance(which, str) else ""
             if not text:
-                raise ReminderError("Welche Erinnerung soll ich löschen?")
+                raise ReminderError("Welchen Wecker soll ich löschen?" if alarm else "Welche Erinnerung soll ich löschen?")
             if is_all(text):
                 chosen = list(items)
             else:
@@ -251,18 +276,18 @@ class ReminderStore:
                 if number:
                     index = int(number.group(1))
                     if not 1 <= index <= len(items):
-                        raise ReminderError(f"Eine Erinnerung Nummer {index} gibt es nicht. {self.describe(items)}")
+                        raise ReminderError(f"{'Einen Wecker' if alarm else 'Eine Erinnerung'} Nummer {index} gibt es nicht. {self.describe(items)}")
                     chosen = [items[index - 1]]
                 else:
                     chosen = [r for r in items if text.casefold() in r["text"].casefold()]
                     if not chosen:
-                        raise ReminderError(f"Keine Erinnerung passt zu „{text[:40]}“. {self.describe(items)}")
+                        raise ReminderError(f"Kein{'er' if alarm else 'e'} {'Wecker' if alarm else 'Erinnerung'} passt zu „{text[:40]}“. {self.describe(items)}")
                     if len(chosen) > 1:
-                        raise ReminderError(f"Das passt auf mehrere Erinnerungen. Nenne mir die Nummer. {self.describe(items)}")
+                        raise ReminderError(f"Das passt auf mehrere {'Wecker' if alarm else 'Erinnerungen'}. Nenne mir die Nummer. {self.describe(items)}")
             ids = {r["id"] for r in chosen}
             whole_series = is_all(text) or (isinstance(scope, str) and scope.strip().casefold() in ("series", "serie", "all", "alle", "ganze serie"))
             now = self.now()
-            kept = [r for r in items if r["id"] not in ids]
+            kept = [r for r in everything if r["id"] not in ids]
             result = []
             for reminder in chosen:
                 following = None if whole_series else self._advance(reminder, now)
@@ -290,7 +315,8 @@ class ReminderStore:
                 return None
             due = f"{day.isoformat()}T{clock}"
             if datetime.fromisoformat(due) > now:
-                return dict(entry, due=due, repeat=dict(repeat, index=n), event_id=self._calendar_add(entry["text"], due))
+                event_id = None if entry.get("kind") == "alarm" else self._calendar_add(entry["text"], due)
+                return dict(entry, due=due, repeat=dict(repeat, index=n), event_id=event_id)
             n += 1
         return None
 
@@ -307,7 +333,9 @@ class ReminderStore:
 
     @staticmethod
     def describe(items):
-        return "Offen: " + "; ".join(f"{n}: {r['text']} ({describe_due(r['due'])})" for n, r in enumerate(items, start=1))
+        alarm = bool(items) and items[0].get("kind") == "alarm"
+        return ("Gestellt: " if alarm else "Offen: ") + "; ".join(
+            f"{n}: {r['text']} ({describe_due(r['due'])})" for n, r in enumerate(items, start=1))
 
     def pop_due(self):
         """Faellige Erinnerungen entfernen (Datei und Kalender) und zurueckgeben, mit "missed" = zu spaet."""
@@ -336,9 +364,10 @@ class ReminderStore:
 class ReminderScheduler:
     """Hintergrund-Thread: meldet faellige Erinnerungen. ``check()`` ist einzeln aufrufbar (Tests)."""
 
-    def __init__(self, store, submit=submit_result, interval=CHECK_SECONDS):
+    def __init__(self, store, submit=submit_result, interval=CHECK_SECONDS, ring=None):
         self.store = store
         self.submit = submit
+        self.ring = ring or (lambda label, briefing: ringing.default_ringer().start("alarm", label, briefing=briefing))
         self.interval = interval
         self._stop = threading.Event()
         self._thread = None
@@ -347,11 +376,16 @@ class ReminderScheduler:
         count = 0
         for reminder in self.store.pop_due():
             data = {"text": reminder["text"], "due": reminder["due"], "missed": reminder["missed"]}
+            alarm = reminder.get("kind") == "alarm"
+            if alarm:
+                data["briefing"] = reminder.get("briefing") is True
+                if not reminder["missed"]:
+                    self.ring(reminder["text"], data["briefing"])         # läutet, bis man ihn ausschaltet
             if reminder.get("next_due"):
                 data["next_due"] = reminder["next_due"]
             if reminder.get("last_of_series"):
                 data["last_of_series"] = True
-            self.submit({"type": "REMINDER_DUE", "data": data})
+            self.submit({"type": "ALARM_DUE" if alarm else "REMINDER_DUE", "data": data})
             count += 1
         return count
 

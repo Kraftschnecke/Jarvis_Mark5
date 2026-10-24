@@ -49,6 +49,14 @@
 
       <section class="chat" id="chat" aria-live="polite"></section>
 
+      <div class="ringing" id="ringing" hidden role="alert">
+        <span class="ringing-title" id="ringing-title"></span>
+        <span class="ringing-detail" id="ringing-detail"></span>
+        <span class="ringing-hint" id="ringing-hint" hidden></span>
+        <button type="button" id="ringing-off" class="ringing-off">Aus</button>
+        <button type="button" id="ringing-snooze" class="secondary">Schlummern</button>
+      </div>
+
       <div class="timers" id="timers" hidden aria-label="Laufende Timer"></div>
 
       <form class="composer" id="composer" autocomplete="off">
@@ -126,6 +134,7 @@
 
   <script src="links.js"></script>
   <script src="status.js"></script>
+  <script src="alarm.js"></script>
   <script src="voice.js"></script>
   <script src="wake.js"></script>
   <script src="widgets.js"></script>

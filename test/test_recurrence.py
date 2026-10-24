@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import recurrence
-from recurrence import Rule, describe, finished, limit_date, occurrence, occurrences, parse_rule
+from recurrence import Rule, describe, finished, first_date, limit_date, occurrence, occurrences, parse_rule
 
 TUE = date(2026, 10, 27)          # ein Dienstag
 iso = lambda days: [d.isoformat() for d in days]
@@ -91,9 +91,29 @@ assert parse_rule("weekly", None, 0, None, TUE).count is None and parse_rule("we
 # 8) Gespeicherte Regeln: Rundreise und kaputte Dateien
 r = parse_rule("weekly", 2, 8, "2026-12-31", TUE)
 assert Rule.from_dict(r.to_dict()) == r
-for broken in (None, [], {}, {"freq": "x"}, {"freq": "weekly", "interval": 0}, {"freq": "daily"}, {"freq": "weekly", "count": "abc"},
+for broken in (None, [], {}, {"freq": "x"}, {"freq": "weekly", "interval": 0}, {"freq": "weekly", "count": "abc"},
                {"freq": "weekly", "until": "kaputt"}, "text", 5):
     assert Rule.from_dict(broken) is None, broken
+
+# 8b) Werktags (Mo-Fr) und offene tägliche Muster für Erinnerungen/Wecker (dense_open)
+sat, wed = date(2026, 10, 24), date(2026, 10, 21)
+for word in ("werktags", "Werktäglich", "jeden Werktag", "weekdays", "Mo-Fr", "montag bis freitag"):
+    assert parse_rule(word, None, 5, None, wed).freq == "weekdays", word
+r = parse_rule("werktags", None, 6, None, wed)
+assert [d.strftime("%d.%m %a") for d in occurrences(wed, r)] == ["21.10 Wed", "22.10 Thu", "23.10 Fri", "26.10 Mon", "27.10 Tue", "28.10 Wed"]
+assert describe(r, wed) == "werktags (Mo–Fr), 6 Mal"
+r = parse_rule("werktags", None, 3, None, sat)                     # Start am Samstag: erster Termin ist der Montag
+assert first_date(sat, r) == date(2026, 10, 26) and iso(occurrences(sat, r)) == ["2026-10-26", "2026-10-27", "2026-10-28"]
+assert first_date(wed, r) == wed and first_date(sat, parse_rule("weekly", None, 3, None, sat)) == sat
+assert len(occurrences(wed, parse_rule("werktags", None, None, "2026-12-31", wed))) == 52          # 21.10. bis 31.12. (von Hand: 10 Wochen ab Mo 19.10. = 50, +4 bis Do 31.12., -2 für Mo/Di 19./20.10.)
+fails("werktags", None, None, None, wed, part="braucht ein Ende")
+fails("werktags", 2, 3, None, wed, part="kennt keinen Abstand")
+assert parse_rule("werktags", "1", 3, None, wed).interval == 1
+for kind in ("daily", "weekdays"):
+    open_rule = parse_rule(kind, None, None, None, wed, dense_open=True)
+    assert open_rule.open_ended and Rule.from_dict(open_rule.to_dict()) == open_rule
+assert [occurrence(wed, parse_rule("weekdays", None, 99, None, wed), n).weekday() < 5 for n in range(40)] == [True] * 40
+assert occurrence(wed, parse_rule("weekdays", None, 99, None, wed), 5) == date(2026, 10, 28)
 
 # 9) Hilfsfunktionen: finished, occurrence, Grenze nach vorne
 r = parse_rule("weekly", None, 3, None, TUE)

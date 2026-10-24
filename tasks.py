@@ -531,6 +531,108 @@ def create_cancel_reminder_task():
     return task
 
 
+def create_set_alarm_task():
+    task = Task(
+        "SET_ALARM",
+        "Einen Wecker auf eine Uhrzeit stellen, auch täglich oder werktags (Weck mich um 6:30, Wecker jeden Werktag um 7). Er läutet, bis der Nutzer ihn ausschaltet. Für Zeiträume wie in 10 Minuten nimm stattdessen einen Timer"
+    )
+    task.add_action(
+        Action(
+            "set_alarm",
+            {
+                "time": {
+                    "description": "Die Uhrzeit als HH:MM (24 Stunden). 630 oder 6:30 Uhr bedeutet 06:30",
+                    "type": "string"
+                },
+                "date": {
+                    "description": "Das Datum als YYYY-MM-DD (morgen, Freitag usw. anhand des heutigen Datums ausrechnen). Nennt der Nutzer kein Datum, lass es leer: dann gilt die nächste passende Uhrzeit",
+                    "type": "string"
+                },
+                "label": {
+                    "description": "Nur wenn der Nutzer dem Wecker einen Namen gibt (zum Beispiel Zug erwischen). Sonst leer lassen",
+                    "type": "string"
+                },
+                "repeat": {
+                    "description": "Nur wenn der Wecker sich wiederholt: daily (jeden Tag), weekdays (werktags, Montag bis Freitag), weekly, monthly oder yearly. Sonst leer lassen",
+                    "type": "string"
+                },
+                "interval": {
+                    "description": "Abstand der Wiederholung, z.B. 2 für jede zweite Woche. Leer lassen für jedes Mal",
+                    "type": "string"
+                },
+                "count": {
+                    "description": "Wie oft der Wecker insgesamt klingelt, der erste mitgezählt (für die nächsten 5 Tage ist 5). Leer lassen bei Enddatum oder ohne Ende",
+                    "type": "string"
+                },
+                "until": {
+                    "description": "Letzter Tag der Wiederholung als YYYY-MM-DD, nur wenn der Nutzer ein Enddatum nennt. Sonst leer lassen",
+                    "type": "string"
+                },
+                "briefing": {
+                    "description": "ja, wenn der Nutzer beim Ausschalten Termine und Wetter vorgelesen haben will, nein, wenn ausdrücklich nicht. Sonst leer lassen",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_list_alarms_task():
+    task = Task(
+        "LIST_ALARMS",
+        "Die gestellten Wecker zeigen (Welche Wecker habe ich gestellt?)"
+    )
+    task.add_action(Action("list_alarms"))
+    return task
+
+
+def create_cancel_alarm_task():
+    task = Task(
+        "CANCEL_ALARM",
+        "Einen gestellten Wecker löschen (nach Nummer oder Name) oder alle Wecker löschen. Das ist nicht das Ausschalten eines läutenden Weckers"
+    )
+    task.add_action(
+        Action(
+            "cancel_alarm",
+            {
+                "which": {
+                    "description": "Die Nummer aus der Liste der Wecker (1 = der nächste), ein Name oder alle",
+                    "type": "string"
+                },
+                "scope": {
+                    "description": "Bei einem wiederkehrenden Wecker: series, wenn der Wecker gar nicht mehr klingeln soll. Sonst next, das löscht nur das nächste Klingeln",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_stop_ringing_task():
+    task = Task(
+        "STOP_RINGING",
+        "Einen gerade läutenden Wecker oder Timer ausschalten (Wecker aus, Timer aus, Stopp) oder schlummern lassen (noch 10 Minuten). Nur für das, was gerade klingelt"
+    )
+    task.add_action(
+        Action(
+            "stop_ringing",
+            {
+                "what": {
+                    "description": "alarm für einen Wecker, timer für einen Timer. Leer lassen, wenn alles ausgehen soll",
+                    "type": "string"
+                },
+                "snooze_minutes": {
+                    "description": "Nur wenn der Nutzer weiterschlafen will (schlummern, noch 10 Minuten): nach so vielen Minuten klingelt es wieder. Sonst leer lassen",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
 def register_all_tasks(registry):
     registry.register(create_get_time_task())
     registry.register(create_get_date_task())
@@ -556,4 +658,8 @@ def register_all_tasks(registry):
     registry.register(create_set_reminder_task())
     registry.register(create_list_reminders_task())
     registry.register(create_cancel_reminder_task())
+    registry.register(create_set_alarm_task())
+    registry.register(create_list_alarms_task())
+    registry.register(create_cancel_alarm_task())
+    registry.register(create_stop_ringing_task())
     registry.register(create_search_web_task())

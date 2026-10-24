@@ -15,6 +15,8 @@ Dinge:
        POST /api/plan/abort   {}  (stoppt einen laufenden Plan vor dem naechsten Schritt)
        GET  /api/background?after=<id>  ->  {"messages": [{"id": 3, "text": "..."}], "last": 3}
                              (ohne "after": nur den aktuellen Stand "last" melden)
+       GET  /api/ringing     ->  was gerade laeutet (Wecker/Timer) und wer den Ton macht (Step 2.11)
+       POST /api/ringing/stop ->  ausschalten oder schlummern, auch waehrend Jarvis antwortet
        GET  /api/system      ->  PC-Fakten fuer das Widget "PC Facts" (Step 2.8, lokal gelesen)
        GET  /api/performance ->  CPU, RAM, Laufwerk, Akku, Netzwerk fuer das Widget "Performance"
        GET  /api/timers      ->  {"timers": [{"id", "name", "seconds", "remaining"}]}  (laufende Timer, Step 6b)
@@ -53,6 +55,7 @@ import action_log
 import speech
 import timer
 import reminders
+import ringing
 import widgets
 from tools import news_tool, system_status_tool, weather_tool
 from config import SERVER_HOST, SERVER_PORT, VERSION
@@ -106,6 +109,11 @@ EDITABLE_SETTINGS = {
     ("widgets", "fourth"): lambda v: v in SettingsManager.CHOICES[("widgets", "fourth")],
     ("widgets", "fifth"): lambda v: v in SettingsManager.CHOICES[("widgets", "fifth")],
 }
+EDITABLE_SETTINGS[("alarm", "sound")] = lambda v: v in SettingsManager.CHOICES[("alarm", "sound")]
+EDITABLE_SETTINGS[("alarm", "ring_timers")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("alarm", "briefing")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("alarm", "max_minutes")] = lambda v: _is_int(v, 1, 60)
+EDITABLE_SETTINGS[("alarm", "snooze_minutes")] = lambda v: _is_int(v, 1, 60)
 # Schalter fuer Faehigkeiten: eine Zeile je Eintrag in abilities.ABILITIES
 EDITABLE_SETTINGS[("limits", "ai_calls_per_day")] = lambda v: _is_int(v, 0, 100000)
 EDITABLE_SETTINGS[("limits", "speech_calls_per_day")] = lambda v: _is_int(v, 0, 100000)
@@ -501,6 +509,9 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if path == "/api/timers":
             return self.send_json(200, {"timers": timer.list_timers()})
 
+        if path == "/api/ringing":
+            return self.send_json(200, ringing.default_ringer().state())
+
         if path == "/api/background":
             feed = self.server.feed
             feed.collect(self.server.jarvis)
@@ -672,6 +683,21 @@ class JarvisHandler(BaseHTTPRequestHandler):
                     return self.send_json(400, {"error": str(error)})
                 return self.send_json(200, self.server.widget_store.get())
 
+            # Wecker/Timer ausschalten oder schlummern: soll sofort gehen, auch waehrend Jarvis antwortet
+            if path == "/api/ringing/stop":
+                ring_id = data.get("id")
+                if ring_id is not None and (isinstance(ring_id, bool) or not isinstance(ring_id, int)):
+                    return self.send_json(400, {"error": "Ungültige Nummer."})
+                ringer = ringing.default_ringer()
+                address = get_address()
+                if data.get("snooze") is True:
+                    stopped, minutes = ringer.snooze(data.get("minutes"), which=ring_id)
+                    reply = ringing.snooze_message(minutes, address) if stopped else ""
+                else:
+                    stopped = ringer.stop(which=ring_id)
+                    reply = ringing.stop_message(stopped, address, ringer) if stopped else ""
+                return self.send_json(200, {"stopped": [r["label"] for r in stopped], "reply": reply, "state": ringer.state()})
+
             # Timer abbrechen: harmlos und soll auch gehen, waehrend Jarvis antwortet
             if path == "/api/timer/cancel":
                 timer_id = data.get("id")
@@ -740,6 +766,7 @@ def main(argv=None):
 
         jarvis = Jarvis()
         reminders.start_scheduler()         # Erinnerungen (Step 2.9): nur im normalen Modus, nie im Gastmodus
+        ringing.start_ticker()              # beendet zu lange laeutende Wecker/Timer (Step 2.11)
 
     server = JarvisServer((SERVER_HOST, args.port), jarvis, guest=args.guest)
     url = f"http://localhost:{server.server_address[1]}"
@@ -753,6 +780,7 @@ def main(argv=None):
         print(f"\nJ.A.R.V.I.S.: Shutting down, {get_address()}")
     finally:
         reminders.stop_scheduler()
+        ringing.stop_ticker()               # Ton aus, wenn der Server endet
         server.server_close()
 
 

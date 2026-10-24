@@ -2,8 +2,10 @@
 
 Eine Regel besteht aus der Haeufigkeit (taeglich, woechentlich, monatlich, jaehrlich), einem Abstand
 ("alle 2 Wochen") und einem Ende: eine Anzahl ("8 Mal", "fuer die naechsten 8 Wochen") und/oder ein Datum
-("bis 20.12.2026"). Ohne Ende sind nur woechentlich, monatlich und jaehrlich erlaubt (Geburtstage, Muell),
-taeglich braucht immer ein Ende.
+("bis 20.12.2026"). Ohne Ende sind bei Kalendereintraegen nur woechentlich, monatlich und jaehrlich erlaubt (Geburtstage, Muell),
+taeglich und werktags brauchen dort ein Ende. Erinnerungen und Wecker duerfen auch ohne Ende taeglich oder werktags
+laufen ("jeden Morgen um 7"), weil sie nur den naechsten Termin speichern (``dense_open``).
+"Werktags" ist Montag bis Freitag; faellt der Start auf ein Wochenende, ist der erste Termin der Montag danach.
 
 Alle Termine einer Serie sind Vielfache vom ERSTEN Termin aus gerechnet. Darum bleibt der 31. im Monat der 31.:
 Januar 31 -> Februar 28 -> Maerz 31. Ein 29. Februar wird in Nicht-Schaltjahren zum 28.
@@ -17,12 +19,15 @@ from datetime import date, timedelta
 MAX_OCCURRENCES = 100               # so viele Termine hoechstens in einer Serie
 MAX_YEARS_AHEAD = 5                 # der letzte Termin darf hoechstens so weit voraus liegen
 OPEN_ENDED = ("weekly", "monthly", "yearly")
-MAX_INTERVAL = {"daily": 60, "weekly": 52, "monthly": 24, "yearly": 5}
+MAX_INTERVAL = {"daily": 60, "weekdays": 1, "weekly": 52, "monthly": 24, "yearly": 5}
+DENSE = ("daily", "weekdays")      # taegliche Muster: ohne Ende nur fuer Erinnerungen und Wecker
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 
 _NONE_WORDS = {"", "none", "null", "no", "never", "-", "keine", "kein", "nein", "einmalig", "einmal", "once", "nie"}
 _FREQ_WORDS = {
     "daily": "daily", "taeglich": "daily", "täglich": "daily", "jeden tag": "daily", "tag": "daily", "tage": "daily", "day": "daily",
+    "weekdays": "weekdays", "werktags": "weekdays", "werktaeglich": "weekdays", "werktäglich": "weekdays", "wochentags": "weekdays",
+    "jeden werktag": "weekdays", "an werktagen": "weekdays", "montag bis freitag": "weekdays", "mo-fr": "weekdays", "mo bis fr": "weekdays",
     "weekly": "weekly", "woechentlich": "weekly", "wöchentlich": "weekly", "jede woche": "weekly", "woche": "weekly",
     "wochen": "weekly", "week": "weekly",
     "monthly": "monthly", "monatlich": "monthly", "jeden monat": "monthly", "monat": "monthly", "monate": "monthly", "month": "monthly",
@@ -51,7 +56,8 @@ class Rule:
         """Gespeicherte Regel zurueck, oder None, wenn sie kaputt ist (die Datei kann von Hand veraendert sein)."""
         try:
             until = data.get("until")
-            return parse_rule(data.get("freq"), data.get("interval"), data.get("count"), until, date.min, check_start=False)
+            return parse_rule(data.get("freq"), data.get("interval"), data.get("count"), until, date.min,
+                              check_start=False, dense_open=True)
         except (ValueError, AttributeError, TypeError):
             return None
 
@@ -70,7 +76,7 @@ def _number(value, name, low, high):
     return value
 
 
-def parse_rule(freq, interval, count, until, start, check_start=True):
+def parse_rule(freq, interval, count, until, start, check_start=True, dense_open=False):
     """Regel aus den Angaben von Sprache/Text. None = keine Wiederholung. ValueError mit lesbarem Satz sonst."""
     if freq is None or (isinstance(freq, str) and freq.strip().casefold() in _NONE_WORDS):
         return None
@@ -80,6 +86,8 @@ def parse_rule(freq, interval, count, until, start, check_start=True):
     if kind is None:
         raise ValueError("Die Wiederholung habe ich nicht verstanden (täglich, wöchentlich, monatlich oder jährlich).")
 
+    if kind == "weekdays" and not (interval is None or interval == 1 or (isinstance(interval, str) and interval.strip() in ("", "1"))):
+        raise ValueError("„Werktags“ kennt keinen Abstand.")
     if interval is None or (isinstance(interval, str) and not interval.strip()):
         step = 1
     else:
@@ -105,8 +113,8 @@ def parse_rule(freq, interval, count, until, start, check_start=True):
             raise ValueError("Das Enddatum liegt vor dem ersten Termin.")
 
     rule = Rule(kind, step, total, end)
-    if rule.open_ended and kind not in OPEN_ENDED:
-        raise ValueError("Eine tägliche Wiederholung braucht ein Ende, zum Beispiel „für 14 Tage“ oder „bis zum 20.12.“.")
+    if rule.open_ended and kind not in OPEN_ENDED and not (dense_open and kind in DENSE):
+        raise ValueError("Eine tägliche oder werktägliche Wiederholung braucht ein Ende, zum Beispiel „für 14 Tage“ oder „bis zum 20.12.“.")
     return rule
 
 
@@ -117,10 +125,22 @@ def _add_months(day, months):
     return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
 
 
+def first_date(start, rule):
+    """Der erste Termin: der Start selbst, bei "werktags" auf einem Wochenende der Montag danach."""
+    if rule.freq == "weekdays" and start.weekday() >= 5:
+        return start + timedelta(days=7 - start.weekday())
+    return start
+
+
 def occurrence(start, rule, n):
     """Der n-te Termin (0 = der erste), ohne Ende zu beachten."""
     if rule.freq == "daily":
         return start + timedelta(days=n * rule.interval)
+    if rule.freq == "weekdays":
+        anchor = first_date(start, rule)
+        weekday = anchor.weekday()
+        weeks, rest = divmod(weekday + n, 5)
+        return anchor - timedelta(days=weekday) + timedelta(days=7 * weeks + rest)
     if rule.freq == "weekly":
         return start + timedelta(days=7 * rule.interval * n)
     if rule.freq == "monthly":
@@ -158,6 +178,8 @@ def describe(rule, start):
     n = rule.interval
     if rule.freq == "daily":
         text = "täglich" if n == 1 else f"alle {n} Tage"
+    elif rule.freq == "weekdays":
+        text = "werktags (Mo–Fr)"
     elif rule.freq == "weekly":
         day = WEEKDAYS[start.weekday()]
         text = f"jeden {day}" if n == 1 else f"alle {n} Wochen ({day})"

@@ -11,6 +11,7 @@ import re
 import threading
 import time
 
+import ringing
 from background_tasks import submit_result
 from untrusted import clean_text
 
@@ -70,6 +71,7 @@ def run_timer(entry):
         _timers.pop(entry.id, None)
 
     if fired:
+        ringing.timer_finished(entry.name, entry.seconds)      # läutet, bis man "Timer aus" sagt (wenn eingeschaltet)
         submit_result({
             "type": "TIMER_FINISHED",
             "data": {"seconds": entry.seconds, "name": entry.name},

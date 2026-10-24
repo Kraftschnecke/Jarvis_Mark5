@@ -88,7 +88,7 @@ class WidgetStore:
                 continue
             rule = recurrence.Rule.from_dict(item["rule"])
             at = item.get("time", "")
-            if rule is not None and rule.open_ended and isinstance(item.get("id"), str) and isinstance(item.get("title"), str) \
+            if rule is not None and rule.open_ended and rule.freq in recurrence.OPEN_ENDED and isinstance(item.get("id"), str) and isinstance(item.get("title"), str) \
                     and isinstance(at, str) and (at == "" or _TIME.match(at)) and _valid_date(item.get("start")) \
                     and _valid_date(item.get("generated_until")) and isinstance(item.get("label"), str):
                 clean.append({"id": item["id"], "title": item["title"][:MAX_EVENT_TITLE], "time": at, "start": item["start"],

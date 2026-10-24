@@ -45,6 +45,14 @@ class SettingsManager:
         "abilities": abilities.default_settings(),
         # News-Quellen (Mark 5, Step 2.2): je Quelle an/aus, Liste in tools/news_tool.py
         "news": news_tool.default_settings(),
+        # Wecker und Timer (Mark 5, Step 2.11): laeuten, bis man sie ausschaltet
+        "alarm": {
+            "sound": "Computer",      # Computer = Ton aus den Lautsprechern des Servers, Browser = Ton im Browser, Aus = nur Anzeige
+            "ring_timers": True,      # abgelaufene Timer laeuten auch
+            "max_minutes": 10,        # laeutet hoechstens so lange, dann geht es von selbst aus
+            "snooze_minutes": 5,
+            "briefing": True,         # neue Wecker sprechen beim Ausschalten Termine und Wetter
+        },
         # Tageslimits fuer kostenpflichtige OpenAI-Aufrufe (Mark 5, Step 1.4), 0 = kein Limit
         "limits": {
             "ai_calls_per_day": 500,
@@ -114,6 +122,7 @@ class SettingsManager:
             "Nova (female)", "Shimmer (female)", "Coral (female)",
         ),
         ("voice", "input_language"): ("German", "English"),
+        ("alarm", "sound"): ("Computer", "Browser", "Aus"),
         ("widgets", "top"): ("Off", "Clock", "Date", "Calendar"),
         ("widgets", "middle"): ("Off", "Notes", "Goals"),
         ("widgets", "bottom"): ("Off", "Edmonton Oilers", "Adler Mannheim"),

@@ -27,7 +27,7 @@ class Ability:
 
 
 # Immer an: harmlos, ohne Netz, ohne Kosten
-CORE_TASKS = ("GET_TIME", "GET_DATE", "CALCULATE", "GET_SYSTEM_INFO")
+CORE_TASKS = ("GET_TIME", "GET_DATE", "CALCULATE", "GET_SYSTEM_INFO", "STOP_RINGING")
 
 ABILITIES = (
     Ability("web_search", "Websuche",
@@ -59,6 +59,9 @@ ABILITIES = (
     Ability("reminders", "Erinnerungen",
             "Erinnerungen zu einer Uhrzeit stellen (überstehen einen Neustart, stehen bis zum Ablauf im Kalender), anzeigen und löschen (reminders.json).",
             ("SET_REMINDER", "LIST_REMINDERS", "CANCEL_REMINDER")),
+    Ability("alarm", "Wecker",
+            "Wecker stellen (auch täglich oder werktags), anzeigen und löschen. Er läutet, bis du „Jarvis, Wecker aus“ sagst, und liest auf Wunsch kurz Termine und Wetter vor (reminders.json).",
+            ("SET_ALARM", "LIST_ALARMS", "CANCEL_ALARM")),
     Ability("calendar", "Kalender-Termine", "Termine in den Kalender eintragen und vorlesen (widgets.json).",
             ("ADD_CALENDAR_EVENT", "LIST_CALENDAR_EVENTS")),
     Ability("volume", "Lautstärke", "Die Systemlautstärke einstellen.", ("SET_VOLUME",)),

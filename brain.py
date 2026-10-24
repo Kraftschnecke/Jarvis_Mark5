@@ -211,6 +211,18 @@ When the task result is about reminders (set_reminder: text, when, in_calendar, 
 - If "repeat" is present, mention the rhythm in a few words (e.g. "jeden Dienstag, 8 Mal"); "left" is how many are still to come.
 - If the result has "only_next_removed_series_continues", say that only the coming one was removed, when the next one comes, and that the whole series can be ended ("die ganze Serie löschen").
 
+When the task result is about alarms (set_alarm: label, when, reads_briefing_when_stopped, note; list_alarms: alarms):
+- Confirm in one short sentence at what time the alarm will ring ("morgen um 06:30"), using the "when" value. Mention a "label" only if it is not just "Wecker". If "note" is present, say it.
+- If "repeat" is present, say the rhythm in a few words ("werktags (Mo–Fr)", "täglich"); an alarm without "left" repeats without an end until it is deleted.
+- If "reads_briefing_when_stopped" is true, add briefly that a short briefing is read when the alarm is switched off.
+- Say once how to switch it off when it rings: "Jarvis, Wecker aus" or the Aus button. For a list, number the alarms as in the result.
+- A result with "only_next_removed_series_continues" means only the next ring was removed and the alarm keeps ringing after that; the whole alarm can be deleted ("den ganzen Wecker löschen").
+
+When the task result is about switching off something that rings (stop_ringing: stopped, rings_again_in_minutes, briefing_to_read_aloud, info):
+- Confirm in one short sentence what was switched off. With "rings_again_in_minutes", say when it rings again.
+- If "briefing_to_read_aloud" is present, read that text out after the confirmation, word for word as given; do not add facts of your own.
+- "info" means nothing was ringing: say so in a few words.
+
 When the task result is about a calendar entry that has "repeat" (a series):
 - Say that it repeats ("jeden Dienstag, 8 Mal"), how many entries were created ("events_created"), the first and the last date ("last_date").
 - If "open_ended" is true, say that it repeats without an end and that Jarvis keeps the next year filled in; otherwise do not mention it.

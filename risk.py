@@ -52,6 +52,10 @@ ACTION_RISK = {
     "set_reminder": SAFE,         # lokaler Eintrag (reminders.json) plus Kalender, wie ein Termin
     "list_reminders": SAFE,
     "cancel_reminder": SAFE,      # eine einzelne; "alle" hebt action_risk() auf CONFIRM
+    "set_alarm": SAFE,            # lokaler Eintrag (reminders.json), kein Kalender
+    "list_alarms": SAFE,
+    "cancel_alarm": SAFE,         # einer; "alle" oder die ganze Serie hebt action_risk() auf CONFIRM
+    "stop_ringing": SAFE,         # schaltet nur aus, was gerade laeutet
     "list_timers": SAFE,
     "cancel_timer": SAFE,        # bricht nur einen eigenen Timer ab
     # schreibt nur in widgets.json, auf der Seite per Klick wieder loeschbar
@@ -99,7 +103,7 @@ def action_risk(action):
 
     # Eine Seite lesen: nur Artikel aus der zuletzt genannten News-Liste direkt. Jede andere Adresse
     # (selbst getippt oder vom Modell vorgeschlagen) wird erst nach deinem "Ja" geoeffnet.
-    if action.name == "cancel_reminder" and (
+    if action.name in ("cancel_reminder", "cancel_alarm") and (
         reminders.is_all(action.parameters.get("which"))
         or _is_series_scope(action.parameters.get("scope"))
     ):

@@ -1595,6 +1595,21 @@ const PAGES = [
     ],
   },
   {
+    key: "Alarm", icon: "⏰", desc: "Wecker und Timer läuten, bis du sie ausschaltest: mit „Jarvis, Wecker aus“ (Text oder Sprache), mit dem Knopf „Aus“ oder mit „Schlummern“. Läuft Jarvis nicht, wenn ein Wecker klingeln soll, meldet er das nur nachträglich.",
+    rows: [
+      { label: "Sound", category: "alarm", key: "sound", type: "select", options: ["Computer", "Browser", "Aus"], live: true,
+        note: "Computer: der Ton kommt aus den Lautsprechern des Rechners, auf dem Jarvis läuft (nur Windows, auch bei geschlossenem Tab). Browser: der Ton kommt aus dem Tab, funktioniert nur bei offener Seite und erst nach einem Klick auf die Seite. Aus: nur Anzeige." },
+      { label: "Ring for timers", category: "alarm", key: "ring_timers", type: "toggle", live: true,
+        note: "Ein abgelaufener Timer läutet auch, bis du ihn ausschaltest. Aus: nur die Meldung wie bisher." },
+      { label: "Ring at most (minutes)", category: "alarm", key: "max_minutes", type: "number", min: 1, max: 60, live: true,
+        note: "Nach dieser Zeit geht das Läuten von selbst aus und Jarvis sagt es dir." },
+      { label: "Snooze (minutes)", category: "alarm", key: "snooze_minutes", type: "number", min: 1, max: 60, live: true,
+        note: "So lange schlummert ein Wecker oder Timer, bevor er wieder läutet." },
+      { label: "Briefing when switched off", category: "alarm", key: "briefing", type: "toggle", live: true,
+        note: "Neue Wecker lesen beim Ausschalten kurz Datum, Termine, Erinnerungen und (wenn die Wetter-Fähigkeit an ist) das Wetter vor. Beim Stellen kannst du es pro Wecker mit „ohne Briefing“ abwählen." },
+    ],
+  },
+  {
     key: "Limits", icon: "💶", desc: "Tageslimits für kostenpflichtige Aufrufe an OpenAI. Ist ein Limit erreicht, geht nichts mehr raus, bis um Mitternacht der Zähler wieder bei 0 beginnt. 0 bedeutet kein Limit.",
     rows: [
       { label: "AI calls today", type: "readonly", live: true, text: () => usageText("ai") },
@@ -2191,6 +2206,48 @@ async function refreshTimers() {
 }
 
 setInterval(refreshTimers, 1000);
+
+// ----------------------------------------------------------------------
+// Wecker und Timer laeuten (Step 2.11): Banner "Aus" / "Schlummern", Ton im Browser (web/alarm.js)
+// ----------------------------------------------------------------------
+
+const ringingBar = document.getElementById("ringing");
+const ringingParts = {
+  title: document.getElementById("ringing-title"),
+  detail: document.getElementById("ringing-detail"),
+  hint: document.getElementById("ringing-hint"),
+  off: document.getElementById("ringing-off"),
+  snooze: document.getElementById("ringing-snooze"),
+};
+
+const ringer = window.JarvisAlarm.createController({
+  api: api,
+  AudioContext: window.AudioContext || window.webkitAudioContext || null,
+  setInterval: (fn, ms) => window.setInterval(fn, ms),
+  clearInterval: (id) => window.clearInterval(id),
+  getTitle: () => document.title,
+  setTitle: (text) => { document.title = text; },
+  say: (text) => { addMessage("jarvis", text); speakReply(text); },
+  setBanner: (view) => {
+    ringingBar.hidden = !view.show;
+    ringingParts.title.textContent = view.title;
+    ringingParts.detail.textContent = view.detail;
+    ringingParts.hint.textContent = view.hint;
+    ringingParts.hint.hidden = view.hint === "";
+    ringingParts.snooze.textContent = view.snoozeLabel || "Schlummern";
+  },
+});
+
+ringingParts.off.addEventListener("click", () => ringer.stop());
+ringingParts.snooze.addEventListener("click", () => ringer.snooze());
+// Der Browser erlaubt Ton erst nach einer Bedienung der Seite
+["pointerdown", "keydown"].forEach((name) => document.addEventListener(name, () => ringer.unlock(), { passive: true }));
+
+function pollRinging() {
+  if (!guestMode) ringer.poll();
+}
+
+setInterval(pollRinging, 1000);
 
 // ======================================================================
 // Start

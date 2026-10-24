@@ -105,7 +105,7 @@ assert background_tasks.result_queue.qsize() == 1, "Meldungen des Besitzers duer
 # 3) Alle anderen Adressen sind verboten
 for path in ("/api/projects", "/api/timers", "/api/memories", "/api/actions", "/api/speak", "/api/message",
              "/api/confirm", "/api/plan/abort", "/api/unbekannt", "/api/conversation/open",
-             "/api/widgets", "/api/hockey", "/api/weather", "/api/system", "/api/performance"):
+             "/api/widgets", "/api/hockey", "/api/weather", "/api/system", "/api/performance", "/api/ringing"):
     status, body = request("GET", path)
     assert status == 403 and "Gastmodus" in json.loads(body)["error"], (path, status)
 
