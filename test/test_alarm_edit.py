@@ -185,6 +185,55 @@ assert request("POST", "/api/alarms/update", {"id": wid, "label": "x"})[0] == 40
 assert request("POST", "/api/alarms/update", {"id": "x"}, content_type="text/plain")[0] == 415
 assert request("GET", "/api/alarms", host="evil.example")[0] == 403 and request("POST", "/api/alarms/delete", {"id": "x"}, host="evil.example")[0] == 403
 
+# 5) Anlegen aus dem Kalender: Tag aus dem Raster, Wiederholung, Begrenzung
+def add(**fields):
+    return request("POST", "/api/alarms/add", fields)
+
+
+def find(data, label):
+    return [a for a in data["alarms"] if a["label"] == label]
+
+
+status, data = add(time="07:00", label="Frühsport", date="2026-10-23", repeat="", until="", briefing=True)
+(sport,) = find(data, "Frühsport")
+assert status == 200 and sport["dates"] == ["2026-10-23"] and sport["time"] == "07:00" and sport["briefing"] is True and sport["repeat"] is None
+status, data = add(time="06:30")                                                     # nur die Uhrzeit: heute (06:00 ist schon da)
+(today_alarm,) = [a for a in data["alarms"] if a["time"] == "06:30" and a["dates"] == ["2026-10-22"]]
+assert status == 200 and today_alarm["label"] == "Wecker" and today_alarm["briefing"] is False
+status, data = add(time="06:30", label="", date="2026-10-24", repeat="weekdays", until="2026-11-06", briefing=False)    # Samstag gewaehlt
+(work,) = [a for a in data["alarms"] if a["repeat"] and a["repeat"].startswith("werktags")]
+assert work["dates"] == ["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30",
+                         "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06"], work["dates"]
+assert work["label"] == "Wecker" and work["repeat"] == "werktags (Mo–Fr), bis 06.11.2026" and work["due"] == "2026-10-26T06:30"
+status, data = add(time="06:00", label="Täglich", date="2026-10-23", repeat="daily", until="")
+(daily,) = find(data, "Täglich")
+assert status == 200 and len(daily["dates"]) == 62 and daily["dates"][0] == "2026-10-23" and daily["dates"][-1] == "2026-12-23" and daily["repeat"] == "täglich"
+status, data = add(time="07:30", label="Wöchentlich", date="2026-10-27", repeat="weekly")
+(weekly,) = find(data, "Wöchentlich")
+assert weekly["dates"] == ["2026-10-27", "2026-11-03", "2026-11-10", "2026-11-17", "2026-11-24", "2026-12-01", "2026-12-08",
+                           "2026-12-15", "2026-12-22"] and weekly["repeat"] == "jeden Dienstag"
+for fields, part in (({"time": ""}, "wecken"), ({"label": "x"}, "wecken"), ({"time": "25:99"}, "wecken"),
+                     ({"time": "05:00", "date": "2026-10-22"}, "schon vorbei"), ({"time": "08:00", "date": "2026-10-20"}, "schon vorbei"),
+                     ({"time": "08:00", "date": "morgen"}, "Datum"), ({"time": "08:00", "label": "x" * 91}, "höchstens"),
+                     ({"time": "08:00", "date": "2026-10-23", "repeat": "quatsch"}, ""),
+                     ({"time": "08:00", "date": "2026-10-23", "repeat": "weekly", "until": "2026-10-01"}, ""),
+                     ({"time": "08:00", "date": "2026-10-23", "repeat": "weekly", "until": "kaputt"}, ""),
+                     ({"time": "08:00", "date": "2027-12-01"}, "höchstens 365")):
+    status, data = add(**fields)
+    assert status == 400 and part in data["error"], (fields, status, data)
+for fields in ({"time": 5}, {"time": "08:00", "label": ["x"]}, {"time": "08:00", "briefing": "ja"}, {"time": "08:00", "date": 20261023},
+               {"time": "08:00", "repeat": 1}, {"time": "08:00", "until": {}}):
+    assert add(**fields)[0] == 400, fields
+assert request("POST", "/api/alarms/add", {"time": "08:00"}, content_type="text/plain")[0] == 415
+assert add()[0] == 400
+assert request("POST", "/api/alarms/add", {"time": "08:00"}, host="evil.example")[0] == 403
+before = request("GET", "/api/alarms")[1]["alarms"]
+assert sorted(a["label"] for a in before) == sorted(["Kurs", "Frühsport", "Wecker", "Wecker", "Täglich", "Wöchentlich"]), [a["label"] for a in before]   # Fehler legten nichts an
+for alarm in before:                                                                 # wieder aufraeumen: nur "Kurs" bleibt
+    if alarm["label"] != "Kurs":
+        assert request("POST", "/api/alarms/delete", {"id": alarm["id"]})[0] == 200
+assert [a["label"] for a in request("GET", "/api/alarms")[1]["alarms"]] == ["Kurs"]
+
 # Gastmodus kennt diese Adressen nicht und aendert nichts
 guest_httpd = server.JarvisServer(("127.0.0.1", 0), types.SimpleNamespace(settings_manager=jarvis.settings_manager, guest=True), guest=True)
 guest_port = guest_httpd.server_address[1]
@@ -193,6 +242,7 @@ assert request("GET", "/api/alarms", target=guest_port)[0] == 403
 remaining = store.list("alarm")[0]["id"]
 assert request("POST", "/api/alarms/delete", {"id": remaining}, target=guest_port)[0] == 403
 assert request("POST", "/api/alarms/update", {"id": remaining, "label": "x"}, target=guest_port)[0] == 403
+assert request("POST", "/api/alarms/add", {"time": "08:00"}, target=guest_port)[0] == 403
 assert len(store.list("alarm")) == 1
 guest_httpd.shutdown()
 httpd.shutdown()

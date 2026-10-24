@@ -624,7 +624,44 @@ function renderCalendar(section) {
   clock.type = "time"; clock.setAttribute("aria-label", "Uhrzeit (optional)");
   add.type = "submit"; add.setAttribute("aria-label", "Termin hinzufügen");
   form.append(field, clock, add);
-  section.append(head, grid, dayHead, list, form, status);
+  // Wecker direkt im Kalender stellen (Step 2.11b): klappt unter dem Termin-Formular auf, gilt fuer den gewaehlten Tag
+  const alarmToggle = wEl("button", "w-alarm-toggle", "⏰ Wecker stellen");
+  const alarmForm = wEl("form", "w-alarm-form w-alarm-new");
+  const aTime = wEl("input", "w-event-time");
+  const aName = wEl("input", "w-event-title");
+  const aRepeat = wEl("select", "w-alarm-repeat");
+  const aUntil = wEl("input", "w-event-time w-alarm-until");
+  const aBriefLabel = wEl("label", "w-alarm-brieflabel");
+  const aBrief = wEl("input", "w-alarm-brief");
+  const aSave = wEl("button", "w-goal-add", "＋");
+  alarmToggle.type = "button"; alarmToggle.setAttribute("aria-expanded", "false");
+  alarmForm.hidden = true;
+  aTime.type = "time"; aTime.required = true; aTime.setAttribute("aria-label", "Uhrzeit des Weckers");
+  aName.type = "text"; aName.maxLength = 40; aName.placeholder = "Name (optional)"; aName.setAttribute("aria-label", "Name des Weckers");
+  [["", "Einmalig"], ["daily", "Täglich"], ["weekdays", "Werktags (Mo–Fr)"], ["weekly", "Jede Woche"]].forEach(([value, text]) => {
+    const option = wEl("option", "", text); option.value = value; aRepeat.append(option);
+  });
+  aRepeat.setAttribute("aria-label", "Wiederholung");
+  aUntil.type = "date"; aUntil.hidden = true; aUntil.setAttribute("aria-label", "Wiederholen bis (optional)"); aUntil.title = "Letzter Tag (leer = ohne Ende)";
+  aBrief.type = "checkbox"; aBrief.checked = true;
+  aBriefLabel.append(aBrief, " Briefing");
+  aSave.type = "submit"; aSave.setAttribute("aria-label", "Wecker anlegen");
+  alarmForm.append(aTime, aRepeat, aUntil, aName, aBriefLabel, aSave);
+  section.append(head, grid, dayHead, list, form, alarmToggle, alarmForm, status);
+  alarmToggle.addEventListener("click", () => {
+    alarmForm.hidden = !alarmForm.hidden;
+    alarmToggle.setAttribute("aria-expanded", String(!alarmForm.hidden));
+    if (!alarmForm.hidden) aTime.focus();
+  });
+  aRepeat.addEventListener("change", () => { aUntil.hidden = aRepeat.value === ""; if (aUntil.hidden) aUntil.value = ""; });
+  alarmForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const body = { time: aTime.value, label: aName.value, date: selected, repeat: aRepeat.value, until: aUntil.value, briefing: aBrief.checked };
+      setAlarms((await api("POST", "/api/alarms/add", body)).alarms);
+      aTime.value = ""; aName.value = ""; aRepeat.value = ""; aUntil.value = ""; aUntil.hidden = true; status.textContent = "";
+    } catch (error) { status.textContent = error.message; }
+  });
 
   function drawGrid() {
     title.textContent = W.monthTitle(year, month);

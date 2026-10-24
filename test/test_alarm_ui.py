@@ -49,6 +49,14 @@ for endpoint in ("/api/alarms/delete", "/api/alarms/update", "/api/alarms"):
 assert "if (alarm.repeat && !armed)" in cal                      # ganze Serie: erst nach zweitem Klick
 assert "has-alarm" in app and "W.alarmsByDate" in app and ".w-cal-day.has-alarm" in css
 
+# Anlegen im Kalender: Formular klappt auf, schickt Tag + Wiederholung, Texte nur als Text
+create = app.split("const alarmToggle")[1].split("function drawGrid")[0]
+assert "innerHTML" not in create and "/api/alarms/add" in create and "date: selected" in create
+assert "alarmForm.hidden = true;" in create and 'aria-expanded' in create
+for value in ('"daily"', '"weekdays"', '"weekly"'):
+    assert value in create, value
+assert ".w-alarm-new[hidden]" in css
+
 node = shutil.which("node")
 if node:
     result = subprocess.run([node, str(PROJECT_DIR / "test" / "alarm_check.js")],
