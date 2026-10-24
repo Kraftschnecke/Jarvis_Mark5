@@ -63,7 +63,7 @@ register_all_tasks(registry)
 ALL = len(registry.get_all())
 
 # 1) Voreinstellung: alles an wie bisher, nichts disabled
-assert ALL == 29 and registry.get_disabled() == []
+assert ALL == 30 and registry.get_disabled() == []
 assert registry.get("SEARCH_WEB") is not None and not registry.is_disabled("SEARCH_WEB")
 
 # 2) Ausschalten: Aufgabe verschwindet ueberall, Grundfaehigkeiten bleiben

@@ -53,6 +53,11 @@ class SettingsManager:
             "snooze_minutes": 5,
             "briefing": True,         # neue Wecker sprechen beim Ausschalten Termine und Wetter
         },
+        # Tagesbriefing (Mark 5, Step 2.12)
+        "briefing": {
+            "auto": False,            # beim ersten Start des Tages von selbst vorlesen
+            "news": True,             # Schlagzeilen anhaengen (nur wenn die News-Faehigkeit an ist)
+        },
         # Tageslimits fuer kostenpflichtige OpenAI-Aufrufe (Mark 5, Step 1.4), 0 = kein Limit
         "limits": {
             "ai_calls_per_day": 500,

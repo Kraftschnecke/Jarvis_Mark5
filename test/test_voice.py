@@ -27,8 +27,9 @@ assert 'type="button"' in mic, "darf das Formular nicht absenden"
 
 # Nur eigene Antworten und Hintergrundmeldungen werden vorgelesen, keine Fehler
 speak_calls = re.findall(r"speakReply\(([^)]*)\)", app)
+# data.text: Briefing beim ersten Start des Tages (Step 2.12)
 # "text": die Funktionsdefinition selbst und die Antwort auf "Wecker aus" (Banner, Step 2.11, inkl. Briefing)
-assert sorted(speak_calls) == ["data.content", "item.text", "text", "text"], speak_calls
+assert sorted(speak_calls) == ["data.content", "data.text", "item.text", "text", "text"], speak_calls
 assert 'say: (text) => { addMessage("jarvis", text); speakReply(text); }' in app
 # Vorlesen nur bei eingeschalteter Einstellung
 assert re.search(r'function speakReply\(text\) \{\s*if \(voiceSetting\("output"\) === true\)', app)

@@ -312,7 +312,7 @@ status, data = call("/api/settings")
 assert status == 200
 assert data["settings"]["appearance"]["theme"] == "Dark"
 assert data["settings"]["memory"]["enabled"] is True
-assert set(data["settings"]) == {"appearance", "jarvis", "memory", "voice", "widgets", "abilities", "news", "alarm", "limits"}, data["settings"]
+assert set(data["settings"]) == {"appearance", "jarvis", "memory", "voice", "widgets", "abilities", "news", "alarm", "briefing", "limits"}, data["settings"]
 assert data["guest"] is False
 assert data["settings"]["voice"] == {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German", "wake_word": False}
 assert set(data["settings"]["appearance"]) == {"theme", "accent_color", "font_size"}

@@ -102,7 +102,7 @@ expected = {
     "LIST_TIMERS": "safe", "CANCEL_TIMER": "safe",
     "ADD_CALENDAR_EVENT": "safe", "LIST_CALENDAR_EVENTS": "safe",
     "SET_VOLUME": "safe", "GET_WEATHER": "safe", "GET_NEWS": "safe", "CONVERT": "safe", "WIKI_LOOKUP": "safe", "TRANSLATE": "safe", "SET_REMINDER": "safe", "LIST_REMINDERS": "safe", "CANCEL_REMINDER": "safe", "GET_WORLD_TIME": "safe",
-    "SET_ALARM": "safe", "LIST_ALARMS": "safe", "CANCEL_ALARM": "safe", "STOP_RINGING": "safe",
+    "SET_ALARM": "safe", "LIST_ALARMS": "safe", "CANCEL_ALARM": "safe", "STOP_RINGING": "safe", "GET_BRIEFING": "safe",
     "OPEN_FILE": "confirm", "START_PROGRAM": "confirm",
     "READ_PAGE": "confirm",   # ohne Eintrag in der News-Liste: erst fragen (test_page.py prueft die Ausnahme)
 }

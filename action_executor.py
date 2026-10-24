@@ -2,6 +2,7 @@ from timer import (
     start_timer, convert_to_seconds, list_timers, cancel_timer, clean_name,
     format_duration, TimerError,
 )
+import briefing as daily_briefing
 import reminders
 import ringing
 import widgets
@@ -198,6 +199,9 @@ def execute_action(action):
         if entry["rolled"]:
             data["note"] = "Die Uhrzeit war heute schon vorbei, deshalb gilt der Wecker für morgen."
         return ToolResult(success=True, data=data)
+
+    if action.name == "get_briefing":
+        return daily_briefing.get_briefing()
 
     if action.name == "list_alarms":
         items = reminders.default_store().list("alarm")

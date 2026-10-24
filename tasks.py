@@ -578,6 +578,15 @@ def create_set_alarm_task():
     return task
 
 
+def create_get_briefing_task():
+    task = Task(
+        "GET_BRIEFING",
+        "Das Tagesbriefing geben: Datum, Termine, Erinnerungen, Wetter, Ziele, offene Timer und Schlagzeilen (Briefing, Guten-Morgen-Überblick, Was steht heute an?)"
+    )
+    task.add_action(Action("get_briefing"))
+    return task
+
+
 def create_list_alarms_task():
     task = Task(
         "LIST_ALARMS",
@@ -660,6 +669,7 @@ def register_all_tasks(registry):
     registry.register(create_cancel_reminder_task())
     registry.register(create_set_alarm_task())
     registry.register(create_list_alarms_task())
+    registry.register(create_get_briefing_task())
     registry.register(create_cancel_alarm_task())
     registry.register(create_stop_ringing_task())
     registry.register(create_search_web_task())

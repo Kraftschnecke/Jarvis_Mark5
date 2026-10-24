@@ -135,6 +135,7 @@ class Jarvis:
         )
         ringer.briefing_provider = self.wakeup_briefing
         ringer.snooze_handler = self.snooze_ring
+        briefing.set_provider(self.daily_briefing)          # Tagesbriefing (Step 2.12)
 
     def wakeup_briefing(self):
         """Kurzer Tagesueberblick fuer das Ausschalten eines Weckers (Wetter nur, wenn die Faehigkeit an ist)."""
@@ -148,6 +149,49 @@ class Jarvis:
             reminder_items=lambda: reminders.default_store().list(),
             weather=weather,
         )
+
+    def daily_briefing(self):
+        """Tagesbriefing (Step 2.12): wie das Weckerbriefing, dazu Ziele, offene Timer und Schlagzeilen.
+
+        Jeder Teil erscheint nur, wenn seine Faehigkeit an ist; Fehler in einem Teil lassen nur diesen aus.
+        """
+        manager = self.settings_manager
+        on = lambda task: abilities.task_enabled(task, manager)
+        now = reminders.default_store().now()
+        today = now.strftime("%Y-%m-%d")
+        news = None
+        if on("GET_NEWS") and manager.get("briefing", "news", True):
+            def news():
+                result = news_tool.default_service().get_news("alle", "", briefing.MAX_HEADLINES)
+                return result.data["items"] if result.success else []
+        return briefing.build_briefing(
+            now, get_address(),
+            events=(lambda: widgets.default_store().events_on(today)) if on("LIST_CALENDAR_EVENTS") else None,
+            reminder_items=(lambda: reminders.default_store().list()) if on("LIST_REMINDERS") else None,
+            weather=(lambda: weather_tool.default_service().summary()) if on("GET_WEATHER") else None,
+            goals=lambda: widgets.default_store().get()["goals"],
+            timers=(lambda: timer_module.list_timers()) if on("LIST_TIMERS") else None,
+            news=news,
+        )
+
+    def auto_briefing(self):
+        """Das Briefing beim ersten Start des Tages: Text oder None (aus, schon gelaufen, nicht moeglich)."""
+        if getattr(self, "guest", False) or not self.settings_manager.get("briefing", "auto", False):
+            return None
+        if not abilities.task_enabled("GET_BRIEFING", self.settings_manager):
+            return None
+        marker = briefing.default_marker()
+        today = reminders.default_store().now().strftime("%Y-%m-%d")
+        with marker.lock:
+            if not marker.is_due(today):
+                return None
+            try:
+                text = self.daily_briefing()
+            except Exception as error:
+                print(f"[BRIEFING] nicht erstellt: {type(error).__name__}")
+                return None
+            marker.mark(today)
+            return text
 
     def snooze_ring(self, ring, minutes):
         """Schlummern: derselbe Wecker/Timer laeutet in `minutes` Minuten noch einmal."""
@@ -574,6 +618,12 @@ class Jarvis:
         task = execute_registered_task(
             self.task_registry, route["task_type"], route["parameters"]
         )
+
+        if task is not None and route["task_type"] == "GET_BRIEFING":
+            # Der Text ist schon fertig (und enthaelt fremde Schlagzeilen): kein Modell dazwischen
+            if task.status == "COMPLETED" and task.result:
+                return {"status": "response", "content": task.result[0].data["briefing"]}
+            return {"status": "response", "content": f"{get_address()}: {task.error or 'Das Briefing hat nicht geklappt.'}"}
 
         return {
             "status": "response",

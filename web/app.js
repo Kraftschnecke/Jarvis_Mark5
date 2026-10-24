@@ -1732,6 +1732,15 @@ const PAGES = [
     ],
   },
   {
+    key: "Briefing", icon: "🗞️", desc: "Das Tagesbriefing nennt Datum, Termine, Erinnerungen, Wetter, deine Ziele, offene Timer und Schlagzeilen. Du bekommst es mit „Briefing“ oder „Was steht heute an?“. Wetter, Termine, Erinnerungen, Timer und News kommen nur dazu, wenn die jeweilige Fähigkeit unter Abilities an ist. Der Text wird ohne KI zusammengesetzt.",
+    rows: [
+      { label: "At first start of the day", category: "briefing", key: "auto", type: "toggle", live: true,
+        note: "Das Briefing erscheint von selbst, wenn du Jarvis am Tag das erste Mal öffnest (nur einmal pro Tag, auch bei mehreren Tabs) und wird vorgelesen, sobald der Browser Ton erlaubt." },
+      { label: "Include headlines", category: "briefing", key: "news", type: "toggle", live: true,
+        note: "Hängt die drei neuesten Schlagzeilen aus deinen News-Quellen an. Dafür ruft Jarvis die News-Seiten ab; ohne Netz fehlt nur dieser Satz." },
+    ],
+  },
+  {
     key: "Limits", icon: "💶", desc: "Tageslimits für kostenpflichtige Aufrufe an OpenAI. Ist ein Limit erreicht, geht nichts mehr raus, bis um Mitternacht der Zähler wieder bei 0 beginnt. 0 bedeutet kein Limit.",
     rows: [
       { label: "AI calls today", type: "readonly", live: true, text: () => usageText("ai") },
@@ -2381,6 +2390,20 @@ async function showStartupReport() {
   if (guestMode) {
     addMessage("jarvis", GUEST_WELCOME);
     return;
+  }
+
+  // Briefing beim ersten Start des Tages: ersetzt dann die kurze Begruessung (Step 2.12)
+  if (settings.briefing && settings.briefing.auto) {
+    try {
+      const data = await api("POST", "/api/briefing/auto", {});
+      if (data.text) {
+        addMessage("jarvis", data.text);
+        speakReply(data.text);
+        return;
+      }
+    } catch (error) {
+      /* ohne Briefing: normale Begruessung */
+    }
   }
 
   let timers = [];

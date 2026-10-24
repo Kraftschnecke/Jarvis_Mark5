@@ -16,6 +16,7 @@ Dinge:
        GET  /api/background?after=<id>  ->  {"messages": [{"id": 3, "text": "..."}], "last": 3}
                              (ohne "after": nur den aktuellen Stand "last" melden)
        GET  /api/alarms      ->  alle Wecker fuer den Kalender; POST /api/alarms/add, /api/alarms/update und /api/alarms/delete (Step 2.11b)
+       POST /api/briefing/auto -> Tagesbriefing beim ersten Start des Tages: {"text": ...} oder null (Step 2.12)
        GET  /api/ringing     ->  was gerade laeutet (Wecker/Timer) und wer den Ton macht (Step 2.11)
        POST /api/ringing/stop ->  ausschalten oder schlummern, auch waehrend Jarvis antwortet
        GET  /api/system      ->  PC-Fakten fuer das Widget "PC Facts" (Step 2.8, lokal gelesen)
@@ -115,6 +116,8 @@ EDITABLE_SETTINGS[("alarm", "ring_timers")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("alarm", "briefing")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("alarm", "max_minutes")] = lambda v: _is_int(v, 1, 60)
 EDITABLE_SETTINGS[("alarm", "snooze_minutes")] = lambda v: _is_int(v, 1, 60)
+EDITABLE_SETTINGS[("briefing", "auto")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("briefing", "news")] = lambda v: isinstance(v, bool)
 # Schalter fuer Faehigkeiten: eine Zeile je Eintrag in abilities.ABILITIES
 EDITABLE_SETTINGS[("limits", "ai_calls_per_day")] = lambda v: _is_int(v, 0, 100000)
 EDITABLE_SETTINGS[("limits", "speech_calls_per_day")] = lambda v: _is_int(v, 0, 100000)
@@ -716,6 +719,10 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 except reminders.ReminderError as error:
                     return self.send_json(400, {"error": str(error)})
                 return self.send_json(200, {"alarms": store.alarms_overview()})
+
+            # Briefing beim ersten Start des Tages (Step 2.12): hoechstens einmal pro Tag, sonst text = null
+            if path == "/api/briefing/auto":
+                return self.send_json(200, {"text": self.server.jarvis.auto_briefing()})
 
             # Wecker/Timer ausschalten oder schlummern: soll sofort gehen, auch waehrend Jarvis antwortet
             if path == "/api/ringing/stop":

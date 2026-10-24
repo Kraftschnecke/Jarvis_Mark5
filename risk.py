@@ -54,6 +54,7 @@ ACTION_RISK = {
     "cancel_reminder": SAFE,      # eine einzelne; "alle" hebt action_risk() auf CONFIRM
     "set_alarm": SAFE,            # lokaler Eintrag (reminders.json), kein Kalender
     "list_alarms": SAFE,
+    "get_briefing": SAFE,         # liest nur eigene Daten (Kalender, Ziele, Timer) und ruft Wetter/News ab, wenn diese an sind
     "cancel_alarm": SAFE,         # einer; "alle" oder die ganze Serie hebt action_risk() auf CONFIRM
     "stop_ringing": SAFE,         # schaltet nur aus, was gerade laeutet
     "list_timers": SAFE,
