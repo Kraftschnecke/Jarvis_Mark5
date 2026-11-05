@@ -24,7 +24,7 @@ from pathlib import Path
 
 import reminders
 import widgets
-from tools import contacts_tool, mail_tool, note_tool, page_tool, system_tool
+from tools import browser_tool, clipboard_tool, contacts_tool, mail_tool, note_tool, page_tool, screen_tool, system_tool
 from tools.file_tool import BLOCKED_EXTENSIONS, URI_PATTERN
 
 SAFE = "safe"
@@ -75,6 +75,15 @@ ACTION_RISK = {
     "media_control": SAFE,
     # Stumm, Desktop zeigen, Helligkeit: sofort umkehrbar, nichts geht verloren (Step 2.23). Nur "lock" fragt (siehe action_risk)
     "system_control": SAFE,
+    # liest den Text der Zwischenablage (kann Privates enthalten, geht an das Sprachmodell): immer erst fragen (Step 2.24)
+    "read_clipboard": CONFIRM,
+    # nimmt ein Bild des Bildschirms auf, das an das Sprachmodell geht: bei JEDEM Mal erst fragen (Step 2.25)
+    "describe_screen": CONFIRM,
+    # oeffnet eine Adresse im Browser (nur https, Adresse wird in der Rueckfrage gezeigt): immer erst fragen (Step 2.26)
+    "open_website": CONFIRM,
+    # liest nur die eigenen frueheren Gespraeche in der Datenbank (nichts wird geaendert) (Step 2.27)
+    "search_history": SAFE,
+    "goal_overview": SAFE,
     # liest Absender/Betreff aus einem privaten Postfach (nur lesen): immer erst fragen
     "check_mail": CONFIRM,
     # liest Kontaktdaten (Namen, Nummern, Geburtstage) aus dem Apple-Adressbuch, nur lesen; die Antwort geht an das Sprachmodell: immer erst fragen
@@ -183,6 +192,21 @@ def describe_task(task):
             when = " ".join(str(p.get(k) or "").strip() for k in ("date", "time") if isinstance(p.get(k), str) and p.get(k).strip())
             details += [str(p.get("title") or "")[:100], when,
                         f"Kalender: {widgets.default_store().remote.write_name} (erscheint auch auf deinem Handy)"]
+            continue
+
+        if action.name == "open_website":
+            goal = "Im Browser öffnen"
+            details += browser_tool.describe(action.parameters.get("url", ""), action.parameters.get("query", ""))
+            continue
+
+        if action.name == "describe_screen":
+            goal = "Bildschirm ansehen"
+            details += screen_tool.describe(action.parameters.get("question", ""))
+            continue
+
+        if action.name == "read_clipboard":
+            goal = "Zwischenablage lesen"
+            details += clipboard_tool.describe(action.parameters.get("question", ""))
             continue
 
         if action.name == "system_control":

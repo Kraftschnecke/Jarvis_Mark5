@@ -27,6 +27,7 @@ MAX_HEADLINE = 110
 _TAGS = re.compile(r"<[^>]*>")
 MAX_HEADLINES = 3
 STATE_FILE = Path(__file__).parent / "briefing_state.json"
+EVENING_STATE_FILE = Path(__file__).parent / "goals_state.json"
 
 
 def greeting(hour):
@@ -95,6 +96,28 @@ def timers_sentence(timers):
     if len(timers) == 1:
         return "Ein Timer läuft: " + parts[0] + "."
     return f"{len(timers)} Timer laufen: " + "; ".join(parts) + _more(len(parts), len(timers)) + "."
+
+
+def evening_text(goals, address, now):
+    """Die Abendfrage (Step 2.28): was heute noch offen ist, und welche Serie sonst reisst. Ohne offene Ziele: None.
+
+    goals: [{"text", "done", "daily", "streak"}] wie widgets.WidgetStore.get()["goals"].
+    """
+    goals = [g for g in goals if isinstance(g, dict) and str(g.get("text", "")).strip()]
+    open_goals = [g for g in goals if not g.get("done")]
+    if not open_goals:
+        return None
+    shown = [_short(g["text"]) for g in open_goals[:MAX_ITEMS]]
+    done = len(goals) - len(open_goals)
+    tail = f" ({done} von {len(goals)} erledigt)" if done else ""
+    parts = [f"{address}, es ist {now.strftime('%H:%M')} Uhr. Noch offen: " + ", ".join(shown)
+             + _more(len(shown), len(open_goals)) + tail + "."]
+    at_risk = [g for g in open_goals if g.get("daily") and isinstance(g.get("streak"), int) and g["streak"] >= 2]
+    if at_risk:
+        names = ", ".join(f"{_short(g['text'])} ({g['streak']} Tage)" for g in at_risk[:MAX_ITEMS])
+        parts.append(f"Diese Serie reißt, wenn sie heute offen bleibt: {names}.")
+    parts.append("Soll ich dir dabei helfen?")
+    return " ".join(parts)
 
 
 def news_sentence(items):
@@ -180,6 +203,23 @@ def default_marker():
     if _default_marker is None:
         _default_marker = DailyMarker()
     return _default_marker
+
+
+_evening_marker = None
+
+
+def evening_marker():
+    """Merkt sich, an welchem Tag die Abendfrage zu den Zielen schon kam (goals_state.json)."""
+    global _evening_marker
+    if _evening_marker is None:
+        _evening_marker = DailyMarker(EVENING_STATE_FILE)
+    return _evening_marker
+
+
+def set_evening_marker(marker):
+    """Nur fuer Tests."""
+    global _evening_marker
+    _evening_marker = marker
 
 
 def set_default_marker(marker):

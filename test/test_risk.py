@@ -102,7 +102,7 @@ expected = {
     "LIST_TIMERS": "safe", "CANCEL_TIMER": "safe",
     "ADD_CALENDAR_EVENT": "safe", "LIST_CALENDAR_EVENTS": "safe",
     "SET_VOLUME": "safe", "GET_WEATHER": "safe", "GET_NEWS": "safe", "CONVERT": "safe", "WIKI_LOOKUP": "safe", "TRANSLATE": "safe", "SET_REMINDER": "safe", "LIST_REMINDERS": "safe", "CANCEL_REMINDER": "safe", "GET_WORLD_TIME": "safe",
-    "SET_ALARM": "safe", "LIST_ALARMS": "safe", "CANCEL_ALARM": "safe", "STOP_RINGING": "safe", "GET_BRIEFING": "safe", "START_FOCUS": "safe", "FOCUS_STATUS": "safe", "STOP_FOCUS": "safe", "LIST_FOLDERS": "safe", "FIND_FILES": "safe", "READ_DOCUMENT": "safe", "WRITE_NOTE": "confirm", "MEDIA_CONTROL": "safe", "SYSTEM_CONTROL": "safe", "CHECK_MAIL": "confirm", "READ_MAIL": "confirm", "FIND_CONTACT": "confirm", "UPCOMING_BIRTHDAYS": "confirm",
+    "SET_ALARM": "safe", "LIST_ALARMS": "safe", "CANCEL_ALARM": "safe", "STOP_RINGING": "safe", "GET_BRIEFING": "safe", "START_FOCUS": "safe", "FOCUS_STATUS": "safe", "STOP_FOCUS": "safe", "LIST_FOLDERS": "safe", "FIND_FILES": "safe", "READ_DOCUMENT": "safe", "WRITE_NOTE": "confirm", "MEDIA_CONTROL": "safe", "SYSTEM_CONTROL": "safe", "READ_CLIPBOARD": "confirm", "DESCRIBE_SCREEN": "confirm", "OPEN_WEBSITE": "confirm", "SEARCH_HISTORY": "safe", "GOAL_OVERVIEW": "safe", "CHECK_MAIL": "confirm", "READ_MAIL": "confirm", "FIND_CONTACT": "confirm", "UPCOMING_BIRTHDAYS": "confirm",
     "OPEN_FILE": "confirm", "START_PROGRAM": "confirm",
     "READ_PAGE": "confirm",   # ohne Eintrag in der News-Liste: erst fragen (test_page.py prueft die Ausnahme)
 }

@@ -1,3 +1,4 @@
+/* Farben aus der bisherigen Oberflaeche (theme_manager.py) */
 :root {
   --window: #242322;
   --base: #1d1c1b;
@@ -9,7 +10,7 @@
   --accent-soft: rgba(22, 138, 173, 0.16);
   --radius: 14px;
 }
- 
+
 /* Helles Design (Farben aus theme_manager.py, LIGHT_PALETTE) */
 :root[data-theme="light"] {
   --window: #f2f4f7;
@@ -20,7 +21,7 @@
   --muted: #6b7480;
   --accent-soft: rgba(22, 138, 173, 0.12);
 }
- 
+
 /* Akzentfarbe "British Racing Green": im dunklen Design heller, damit Text lesbar bleibt */
 :root[data-accent="green"] {
   --accent: #28895f;
@@ -30,12 +31,12 @@
   --accent: #0b6b45;
   --accent-soft: rgba(11, 107, 69, 0.12);
 }
- 
+
 * { box-sizing: border-box; }
- 
+
 html { font-size: 14px; }
 html, body { height: 100%; margin: 0; }
- 
+
 body {
   background: var(--window);
   color: var(--text);
@@ -43,12 +44,12 @@ body {
   font-size: 1rem;
   line-height: 1.5;
 }
- 
+
 .layout {
   display: flex;
   height: 100%;
 }
- 
+
 .app {
   display: flex;
   flex-direction: column;
@@ -59,7 +60,7 @@ body {
   margin: 0 auto;
   padding: 0 16px;
 }
- 
+
 .topbar {
   display: flex;
   align-items: center;
@@ -67,14 +68,14 @@ body {
   padding: 16px 4px;
   border-bottom: 1px solid var(--line);
 }
- 
+
 .logo {
   font-size: 20px;
   font-weight: 600;
   letter-spacing: 0.22em;
   color: var(--accent);
 }
- 
+
 .status {
   font-size: 12px;
   letter-spacing: 0.12em;
@@ -83,7 +84,7 @@ body {
 .status[data-state="busy"] { color: var(--accent); }
 .status[data-state="busy"]::first-letter { animation: pulse 1s ease-in-out infinite; }
 .status[data-state="error"] { color: #d9695f; }
- 
+
 /* Weckwort: zeigt, dass der Browser gerade auf "Jarvis" wartet oder einen Befehl hoert */
 .wake {
   font-size: 12px;
@@ -95,9 +96,9 @@ body {
   margin-left: 12px;
 }
 .wake[data-mode="command"] { background: var(--accent); color: var(--base); }
- 
+
 @keyframes pulse { 50% { opacity: 0.25; } }
- 
+
 .chat {
   flex: 1;
   overflow-y: auto;
@@ -107,7 +108,7 @@ body {
   gap: 12px;
   scroll-behavior: smooth;
 }
- 
+
 .message {
   max-width: 78%;
   padding: 10px 14px;
@@ -171,14 +172,14 @@ body {
   font-family: Consolas, "Cascadia Mono", monospace;
   font-size: 13px;
 }
- 
+
 .composer {
   display: flex;
   gap: 10px;
   padding: 14px 0 18px;
   border-top: 1px solid var(--line);
 }
- 
+
 textarea {
   flex: 1;
   resize: none;
@@ -193,7 +194,7 @@ textarea {
 }
 textarea:focus { border-color: var(--accent); }
 textarea::placeholder { color: var(--muted); }
- 
+
 button {
   background: var(--accent);
   color: #fff;
@@ -209,13 +210,13 @@ button:hover { filter: brightness(1.1); }
 .mic[hidden] { display: none; }
 .mic.listening { background: var(--accent); border-color: var(--accent); color: #fff; animation: mic-pulse 1s ease-in-out infinite; }
 @keyframes mic-pulse { 50% { opacity: 0.65; } }
- 
+
 button:disabled, textarea:disabled { opacity: 0.45; cursor: not-allowed; }
- 
- 
- 
+
+
+
 /* ---------- Seitenleiste ---------- */
- 
+
 .sidebar {
   flex: 0 0 280px;
   display: flex;
@@ -226,14 +227,14 @@ button:disabled, textarea:disabled { opacity: 0.45; cursor: not-allowed; }
   border-right: 1px solid var(--line);
   overflow-y: auto;
 }
- 
+
 .sidebar-title {
   margin: 6px 6px 4px;
   font-size: 14px;
   font-weight: 700;
   color: var(--accent);
 }
- 
+
 .side-button, .row {
   display: flex;
   align-items: center;
@@ -252,9 +253,9 @@ button:disabled, textarea:disabled { opacity: 0.45; cursor: not-allowed; }
 .side-button:hover, .row:hover { background: var(--button); filter: none; }
 .side-button:disabled { opacity: 0.4; cursor: not-allowed; }
 .side-button .plus { color: var(--accent); }
- 
+
 .tree { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
- 
+
 .project-row { font-weight: 600; }
 .project-row .arrow { width: 14px; color: var(--muted); font-size: 12px; }
 .project-row .name, .conversation-row .name {
@@ -264,13 +265,13 @@ button:disabled, textarea:disabled { opacity: 0.45; cursor: not-allowed; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
- 
+
 .conversation-row { margin-left: 22px; width: calc(100% - 22px); padding: 7px 10px; }
 .project-row.active .name { color: var(--accent); }
 .create-row { color: var(--muted); }
 .row .more.add { color: var(--accent); }
 .conversation-row.active { background: var(--accent-soft); color: var(--accent); }
- 
+
 .row .more {
   visibility: hidden;
   padding: 0 6px;
@@ -280,13 +281,13 @@ button:disabled, textarea:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .row:hover .more, .row:focus-within .more { visibility: visible; }
 .row .more:hover { background: var(--line); color: var(--text); }
- 
+
 .empty-hint { margin: 6px 12px; color: var(--muted); font-size: 12px; }
- 
+
 .sidebar.locked { pointer-events: none; opacity: 0.6; }
- 
+
 /* ---------- Kontextmenue ---------- */
- 
+
 .menu {
   position: fixed;
   z-index: 20;
@@ -310,9 +311,9 @@ button:disabled, textarea:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .menu button:hover { background: var(--button); filter: none; }
 .menu button.danger { color: #d9695f; }
- 
+
 /* ---------- Dialog ---------- */
- 
+
 dialog {
   width: min(380px, 92vw);
   padding: 20px;
@@ -341,16 +342,16 @@ dialog input:focus { border-color: var(--accent); }
 .dialog-buttons button { padding: 9px 18px; }
 button.secondary { background: var(--button); color: var(--text); }
 button.danger-fill { background: #b84a40; }
- 
+
 /* ---------- Kleine Bildschirme ---------- */
- 
+
 .menu-button { display: inline-block; background: transparent; color: var(--text); padding: 4px 10px; font-size: 18px; }
- 
+
 /* Breites Fenster: linke Leiste per Knopf ein- und ausklappen */
 @media (min-width: 721px) {
   .layout.sidebar-collapsed .sidebar { display: none; }
 }
- 
+
 @media (max-width: 720px) {
   .sidebar {
     position: fixed;
@@ -364,15 +365,15 @@ button.danger-fill { background: #b84a40; }
   .message { max-width: 92%; }
   .row .more { visibility: visible; }
 }
- 
+
 /* ---------- Einstellungen ---------- */
- 
+
 .settings-button { margin-top: auto; }
- 
+
 dialog.settings { width: min(800px, 94vw); height: min(560px, 90vh); padding: 0; overflow: hidden; }
 .settings[open] { display: flex; }
 .settings-shell { display: flex; width: 100%; height: 100%; }
- 
+
 .settings-nav {
   flex: 0 0 190px;
   display: flex;
@@ -394,13 +395,13 @@ dialog.settings { width: min(800px, 94vw); height: min(560px, 90vh); padding: 0;
 }
 .settings-nav button:hover { background: var(--button); filter: none; }
 .settings-nav button.current { background: var(--accent-soft); color: var(--accent); }
- 
+
 .settings-page { flex: 1; min-width: 0; padding: 18px 20px; overflow-y: auto; }
 .settings-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .settings-head h3 { margin: 0; font-size: 18px; color: var(--accent); }
 .settings-head p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 .settings-head button { align-self: flex-start; padding: 8px 14px; }
- 
+
 .settings-rows { display: flex; flex-direction: column; gap: 8px; }
 .setting-row {
   display: flex;
@@ -415,7 +416,7 @@ dialog.settings { width: min(800px, 94vw); height: min(560px, 90vh); padding: 0;
 .setting-label { font-size: 13px; }
 .setting-note { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); }
 .setting-row.unavailable .setting-label { opacity: 0.55; }
- 
+
 .setting-control {
   min-width: 150px;
   max-width: 55%;
@@ -429,7 +430,7 @@ dialog.settings { width: min(800px, 94vw); height: min(560px, 90vh); padding: 0;
 }
 .setting-control:disabled { opacity: 0.45; cursor: not-allowed; }
 input[type="checkbox"].setting-control { min-width: 0; width: 18px; height: 18px; accent-color: var(--accent); }
- 
+
 /* Gespeicherte Erinnerungen (Settings > Memory) */
 .folder-list { display: flex; flex-direction: column; gap: 6px; }
 .folder-item { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 14px; background: var(--base); border: 1px solid var(--line); border-radius: 10px; }
@@ -447,7 +448,7 @@ input[type="checkbox"].setting-control { min-width: 0; width: 18px; height: 18px
 .memory-key { font-family: Consolas, "Courier New", monospace; font-size: 12px; color: var(--accent); overflow-wrap: anywhere; }
 .memory-type { flex: none; padding: 1px 8px; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; }
 .memory-value { margin-top: 3px; font-size: 13px; overflow-wrap: anywhere; white-space: pre-wrap; }
- 
+
 .memory-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 6px; }
 .memory-actions button { padding: 4px 10px; font-size: 12px; }
 .memory-actions select { padding: 4px 8px; font-size: 12px; background: var(--window); color: var(--text); border: 1px solid var(--line); border-radius: 8px; margin-right: auto; }
@@ -461,13 +462,13 @@ button.danger-text { color: #d9695f; }
 .danger-hint { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
 .danger-hint code { display: inline-block; margin-top: 4px; padding: 2px 8px; color: var(--text); background: var(--window); border: 1px solid var(--line); border-radius: 6px; user-select: none; }
 #danger-ok:disabled { opacity: 0.45; cursor: not-allowed; }
- 
+
 @media (max-width: 720px) {
   .settings-shell { flex-direction: column; }
   .settings-nav { flex: 0 0 auto; flex-direction: row; overflow-x: auto; padding: 8px; border-right: 0; border-bottom: 1px solid var(--line); }
   .settings-nav button { width: auto; white-space: nowrap; }
 }
- 
+
 /* Aktionsprotokoll (Settings > Activity) */
 .action-list { display: flex; flex-direction: column; gap: 10px; }
 .action-item {
@@ -481,7 +482,7 @@ button.danger-text { color: #d9695f; }
 .action-item.action-declined { border-left-color: var(--muted); }
 .action-detail { display: block; margin-top: 4px; overflow-wrap: anywhere; }
 .action-state { margin-top: 6px; font-size: 12px; color: var(--muted); }
- 
+
 .setting-control[type="checkbox"] { flex: none; }
 .ringing { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; padding: 10px 14px;
   background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--radius); animation: ringing-pulse 1s ease-in-out infinite; }
@@ -505,10 +506,10 @@ button.danger-text { color: #d9695f; }
 .voice-test > span { flex: 1; }
 .stop { padding: 0 14px; }
 .stop[hidden] { display: none; }
- 
- 
+
+
 /* ---------- Seitenleiste rechts: Widgets ---------- */
- 
+
 .widgets {
   flex: 0 0 260px;
   display: flex;
@@ -520,7 +521,7 @@ button.danger-text { color: #d9695f; }
   overflow-y: auto;
 }
 .widgets[hidden], .widget[hidden] { display: none; }
- 
+
 .widget {
   background: var(--base);
   border: 1px solid var(--line);
@@ -530,10 +531,10 @@ button.danger-text { color: #d9695f; }
 .w-title { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 0.04em; }
 .w-muted { color: var(--muted); font-size: 12px; }
 .w-status { margin-top: 6px; min-height: 1em; }
- 
+
 .w-clock-time { font-size: 34px; font-weight: 600; letter-spacing: 0.05em; color: var(--accent); font-variant-numeric: tabular-nums; }
 .w-date-day { font-size: 48px; font-weight: 600; line-height: 1; color: var(--accent); }
- 
+
 .w-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .w-cal-title { font-weight: 600; font-size: 13px; }
 .w-cal-nav { background: none; border: none; color: var(--text); font-size: 18px; cursor: pointer; padding: 0 8px; }
@@ -542,7 +543,7 @@ button.danger-text { color: #d9695f; }
 .w-cal-dow { color: var(--muted); padding: 2px 0; }
 .w-cal-day { padding: 4px 0; border-radius: 6px; }
 .w-cal-day.today { background: var(--accent); color: var(--base); font-weight: 700; }
- 
+
 .w-notes {
   width: 100%;
   box-sizing: border-box;
@@ -556,12 +557,18 @@ button.danger-text { color: #d9695f; }
   font-size: 13px;
 }
 .w-notes:focus, .w-goal-input:focus { outline: none; border-color: var(--accent); }
- 
+
 .w-goals { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .w-goal { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .w-goal input[type="checkbox"] { accent-color: var(--accent); }
 .w-goal-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .w-goal.done .w-goal-text { text-decoration: line-through; color: var(--muted); }
+.w-streak { font-size: 12px; color: var(--accent); white-space: nowrap; }
+.w-week { display: flex; gap: 4px; margin: 6px 0; }
+.w-week-day { flex: 1; display: flex; flex-direction: column; align-items: center; font-size: 11px; color: var(--muted);
+  border: 1px solid var(--border, rgba(128,128,128,.3)); border-radius: 6px; padding: 2px 0; }
+.w-week-day.full { color: var(--accent); border-color: var(--accent); }
+.w-week-count { font-size: 12px; }
 .w-goal-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; }
 .w-goal-remove:hover { color: var(--text); }
 .w-goal-form { display: flex; gap: 6px; }
@@ -571,7 +578,7 @@ button.danger-text { color: #d9695f; }
   border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 13px;
 }
 .w-goal-add { border: none; border-radius: 8px; background: var(--accent); color: var(--base); padding: 0 12px; cursor: pointer; font-weight: 700; }
- 
+
 .w-hockey { display: flex; flex-direction: column; gap: 6px; }
 .w-game-current { background: var(--accent-soft); border-radius: 8px; padding: 8px; }
 .w-game-current.live { border: 1px solid var(--accent); }
@@ -580,8 +587,8 @@ button.danger-text { color: #d9695f; }
 .w-games { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .w-game { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
 .w-game-when { color: var(--muted); }
- 
- 
+
+
 .w-cal-day { border: none; background: none; color: inherit; font: inherit; font-size: 12px; cursor: pointer; position: relative; }
 .w-cal-day.empty { cursor: default; }
 .w-cal-day:not(.empty):hover { background: var(--accent-soft); }
@@ -624,21 +631,21 @@ button.danger-text { color: #d9695f; }
 .w-event-time { flex: 1; padding: 6px 4px; }
 .w-event-form .w-goal-add { padding: 6px 14px; }
 .w-event-title:focus, .w-event-time:focus { outline: none; border-color: var(--accent); }
- 
+
 .w-daily, .w-daily-toggle {
   background: none; border: none; color: var(--muted); cursor: pointer; font-size: 15px; padding: 0 2px; opacity: 0.45;
 }
 .w-daily.on, .w-daily-toggle.on { color: var(--accent); opacity: 1; }
 .w-daily-toggle { border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; opacity: 1; }
 .w-daily-toggle.on { border-color: var(--accent); }
- 
+
 .widgets-button {
   margin-left: auto; background: none; border: 1px solid var(--line); border-radius: 8px;
   color: var(--text); font-size: 16px; padding: 2px 8px; cursor: pointer;
 }
 .widgets-button[hidden] { display: none; }
 .widgets-button[aria-expanded="true"] { border-color: var(--accent); background: var(--accent-soft); }
- 
+
 /* Zu schmale Fenster: die Leiste klappt ueber den Knopf oben von rechts auf */
 @media (max-width: 1180px) {
   .widgets {
@@ -649,7 +656,7 @@ button.danger-text { color: #d9695f; }
   }
   .layout.widgets-open .widgets { transform: translateX(0); visibility: visible; }
 }
- 
+
 /* Gastmodus (Server mit --guest): nur der Chat, keine Seitenleiste, keine Einstellungen */
 body.guest .sidebar,
 body.guest .menu-button,
@@ -660,7 +667,7 @@ body.guest #mic,
 body.guest .wake,
 body.guest .widgets,
 body.guest .widgets-button { display: none !important; }
- 
+
 /* PC Facts und Performance (Step 2.8) */
 .w-facts { display: flex; flex-direction: column; gap: 4px; }
 .w-fact { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
@@ -676,7 +683,7 @@ body.guest .widgets-button { display: none !important; }
 .w-bar-fill.warn { background: #d8a43a; }
 .w-bar-fill.high { background: #d9534f; }
 .w-perf-line { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
- 
+
 /* wiederkehrende Termine (Step 2.10) */
 .w-goal-remove { flex: 0 0 auto; }
 .w-series-remove { font-size: 12px; white-space: nowrap; padding: 0 2px; }

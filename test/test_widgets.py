@@ -18,8 +18,16 @@ folder = Path(tempfile.mkdtemp())
 # ---- Notizen und Ziele
 day = [date(2026, 10, 21)]
 store = WidgetStore(folder / "w.json", today=lambda: day[0])
+
+
+def empty_week(end):
+    """Sieben Tage ohne taegliche Ziele, aeltester zuerst, endet am Tag `end`."""
+    from datetime import timedelta
+    return [{"date": (end - timedelta(days=back)).isoformat(), "done": 0, "total": 0} for back in range(6, -1, -1)]
+
+
 assert not (folder / "w.json").exists(), "ohne Speichern entsteht keine Datei"
-assert store.get() == {"notes": "", "goals": [], "date": "2026-10-21", "events": []}
+assert store.get() == {"notes": "", "goals": [], "date": "2026-10-21", "events": [], "week": empty_week(date(2026, 10, 21))}
 
 store.set_notes("Milch kaufen\nÜmlaut ß")
 assert store.get()["notes"] == "Milch kaufen\nÜmlaut ß"
@@ -65,7 +73,7 @@ assert len(store.get()["goals"]) == widgets.MAX_GOALS
 for content in ("{kaputt", "[1,2]", '{"notes": 5, "goals": "x"}', '{"goals": {"date": "2026-10-21", "items": [1, {"text": 3}]}}'):
     (folder / "k.json").write_text(content, encoding="utf-8")
     assert WidgetStore(folder / "k.json", today=lambda: date(2026, 10, 21)).get() == \
-        {"notes": "", "goals": [], "date": "2026-10-21", "events": []}, content
+        {"notes": "", "goals": [], "date": "2026-10-21", "events": [], "week": empty_week(date(2026, 10, 21))}, content
 # Speichern ueber kaputte Datei klappt
 WidgetStore(folder / "k.json").set_notes("ok")
 assert json.loads((folder / "k.json").read_text(encoding="utf-8"))["notes"] == "ok"
@@ -184,7 +192,7 @@ store.set_goals([{"text": "Gym", "done": True, "daily": True}, {"text": "Steuer"
 assert [(g["text"], g["done"], g["daily"]) for g in store.get()["goals"]] == [
     ("Gym", True, True), ("Steuer", True, False), ("Lesen", False, False)], "daily ist optional"
 day[0] = date(2026, 10, 22)
-assert store.get()["goals"] == [{"text": "Gym", "done": False, "daily": True}], "nur taegliche Ziele, wieder offen"
+assert store.get()["goals"] == [{"text": "Gym", "done": False, "daily": True, "streak": 1}], "nur taegliche Ziele, wieder offen (Serie von gestern lebt)"
 store.set_goals(store.get()["goals"] + [{"text": "Neu", "done": False, "daily": False}])
 day[0] = date(2026, 10, 23)
 assert [g["text"] for g in store.get()["goals"]] == ["Gym"]

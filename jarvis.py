@@ -26,6 +26,7 @@ import plan_view
 from capabilities import describe_capabilities
 import risk
 import tools.document_tool as document_tool
+import tools.browser_tool as browser_tool
 import tools.mail_tool as mail_tool
 import tools.note_tool as note_tool
 from task_executor import (
@@ -202,6 +203,33 @@ class Jarvis:
                 print(f"[BRIEFING] nicht erstellt: {type(error).__name__}")
                 return None
             marker.mark(today)
+            return text
+
+    def evening_goals(self):
+        """Die Abendfrage (Step 2.28): Text oder None. Nur Anzeige, Jarvis tut dabei nichts.
+
+        Kommt hoechstens einmal pro Tag, erst ab der eingestellten Stunde, nur wenn noch Ziele offen sind.
+        """
+        manager = self.settings_manager
+        if getattr(self, "guest", False) or not manager.get("goals", "evening", False):
+            return None
+        if not abilities.task_enabled("GOAL_OVERVIEW", manager):
+            return None
+        now = reminders.default_store().now()
+        if now.hour < manager.get("goals", "evening_hour", 20):
+            return None
+        marker = briefing.evening_marker()
+        today = now.strftime("%Y-%m-%d")
+        with marker.lock:
+            if not marker.is_due(today):
+                return None
+            try:
+                text = briefing.evening_text(widgets.default_store().get()["goals"], get_address(), now)
+            except Exception as error:
+                print(f"[ZIELE] Abendfrage nicht erstellt: {type(error).__name__}")
+                return None
+            if text:
+                marker.mark(today)
             return text
 
     def snooze_ring(self, ring, minutes):
@@ -610,6 +638,9 @@ class Jarvis:
         for action in prepared.actions:
             if action.name == "read_mail":
                 return mail_tool.check_selection(action.parameters.get("which", ""))
+
+            if action.name == "open_website":
+                return browser_tool.check(action.parameters.get("url", ""), action.parameters.get("query", ""))
 
             if action.name != "write_note":
                 continue

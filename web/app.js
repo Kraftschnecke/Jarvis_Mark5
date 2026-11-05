@@ -695,7 +695,7 @@ function renderCalendar(section) {
     const alarms = alarmsByDay[selected] || [];
     if (!events.length && !alarms.length) list.append(wEl("li", "w-muted", "Keine Termine."));
     events.forEach((event) => {
-      const item = wEl("li", "w-event");
+      const item = wEl("li", event.source === "apple" ? "w-event w-event-apple" : "w-event");
       const remove = wEl("button", "w-goal-remove", "×");
       remove.type = "button";
       remove.setAttribute("aria-label", (event.series ? "Nur diesen Termin löschen: " : "Termin löschen: ") + event.title);
@@ -710,6 +710,11 @@ function renderCalendar(section) {
       const label = wEl("span", "w-event-text", (event.repeat ? "↻ " : "") + event.title);
       if (event.repeat) label.title = event.repeat;
       item.append(wEl("span", "w-event-when", event.time || "ganztägig"), label);
+      if (event.source === "apple") {
+        const badge = wEl("span", "w-event-cal", event.calendar || "Apple");
+        badge.title = event.readonly ? "Aus dem Apple-Kalender – am Handy ändern" : "Apple-Kalender (auch am Handy)";
+        item.append(badge);
+      }
       if (event.series) {
         // Ganze Serie loeschen: zwei Klicks (der erste fragt nach), damit nichts aus Versehen verschwindet
         const series = wEl("button", "w-goal-remove w-series-remove", "↻×");
@@ -738,7 +743,7 @@ function renderCalendar(section) {
         });
         item.append(series);
       }
-      item.append(remove);
+      if (!event.readonly) item.append(remove);
       list.append(item);
     });
     alarms.forEach((alarm) => list.append(alarmItem(alarm)));
@@ -821,6 +826,10 @@ function renderCalendar(section) {
 
   function update(data) {
     byDate = W.eventsByDate(data.events);
+    // Apple-Kalender (Step 2.19): wohin neue Termine gehen, und ein Hinweis, wenn die Verbindung gerade nicht klappt
+    const sync = data.sync;
+    field.placeholder = sync && sync.can_write ? "Termin → " + sync.write_calendar + " …" : "Termin …";
+    if (sync && sync.enabled && !sync.ok && sync.error) status.textContent = "Apple-Kalender: " + sync.error;
     drawGrid();
     drawDay();
     refreshAlarms();
@@ -898,10 +907,28 @@ function renderGoals(section) {
   add.type = "submit";
   add.setAttribute("aria-label", "Ziel hinzufügen");
   form.append(field, dailyToggle, add);
+  const weekBar = wEl("div", "w-week");
   section.append(wEl("h3", "w-title", "Ziele heute"), list, form,
-    wEl("div", "w-status w-muted", "↻ = täglich wiederkehrend"), status);
+    wEl("div", "w-status w-muted", "↻ = täglich wiederkehrend, 🔥 = Tage in Folge"), weekBar, status);
 
   let goals = [];
+  let week = [];
+
+  // Letzte 7 Tage: wie viele der taeglichen Ziele erledigt waren (nur wenn es welche gab)
+  function drawWeek() {
+    weekBar.replaceChildren();
+    if (!week.some((d) => d.total > 0)) return;
+    week.forEach((d) => {
+      const names = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+      const cell = wEl("div", "w-week-day" + (d.total && d.done === d.total ? " full" : ""));
+      cell.append(wEl("span", "w-week-name", names[new Date(d.date + "T12:00:00").getDay()]),
+        wEl("span", "w-week-count", d.total ? d.done + "/" + d.total : "–"));
+      cell.title = d.date + ": " + (d.total ? d.done + " von " + d.total + " täglichen Zielen erledigt" : "keine täglichen Ziele");
+      weekBar.append(cell);
+    });
+  }
+
+  function apply(data) { goals = data.goals; week = data.week || []; draw(); }
 
   function draw() {
     list.replaceChildren();
@@ -923,9 +950,13 @@ function renderGoals(section) {
       remove.type = "button";
       remove.setAttribute("aria-label", "Ziel löschen");
       remove.addEventListener("click", () => { goals.splice(index, 1); persist(); });
-      item.append(box, wEl("span", "w-goal-text", goal.text), repeat, remove);
+      const streak = goal.daily && goal.streak > 0
+        ? wEl("span", "w-streak", "🔥 " + goal.streak) : null;
+      if (streak) streak.title = goal.streak + (goal.streak === 1 ? " Tag" : " Tage") + " in Folge erledigt";
+      item.append(box, wEl("span", "w-goal-text", goal.text), ...(streak ? [streak] : []), repeat, remove);
       list.append(item);
     });
+    drawWeek();
   }
 
   // Mehrere schnelle Aenderungen werden nacheinander gespeichert; erst die Antwort der letzten
@@ -946,7 +977,7 @@ function renderGoals(section) {
         status.textContent = "Nicht gespeichert: " + error.message;
       }
       queued -= 1;
-      if (queued === 0 && data) { goals = data.goals; draw(); }
+      if (queued === 0 && data) apply(data);
     });
   }
 
@@ -968,10 +999,10 @@ function renderGoals(section) {
     persist();
   });
 
-  loadWidgetData(true).then((data) => { goals = data.goals; draw(); })
+  loadWidgetData(true).then(apply)
     .catch((error) => { status.textContent = error.message; });
   // Neuer Tag oder Aenderung von aussen: Liste neu laden (Eingabefeld bleibt unberuehrt)
-  registerRefresher(section, (data) => { goals = data.goals; draw(); });
+  registerRefresher(section, apply);
 }
 
 // ---- unten: Eishockey (Spielplan holt der Server von der NHL)
@@ -1757,6 +1788,15 @@ const PAGES = [
     ],
   },
   {
+    key: "Goals", icon: "🎯", desc: "Tagesziele mit Serie (🔥 = Tage in Folge erledigt) und Wochenleiste findest du im Ziele-Widget (Seitenleiste, Einstellung Widgets). Die Serie zählt nur tägliche Ziele (↻); ein ausgelassener Tag unterbricht sie. Du fragst Jarvis mit „Wie laufen meine Ziele?“.",
+    rows: [
+      { label: "Evening reminder", category: "goals", key: "evening", type: "toggle", live: true,
+        note: "Ab der eingestellten Uhrzeit meldet sich Jarvis einmal am Tag im Chat, wenn noch Ziele offen sind, und nennt Serien, die sonst reißen. Das ist nur ein Hinweis: Jarvis hakt nichts ab und tut nichts von selbst. Die Seite muss dafür offen sein." },
+      { label: "From (hour)", category: "goals", key: "evening_hour", type: "number", min: 17, max: 23, live: true,
+        note: "Die Stunde, ab der die Abendfrage kommen darf (17 bis 23 Uhr)." },
+    ],
+  },
+  {
     key: "Limits", icon: "💶", desc: "Tageslimits für kostenpflichtige Aufrufe an OpenAI. Ist ein Limit erreicht, geht nichts mehr raus, bis um Mitternacht der Zähler wieder bei 0 beginnt. 0 bedeutet kein Limit.",
     rows: [
       { label: "AI calls today", type: "readonly", live: true, text: () => usageText("ai") },
@@ -2505,6 +2545,21 @@ function pollRinging() {
 }
 
 setInterval(pollRinging, 1000);
+
+// ======================================================================
+// Abendfrage zu offenen Zielen (Step 2.28): nur ein Hinweis im Chat, Jarvis tut nichts
+// ======================================================================
+async function checkEvening() {
+  if (guestMode || !(settings.goals && settings.goals.evening)) return;
+  try {
+    const data = await api("POST", "/api/goals/evening", {});
+    if (data.text) addMessage("jarvis", data.text);
+  } catch (error) {
+    /* ohne Abendfrage */
+  }
+}
+setInterval(checkEvening, 5 * 60 * 1000);
+setTimeout(checkEvening, 4000);        // kurz nach dem Start (Einstellungen sind dann geladen), sonst beim naechsten Takt
 
 // ======================================================================
 // Start

@@ -16,6 +16,7 @@ Dinge:
        GET  /api/background?after=<id>  ->  {"messages": [{"id": 3, "text": "..."}], "last": 3}
                              (ohne "after": nur den aktuellen Stand "last" melden)
        GET  /api/alarms      ->  alle Wecker fuer den Kalender; POST /api/alarms/add, /api/alarms/update und /api/alarms/delete (Step 2.11b)
+       POST /api/goals/evening -> Abendfrage zu offenen Zielen: {"text": ...} oder null (Step 2.28)
        POST /api/briefing/auto -> Tagesbriefing beim ersten Start des Tages: {"text": ...} oder null (Step 2.12)
        GET  /api/folders     ->  freigegebene Ordner; POST /api/folders/add und /api/folders/remove pflegen sie (Step 2.14)
        GET  /api/focus       ->  laufende Fokus-Sitzung (Phase, Runde, Restzeit); POST /api/focus/stop beendet sie (Step 2.13)
@@ -127,6 +128,8 @@ EDITABLE_SETTINGS[("focus", "long_break_minutes")] = lambda v: _is_int(v, 1, 60)
 EDITABLE_SETTINGS[("focus", "rounds")] = lambda v: _is_int(v, 1, 12)
 EDITABLE_SETTINGS[("briefing", "auto")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("briefing", "news")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("goals", "evening")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("goals", "evening_hour")] = lambda v: _is_int(v, 17, 23)
 # Schalter fuer Faehigkeiten: eine Zeile je Eintrag in abilities.ABILITIES
 EDITABLE_SETTINGS[("limits", "ai_calls_per_day")] = lambda v: _is_int(v, 0, 100000)
 EDITABLE_SETTINGS[("limits", "speech_calls_per_day")] = lambda v: _is_int(v, 0, 100000)
@@ -756,6 +759,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
                                             "state": focus.default_manager().state()})
 
             # Briefing beim ersten Start des Tages (Step 2.12): hoechstens einmal pro Tag, sonst text = null
+            if path == "/api/goals/evening":
+                return self.send_json(200, {"text": self.server.jarvis.evening_goals()})
             if path == "/api/briefing/auto":
                 return self.send_json(200, {"text": self.server.jarvis.auto_briefing()})
 

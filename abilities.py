@@ -78,6 +78,28 @@ ABILITIES = (
             "Ton stumm schalten, Bildschirm sperren, alle Fenster minimieren und die Helligkeit ändern (Helligkeit nur bei Bildschirmen, die Windows dimmen kann, meist Laptops). "
             "Nur das Sperren fragt vorher nach. Keine Konten, kein Netz; Jarvis schließt oder löscht dabei nichts.",
             ("SYSTEM_CONTROL",)),
+    Ability("history", "Frühere Gespräche durchsuchen",
+            "In deinen früheren Gesprächen mit Jarvis nachschlagen („Worüber haben wir letzte Woche beim Projekt X gesprochen?“, „Was hatte ich zu … gefragt?“). "
+            "Nur lesen, nur in Jarvis' eigener Datenbank; es wird nichts geändert. Die gefundenen Ausschnitte gehen wie jede Antwort an OpenAI. Nachrichten der letzten Minute werden übersprungen.",
+            ("SEARCH_HISTORY",)),
+    Ability("goals", "Ziele und Gewohnheiten",
+            "Fragen zu deinen Tageszielen beantworten: was heute offen ist, wie lang die Serie eines täglichen Ziels ist („Wie lange gehe ich schon ins Fitnessstudio?“) und wie die letzte Woche war. "
+            "Nur lesen, aus dem Ziele-Widget (widgets.json); Ziele anlegen und abhaken machst du in der Seitenleiste. Die Abendfrage („Das ist heute noch offen“) schaltest du unter Goals ein.",
+            ("GOAL_OVERVIEW",)),
+    Ability("browser", "Webseite im Browser öffnen",
+            "Auf Wunsch eine Webseite oder eine Suche in einem neuen Tab deines Standardbrowsers öffnen. Nur https-Adressen (http wird zu https), keine anderen Adressarten, "
+            "keine Rechnernamen, Zahlen- oder Heimnetz-Adressen. Immer erst nach deinem Ja, mit Anzeige der Adresse. Jarvis liest dabei nichts von der Seite und gibt nichts ein.",
+            ("OPEN_WEBSITE",)),
+    Ability("screen", "Bildschirm ansehen",
+            "Auf Wunsch einmal ein Bild deines Hauptbildschirms aufnehmen und beschreiben oder eine Frage dazu beantworten (Was bedeutet diese Fehlermeldung?). "
+            "Bei jedem Mal erst nach deinem Ja. Das Bild geht nur zum Antworten an OpenAI und wird nirgends gespeichert; alles, was gerade sichtbar ist, ist darin. "
+            "Jarvis sieht nur zu: kein Klicken, kein Tippen, keine Dauerbeobachtung.",
+            ("DESCRIBE_SCREEN",), default=False),
+    Ability("clipboard", "Zwischenablage",
+            "Den Text lesen, den du gerade kopiert hast, und ihn zusammenfassen, übersetzen oder eine Frage dazu beantworten. "
+            "Nur lesen und nur Text (nichts in die Zwischenablage schreiben, keine Bilder oder Dateien). Immer erst nach deinem Ja; die Rückfrage zeigt den Inhalt nicht. "
+            "Der Text (höchstens 9 000 Zeichen) geht wie jede Antwort an OpenAI und wird nicht gespeichert.",
+            ("READ_CLIPBOARD",), default=False),
     Ability("mail", "E-Mail lesen",
             "Mails auflisten (Absender, Betreff, Datum; neue oder die letzten bis zu 20) und auf Wunsch den Text einer gezeigten Mail zusammenfassen, aus einem Postfach per IMAP, das nur du in der .env einträgst. "
             "Nur lesen: nichts senden, antworten, löschen oder als gelesen markieren, keine Anhänge. Immer erst nach deinem Ja. "

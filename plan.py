@@ -38,6 +38,9 @@ import risk
 from task_executor import prepare_registered_task
 
 MAX_STEPS = 6
+
+# Diese Aufgaben gibt es nur einzeln: das Bild des Bildschirms reist nur mit der Antwort auf eine einzelne Frage (Step 2.25)
+NOT_IN_PLANS = frozenset({"DESCRIBE_SCREEN"})
 MAX_TEXT = 500
 MAX_GOAL = 200
 MAX_NUMBER = 1_000_000_000
@@ -172,6 +175,9 @@ def parse_plan(raw, task_registry):
 
         if task is None:
             raise PlanError(f"Schritt {index}: unbekannte Aufgabe.")
+
+        if task_type in NOT_IN_PLANS:
+            raise PlanError(f"Schritt {index}: diese Aufgabe gibt es nur einzeln, nicht in einem Plan.")
 
         raw_parameters = raw_step.get("parameters", {})
 

@@ -65,6 +65,11 @@ class SettingsManager:
             "auto": False,            # beim ersten Start des Tages von selbst vorlesen
             "news": True,             # Schlagzeilen anhaengen (nur wenn die News-Faehigkeit an ist)
         },
+        # Ziele und Gewohnheiten (Mark 5, Step 2.28)
+        "goals": {
+            "evening": False,         # abends von selbst fragen, was heute noch offen ist (nur Anzeige in der Seite)
+            "evening_hour": 20,       # ab dieser Uhrzeit (Stunde, 17 bis 23)
+        },
         # Tageslimits fuer kostenpflichtige OpenAI-Aufrufe (Mark 5, Step 1.4), 0 = kein Limit
         "limits": {
             "ai_calls_per_day": 500,

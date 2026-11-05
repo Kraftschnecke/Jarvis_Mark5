@@ -25,6 +25,8 @@ MAX_EVENT_TITLE = 100
 SERIES_HORIZON_DAYS = 365        # Serien ohne Ende werden immer ein Jahr im Voraus ausgelegt
 MAX_SERIES = 20
 MAX_LABEL = 80
+HISTORY_DAYS = 120               # so lange werden erledigte Tagesziele fuer Serien (Streaks) gemerkt
+WEEK_DAYS = 7
 EVENT_KEEP_DAYS = 31            # Termine, die laenger her sind, werden beim Speichern aufgeraeumt
 
 # Alle Zugriffe auf widgets.json (Seite UND Jarvis-Aufgaben) laufen durch dieses eine Schloss,
@@ -53,6 +55,48 @@ class WidgetStore:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, self.path)
+
+    @staticmethod
+    def goal_key(text):
+        """Gleiches Ziel trotz anderer Gross-/Kleinschreibung oder Leerzeichen."""
+        return " ".join(str(text).casefold().split())
+
+    @staticmethod
+    def _clean_history(history):
+        """{"2026-11-05": {"fitnessstudio": True}}: nur gueltige Tage, nur Wahrheitswerte, nur die letzten HISTORY_DAYS."""
+        clean = {}
+        for day, goals in (history if isinstance(history, dict) else {}).items():
+            if _valid_date(day) and isinstance(goals, dict):
+                clean[day] = {k[:MAX_GOAL_LENGTH]: v for k, v in goals.items() if isinstance(k, str) and isinstance(v, bool)}
+        return {day: clean[day] for day in sorted(clean)[-HISTORY_DAYS:]}
+
+    @staticmethod
+    def streak(history, key, today):
+        """Wie viele Tage in Folge das Ziel erledigt wurde. Heute noch offen: zaehlt ab gestern (die Serie lebt noch)."""
+        day = today
+        if not history.get(day.isoformat(), {}).get(key):
+            day -= timedelta(days=1)
+        count = 0
+        while count < HISTORY_DAYS and history.get(day.isoformat(), {}).get(key):
+            count += 1
+            day -= timedelta(days=1)
+        return count
+
+    def _week(self, history, items, today):
+        """Die letzten 7 Tage (aeltester zuerst): wie viele der taeglichen Ziele erledigt waren. Heute aus der aktuellen Liste."""
+        week = []
+        for back in range(WEEK_DAYS - 1, -1, -1):
+            day = today - timedelta(days=back)
+            if back == 0:
+                goals = {}
+                for g in items:
+                    if g["daily"]:
+                        key = self.goal_key(g["text"])
+                        goals[key] = goals.get(key, False) or g["done"]
+            else:
+                goals = history.get(day.isoformat(), {})
+            week.append({"date": day.isoformat(), "done": sum(1 for v in goals.values() if v), "total": len(goals)})
+        return week
 
     @staticmethod
     def _clean_goals(items):
@@ -134,7 +178,11 @@ class WidgetStore:
             # Neuer Tag: einmalige Ziele sind weg, taegliche kommen wieder, als noch nicht erledigt
             items = [dict(g, done=False) for g in items if g["daily"]]
         events = self._clean_events(data.get("events"))
-        result = {"notes": notes, "goals": items, "date": today, "events": events}
+        history = self._clean_history(data.get("history"))
+        day = self.today()
+        items = [dict(g, streak=self.streak(history, self.goal_key(g["text"]), day)) if g["daily"] else g for g in items]
+        result = {"notes": notes, "goals": items, "date": today, "events": events,
+                  "week": self._week(history, items, day)}
         if self.remote is not None:
             # Termine aus Apple dazu (schreibgeschuetzt ausser im Schreib-Kalender); der Zustand der Verbindung steht dabei
             merged = events + self.remote.events()
@@ -172,7 +220,20 @@ class WidgetStore:
             clean.append({"text": text, "done": item["done"], "daily": item.get("daily", False)})
         with self._lock:
             data = self._load()
-            data["goals"] = {"date": self.today().isoformat(), "items": clean}
+            today = self.today().isoformat()
+            data["goals"] = {"date": today, "items": clean}
+            # Fuer die Serien: der heutige Stand der taeglichen Ziele (spaeter erledigt/abgehakt ueberschreibt)
+            history = self._clean_history(data.get("history"))
+            day = {}
+            for g in clean:
+                if g["daily"]:
+                    key = self.goal_key(g["text"])
+                    day[key] = day.get(key, False) or g["done"]
+            if day:
+                history[today] = day
+            else:
+                history.pop(today, None)
+            data["history"] = self._clean_history(history)
             self._save(data)
 
     # ---- Kalender-Termine (von der Seite oder von Jarvis)

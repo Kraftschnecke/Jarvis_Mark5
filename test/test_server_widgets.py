@@ -82,7 +82,9 @@ def request(method, path, payload=None, content_type="application/json"):
 
 
 # Standard: leer
-assert request("GET", "/api/widgets") == (200, {"notes": "", "goals": [], "date": "2026-10-21", "events": []})
+status, data = request("GET", "/api/widgets")
+assert status == 200 and {k: v for k, v in data.items() if k != "week"} == {"notes": "", "goals": [], "date": "2026-10-21", "events": []}
+assert len(data["week"]) == 7 and data["week"][-1] == {"date": "2026-10-21", "done": 0, "total": 0}
 
 # Speichern und wieder lesen (auch waehrend Jarvis eine Nachricht bearbeitet)
 with httpd.message_lock:
@@ -93,7 +95,7 @@ with httpd.message_lock:
 
 # Taegliche Ziele und Termine
 status, data = request("POST", "/api/widgets/goals", {"items": [{"text": "Gym", "done": False, "daily": True}]})
-assert status == 200 and data["goals"] == [{"text": "Gym", "done": False, "daily": True}]
+assert status == 200 and data["goals"] == [{"text": "Gym", "done": False, "daily": True, "streak": 0}]
 status, data = request("POST", "/api/widgets/events", {"title": "Zahnarzt", "date": "2026-10-23", "time": "14:30"})
 assert status == 200 and data["events"][0]["title"] == "Zahnarzt" and data["events"][0]["time"] == "14:30"
 event_id = data["events"][0]["id"]
@@ -116,7 +118,7 @@ for path, payload in (("/api/widgets/notes", {"text": 5}), ("/api/widgets/notes"
                       ("/api/widgets/goals", {})):
     status, data = request("POST", path, payload)
     assert status == 400 and "error" in data, (path, payload, status)
-assert request("GET", "/api/widgets")[1]["goals"] == [{"text": "Gym", "done": False, "daily": True}], "Fehlversuche aendern nichts"
+assert request("GET", "/api/widgets")[1]["goals"] == [{"text": "Gym", "done": False, "daily": True, "streak": 0}], "Fehlversuche aendern nichts"
 assert request("POST", "/api/widgets/notes", {"text": "x"}, content_type="text/plain")[0] == 415
 
 # Einstellungen fuer die Seitenleiste werden geprueft

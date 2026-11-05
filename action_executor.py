@@ -14,6 +14,11 @@ import widgets
 from tools.volume_tool import set_volume
 from tools.media_tool import media_control
 from tools.system_tool import system_control
+from tools.goals_tool import goal_overview
+from tools.history_tool import search_history
+from tools.browser_tool import open_website
+from tools.screen_tool import describe_screen
+from tools.clipboard_tool import read_clipboard
 from tools.contacts_tool import find_contact, upcoming_birthdays
 from tools.mail_tool import check_mail, read_mail
 from tools.time_tool import get_current_time, get_current_date
@@ -83,6 +88,20 @@ def execute_action(action):
 
     if action.name == "media_control":
         return media_control(action.parameters.get("command", ""))
+
+    if action.name == "goal_overview":
+        return goal_overview()
+    if action.name == "search_history":
+        return search_history(action.parameters.get("query", ""), action.parameters.get("project", ""), action.parameters.get("days", 0))
+
+    if action.name == "open_website":
+        return open_website(action.parameters.get("url", ""), action.parameters.get("query", ""))
+
+    if action.name == "describe_screen":
+        return describe_screen(action.parameters.get("question", ""))
+
+    if action.name == "read_clipboard":
+        return read_clipboard(action.parameters.get("question", ""))
 
     if action.name == "system_control":
         return system_control(action.parameters.get("command", ""), action.parameters.get("value", ""))

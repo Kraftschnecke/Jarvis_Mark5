@@ -169,6 +169,103 @@ def create_system_control_task():
     return task
 
 
+def create_read_clipboard_task():
+    task = Task(
+        "READ_CLIPBOARD",
+        "Den Text lesen, der gerade in der Zwischenablage liegt, um ihn zusammenzufassen, zu übersetzen oder eine Frage dazu zu beantworten (Fasse zusammen, was in meiner Zwischenablage steht. Übersetze, was ich kopiert habe. Was habe ich gerade kopiert?). Kann nichts in die Zwischenablage schreiben"
+    )
+    task.add_action(
+        Action(
+            "read_clipboard",
+            {
+                "question": {
+                    "description": "Was der Nutzer mit dem Text will, in seinen Worten (zusammenfassen, auf Englisch übersetzen, Gibt es darin ein Datum?). Will er nur wissen, was dort steht, schreibe leer",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_describe_screen_task():
+    task = Task(
+        "DESCRIBE_SCREEN",
+        "Den Bildschirm des Nutzers ansehen und sagen, was darauf zu sehen ist, oder eine Frage dazu beantworten (Was siehst du auf meinem Bildschirm? Was steht da gerade? Was bedeutet diese Fehlermeldung auf dem Bildschirm? Schau mal, was ich offen habe). Kann nur ansehen, nicht klicken oder tippen"
+    )
+    task.add_action(
+        Action(
+            "describe_screen",
+            {
+                "question": {
+                    "description": "Was der Nutzer über den Bildschirm wissen will, in seinen Worten (Was bedeutet die Fehlermeldung? Welche Programme sind offen?). Fragt er nur allgemein, was zu sehen ist, schreibe leer",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_open_website_task():
+    task = Task(
+        "OPEN_WEBSITE",
+        "Eine Webseite im Browser des Nutzers öffnen oder im Browser nach etwas suchen, wenn er ausdrücklich will, dass sich etwas im Browser öffnet (Öffne youtube.com. Mach Wikipedia auf. Such im Browser nach Katzenvideos. Zeig mir das im Browser). Nicht für Fragen, die Jarvis selbst aus dem Internet beantworten soll, und nicht für lokale Programme oder Dateien"
+    )
+    task.add_action(
+        Action(
+            "open_website",
+            {
+                "url": {
+                    "description": "Die Adresse oder der Seitenname, genau wie genannt (youtube.com, https://www.wikipedia.org). Soll nur gesucht werden, schreibe leer",
+                    "type": "string"
+                },
+                "query": {
+                    "description": "Der Suchbegriff, wenn der Nutzer im Browser suchen will und keine Seite nennt (Katzenvideos). Sonst schreibe leer",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_search_history_task():
+    task = Task(
+        "SEARCH_HISTORY",
+        "In früheren Gesprächen mit Jarvis nachschlagen: wonach wurde gefragt, was wurde besprochen, in einem Zeitraum oder bei einem Projekt (Worüber haben wir letzte Woche beim Projekt Jarvis gesprochen? Was hatte ich zu den Hausaufgaben gefragt? Wann ging es um den Zahnarzt?). Nur für Gespräche mit Jarvis, nicht für das Internet und nicht für Dokumente oder Mails"
+    )
+    task.add_action(
+        Action(
+            "search_history",
+            {
+                "query": {
+                    "description": "Die Suchwörter zum Thema, ohne Füllwörter (Hausaufgaben Python). Geht es nur um einen Zeitraum oder ein Projekt ohne Thema, schreibe leer",
+                    "type": "string"
+                },
+                "project": {
+                    "description": "Name oder Teil des Projektnamens, wenn der Nutzer ein Projekt nennt. Sonst schreibe leer",
+                    "type": "string"
+                },
+                "days": {
+                    "description": "Wie viele Tage zurück als Zahl: heute oder gestern = 2, diese Woche oder letzte Woche = 7, letzter Monat = 30. Nennt der Nutzer keinen Zeitraum, schreibe 0",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_goal_overview_task():
+    task = Task(
+        "GOAL_OVERVIEW",
+        "Die Tagesziele und Gewohnheiten des Nutzers ansehen: was ist heute offen oder erledigt, wie lang ist die Serie eines täglichen Ziels (Wie lange gehe ich schon ins Fitnessstudio? Wie laufen meine Ziele? Wie war meine Woche?). Nur ansehen; Ziele anlegen oder abhaken macht der Nutzer in der Seitenleiste"
+    )
+    task.add_action(Action("goal_overview", {}))
+    return task
+
+
 def create_check_mail_task():
     task = Task(
         "CHECK_MAIL",
@@ -938,6 +1035,11 @@ def register_all_tasks(registry):
     registry.register(create_set_volume_task())
     registry.register(create_media_control_task())
     registry.register(create_system_control_task())
+    registry.register(create_read_clipboard_task())
+    registry.register(create_describe_screen_task())
+    registry.register(create_open_website_task())
+    registry.register(create_search_history_task())
+    registry.register(create_goal_overview_task())
     registry.register(create_check_mail_task())
     registry.register(create_read_mail_task())
     registry.register(create_find_contact_task())

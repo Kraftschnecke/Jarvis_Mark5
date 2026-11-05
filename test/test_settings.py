@@ -21,11 +21,12 @@ assert sm.get_all() == {
     "memory": {"enabled": True},
     "voice": {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German", "wake_word": False},
     "widgets": {"top": "Clock", "middle": "Notes", "bottom": "Off", "fourth": "Off", "fifth": "Off"},
-    "abilities": {"web_search": True, "weather": True, "news": True, "wikipedia": True, "translate": True, "reminders": True, "alarm": True, "briefing": True, "focus": True, "worldtime": True, "convert": True, "pages": True, "timers": True, "documents": True, "notes": True, "calendar": True, "volume": True, "music": True, "system": True, "mail": False, "contacts": False, "programs": True, "files": True},
+    "abilities": {"web_search": True, "weather": True, "news": True, "wikipedia": True, "translate": True, "reminders": True, "alarm": True, "briefing": True, "focus": True, "worldtime": True, "convert": True, "pages": True, "timers": True, "documents": True, "notes": True, "calendar": True, "volume": True, "music": True, "system": True, "clipboard": False, "screen": False, "browser": True, "history": True, "goals": True, "mail": False, "contacts": False, "programs": True, "files": True},
     "news": {"tagesschau": True, "heise": True, "spiegel": False, "sportschau": False, "espn_nhl": False, "oilersnation": False, "gnews": False, "bingnews": False, "bbc": False},
     "alarm": {"sound": "Computer", "ring_timers": True, "max_minutes": 10, "snooze_minutes": 5, "briefing": True},
     "focus": {"work_minutes": 25, "break_minutes": 5, "long_break_minutes": 15, "rounds": 4},
     "briefing": {"auto": False, "news": True},
+    "goals": {"evening": False, "evening_hour": 20},
     "limits": {"ai_calls_per_day": 500, "speech_calls_per_day": 200},
 }
 assert json.loads((folder / "neu.json").read_text(encoding="utf-8")) == sm.get_all()
@@ -48,11 +49,12 @@ assert sm.get_all() == {
     "memory": {"enabled": False},
     "voice": {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "speed": "Normal", "input": False, "input_language": "German", "wake_word": False},
     "widgets": {"top": "Clock", "middle": "Notes", "bottom": "Off", "fourth": "Off", "fifth": "Off"},
-    "abilities": {"web_search": True, "weather": True, "news": True, "wikipedia": True, "translate": True, "reminders": True, "alarm": True, "briefing": True, "focus": True, "worldtime": True, "convert": True, "pages": True, "timers": True, "documents": True, "notes": True, "calendar": True, "volume": True, "music": True, "system": True, "mail": False, "contacts": False, "programs": True, "files": True},
+    "abilities": {"web_search": True, "weather": True, "news": True, "wikipedia": True, "translate": True, "reminders": True, "alarm": True, "briefing": True, "focus": True, "worldtime": True, "convert": True, "pages": True, "timers": True, "documents": True, "notes": True, "calendar": True, "volume": True, "music": True, "system": True, "clipboard": False, "screen": False, "browser": True, "history": True, "goals": True, "mail": False, "contacts": False, "programs": True, "files": True},
     "news": {"tagesschau": True, "heise": True, "spiegel": False, "sportschau": False, "espn_nhl": False, "oilersnation": False, "gnews": False, "bingnews": False, "bbc": False},
     "alarm": {"sound": "Computer", "ring_timers": True, "max_minutes": 10, "snooze_minutes": 5, "briefing": True},
     "focus": {"work_minutes": 25, "break_minutes": 5, "long_break_minutes": 15, "rounds": 4},
     "briefing": {"auto": False, "news": True},
+    "goals": {"evening": False, "evening_hour": 20},
     "limits": {"ai_calls_per_day": 500, "speech_calls_per_day": 200},
 }, sm.get_all()
 # ... und die Datei selbst ist bereinigt
