@@ -83,7 +83,7 @@ def request(method, path, payload=None, content_type="application/json"):
 
 # Standard: leer
 status, data = request("GET", "/api/widgets")
-assert status == 200 and {k: v for k, v in data.items() if k != "week"} == {"notes": "", "goals": [], "date": "2026-10-21", "events": []}
+assert status == 200 and {k: v for k, v in data.items() if k != "week"} == {"notes": "", "goals": [], "date": "2026-10-21", "events": [], "lists": []}
 assert len(data["week"]) == 7 and data["week"][-1] == {"date": "2026-10-21", "done": 0, "total": 0}
 
 # Speichern und wieder lesen (auch waehrend Jarvis eine Nachricht bearbeitet)

@@ -14,6 +14,7 @@ from settings_manager import SettingsManager
 from personality import get_address, set_address, DEFAULT_ADDRESS
 import abilities
 import briefing
+import hints
 import focus
 import reminders
 import ringing
@@ -231,6 +232,46 @@ class Jarvis:
             if text:
                 marker.mark(today)
             return text
+
+    def proactive_hints(self):
+        """Faellige proaktive Hinweise (Step 2.29): [{"kind", "text"}]. Nur Anzeige, nichts wird ausgefuehrt.
+
+        Alles ist aus, bis du es in den Einstellungen einschaltest, und braucht die jeweilige Faehigkeit (Kalender, Wetter).
+        Jeder Hinweis kommt hoechstens einmal (hints.HintLog); ein Fehler in einer Art laesst die andere unberuehrt.
+        """
+        manager = self.settings_manager
+        if getattr(self, "guest", False):
+            return []
+        now = reminders.default_store().now()
+        today = now.strftime("%Y-%m-%d")
+        log = hints.default_log()
+        due = []
+        with log.lock:
+            if manager.get("hints", "appointments", False) and abilities.task_enabled("LIST_CALENDAR_EVENTS", manager):
+                try:
+                    found = hints.appointment_hints(widgets.default_store().events_on(today), now,
+                                                    manager.get("hints", "appointment_minutes", 30))
+                    due += [h for h in found if not log.seen(h["id"], today)]
+                except Exception as error:
+                    print(f"[HINWEIS] Termine nicht geprueft: {type(error).__name__}")
+            if manager.get("hints", "weather", False) and abilities.task_enabled("GET_WEATHER", manager) \
+                    and now.hour >= manager.get("hints", "weather_hour", 19) \
+                    and now >= getattr(self, "_weather_hint_retry", now):
+                tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+                try:
+                    if not log.seen(f"weather:{tomorrow}", today):
+                        result = weather_tool.default_service().get_weather("heimat", "morgen")
+                        hint = hints.weather_hint(result.data, tomorrow) if result.success else None
+                        if hint:
+                            due.append(hint)
+                        else:                                           # nicht abrufbar: erst in 10 Minuten wieder versuchen
+                            self._weather_hint_retry = now + timedelta(minutes=10)
+                except Exception as error:
+                    print(f"[HINWEIS] Wetter nicht geprueft: {type(error).__name__}")
+                    self._weather_hint_retry = now + timedelta(minutes=10)
+            for hint in due:
+                log.mark(hint["id"], today)
+        return [{"kind": h["kind"], "text": h["text"]} for h in due]
 
     def snooze_ring(self, ring, minutes):
         """Schlummern: derselbe Wecker/Timer laeutet in `minutes` Minuten noch einmal."""

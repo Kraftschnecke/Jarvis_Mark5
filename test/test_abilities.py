@@ -63,7 +63,7 @@ register_all_tasks(registry)
 ALL = len(registry.get_all())
 
 # 1) Voreinstellung: alles an, ausser dem Postfach (private Daten: Schalter standardmaessig aus)
-assert ALL == 42 and sorted(t.task_type for t in registry.get_disabled()) == ["CHECK_MAIL", "DESCRIBE_SCREEN", "FIND_CONTACT", "READ_CLIPBOARD", "READ_MAIL", "UPCOMING_BIRTHDAYS"]
+assert ALL == 45 and sorted(t.task_type for t in registry.get_disabled()) == ["CHECK_MAIL", "DESCRIBE_SCREEN", "FIND_CONTACT", "READ_CLIPBOARD", "READ_MAIL", "UPCOMING_BIRTHDAYS"]
 assert registry.get("SEARCH_WEB") is not None and not registry.is_disabled("SEARCH_WEB")
 assert registry.is_disabled("CHECK_MAIL") and registry.is_disabled("READ_MAIL"), "Postfach ist standardmaessig aus"
 assert registry.is_disabled("FIND_CONTACT") and registry.is_disabled("UPCOMING_BIRTHDAYS"), "Kontakte sind standardmaessig aus"
@@ -74,7 +74,7 @@ settings.set("abilities", "contacts", True)
 settings.set("abilities", "clipboard", True)
 settings.set("abilities", "screen", True)
 ALL = len(registry.get_all())
-assert ALL == 48 and registry.get_disabled() == []
+assert ALL == 51 and registry.get_disabled() == []
 
 # 2) Ausschalten: Aufgabe verschwindet ueberall, Grundfaehigkeiten bleiben
 settings.set("abilities", "web_search", False)

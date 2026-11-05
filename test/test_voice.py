@@ -61,6 +61,14 @@ assert 'onSpeaking: (value) =>' in app
 assert "voice.stopSpeaking();" in app.split("stopButton.addEventListener")[1].split("});")[0]
 assert "/api/plan/abort" in app.split("stopButton.addEventListener")[1].split("});")[0]
 
+# 2b) Druecken und Halten bleibt stabil (Zeiger festhalten, Weckwort macht Platz, verstaendliche Fehlertexte)
+down = app.split('micButton.addEventListener("pointerdown"')[1].split("});")[0]
+assert "setPointerCapture(event.pointerId)" in down and down.index("setPointerCapture") < down.index("micDown(event)")
+listen = app.split("function listenOnce")[1].split("function micDown")[0]
+assert listen.index("wake.setActive(false)") < listen.index("voice.startListening(")
+assert "window.JarvisVoice.describeSpeechError(code)" in listen
+assert "window.JarvisVoice.describeSpeechError(code)" in app.split("const wake = window.JarvisWake")[1].split("});")[0]
+
 # 3) voice.js selbst (braucht Node; ohne Node wird nur das gemeldet)
 node = shutil.which("node")
 if node:

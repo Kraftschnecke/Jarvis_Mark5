@@ -86,6 +86,10 @@ ABILITIES = (
             "Fragen zu deinen Tageszielen beantworten: was heute offen ist, wie lang die Serie eines täglichen Ziels ist („Wie lange gehe ich schon ins Fitnessstudio?“) und wie die letzte Woche war. "
             "Nur lesen, aus dem Ziele-Widget (widgets.json); Ziele anlegen und abhaken machst du in der Seitenleiste. Die Abendfrage („Das ist heute noch offen“) schaltest du unter Goals ein.",
             ("GOAL_OVERVIEW",)),
+    Ability("lists", "Einkaufs- und Packlisten",
+            "Listen führen: „Setz Milch und Eier auf die Einkaufsliste“, „Was steht auf der Packliste?“, „Hak Milch ab“. Die Listen liegen lokal in widgets.json und sind im Widget Lists der Seitenleiste sichtbar und dort von Hand änderbar. "
+            "Jarvis kann Einträge setzen, zeigen, abhaken und streichen; ganze Listen löschen geht nur in der Seitenleiste.",
+            ("ADD_TO_LIST", "SHOW_LIST", "REMOVE_FROM_LIST")),
     Ability("browser", "Webseite im Browser öffnen",
             "Auf Wunsch eine Webseite oder eine Suche in einem neuen Tab deines Standardbrowsers öffnen. Nur https-Adressen (http wird zu https), keine anderen Adressarten, "
             "keine Rechnernamen, Zahlen- oder Heimnetz-Adressen. Immer erst nach deinem Ja, mit Anzeige der Adresse. Jarvis liest dabei nichts von der Seite und gibt nichts ein.",

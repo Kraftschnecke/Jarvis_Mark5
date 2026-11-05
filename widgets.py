@@ -25,6 +25,10 @@ MAX_EVENT_TITLE = 100
 SERIES_HORIZON_DAYS = 365        # Serien ohne Ende werden immer ein Jahr im Voraus ausgelegt
 MAX_SERIES = 20
 MAX_LABEL = 80
+MAX_LISTS = 10
+MAX_LIST_ITEMS = 60
+MAX_LIST_NAME = 40
+MAX_LIST_ITEM = 100
 HISTORY_DAYS = 120               # so lange werden erledigte Tagesziele fuer Serien (Streaks) gemerkt
 WEEK_DAYS = 7
 EVENT_KEEP_DAYS = 31            # Termine, die laenger her sind, werden beim Speichern aufgeraeumt
@@ -97,6 +101,168 @@ class WidgetStore:
                 goals = history.get(day.isoformat(), {})
             week.append({"date": day.isoformat(), "done": sum(1 for v in goals.values() if v), "total": len(goals)})
         return week
+
+    # ---- Listen (Einkauf, Packen, ...; Step 2.30)
+    @staticmethod
+    def list_key(name):
+        """Vergleichsform eines Listennamens: klein, ohne Leerzeichen, ohne Endung "liste" ("Einkaufsliste" -> "einkaufs")."""
+        key = "".join(str(name).casefold().split())
+        for ending in ("liste", "list"):
+            if key.endswith(ending) and len(key) > len(ending):
+                return key[:-len(ending)]
+        return key
+
+    @classmethod
+    def _find_list(cls, lists, name):
+        """Die Liste zum Namen: erst genau, sonst der eine Name, der mit dem anderen beginnt (Einkaufsliste ~ Einkauf, Packliste ~ Packen).
+
+        Gibt None zurueck, wenn keiner passt; ValueError, wenn mehrere passen.
+        """
+        key = cls.list_key(name)
+        if not key:
+            return None
+        exact = [l for l in lists if cls.list_key(l["name"]) == key]
+        if exact:
+            return exact[0]
+        near = [l for l in lists if min(len(key), len(cls.list_key(l["name"]))) >= 4
+                and (cls.list_key(l["name"]).startswith(key) or key.startswith(cls.list_key(l["name"])))]
+        if len(near) > 1:
+            raise ValueError("Welche Liste meinst du: " + ", ".join(l["name"] for l in near) + "?")
+        return near[0] if near else None
+
+    @staticmethod
+    def _clean_lists(lists):
+        clean = []
+        for entry in lists if isinstance(lists, list) else []:
+            if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry["name"].strip():
+                continue
+            items = []
+            for item in entry.get("items") if isinstance(entry.get("items"), list) else []:
+                if isinstance(item, dict) and isinstance(item.get("text"), str) and item["text"].strip():
+                    items.append({"text": " ".join(item["text"].split())[:MAX_LIST_ITEM], "done": item.get("done") is True})
+            clean.append({"name": " ".join(entry["name"].split())[:MAX_LIST_NAME], "items": items[:MAX_LIST_ITEMS]})
+        return clean[:MAX_LISTS]
+
+    def set_lists(self, lists):
+        """Alle Listen von der Seite ersetzen (strenge Pruefung, wie bei den Zielen)."""
+        if not isinstance(lists, list) or len(lists) > MAX_LISTS:
+            raise ValueError(f"Höchstens {MAX_LISTS} Listen.")
+        clean, keys = [], set()
+        for entry in lists:
+            if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not isinstance(entry.get("items"), list):
+                raise ValueError("Ungültige Liste.")
+            name = " ".join(entry["name"].split())
+            if not name:
+                raise ValueError("Eine Liste braucht einen Namen.")
+            if len(name) > MAX_LIST_NAME:
+                raise ValueError(f"Ein Listenname darf höchstens {MAX_LIST_NAME} Zeichen lang sein.")
+            if self.list_key(name) in keys:
+                raise ValueError(f"Die Liste „{name}“ gibt es schon.")
+            keys.add(self.list_key(name))
+            if len(entry["items"]) > MAX_LIST_ITEMS:
+                raise ValueError(f"Höchstens {MAX_LIST_ITEMS} Einträge pro Liste.")
+            items = []
+            for item in entry["items"]:
+                if not isinstance(item, dict) or not isinstance(item.get("text"), str) or not isinstance(item.get("done"), bool):
+                    raise ValueError("Ungültiger Eintrag.")
+                text = " ".join(item["text"].split())
+                if not text:
+                    raise ValueError("Ein Eintrag darf nicht leer sein.")
+                if len(text) > MAX_LIST_ITEM:
+                    raise ValueError(f"Ein Eintrag darf höchstens {MAX_LIST_ITEM} Zeichen lang sein.")
+                items.append({"text": text, "done": item["done"]})
+            clean.append({"name": name, "items": items})
+        with self._lock:
+            data = self._load()
+            data["lists"] = clean
+            self._save(data)
+
+    def add_list_items(self, list_name, items):
+        """Einträge auf eine Liste setzen (Jarvis). Die Liste wird angelegt, wenn es sie noch nicht gibt.
+
+        Ein Eintrag, der schon offen auf der Liste steht, kommt nicht doppelt; ein schon abgehakter wird wieder offen.
+        Gibt {"list", "created", "added", "already"} zurueck.
+        """
+        name = " ".join(str(list_name or "").split())
+        if not name:
+            raise ValueError("Auf welche Liste soll ich das setzen?")
+        if len(name) > MAX_LIST_NAME:
+            raise ValueError(f"Ein Listenname darf höchstens {MAX_LIST_NAME} Zeichen lang sein.")
+        wanted = []
+        for text in items if isinstance(items, list) else []:
+            text = " ".join(str(text).split())
+            if text and text.casefold() not in [w.casefold() for w in wanted]:
+                if len(text) > MAX_LIST_ITEM:
+                    raise ValueError(f"Ein Eintrag darf höchstens {MAX_LIST_ITEM} Zeichen lang sein.")
+                wanted.append(text)
+        if not wanted:
+            raise ValueError("Was soll ich auf die Liste setzen?")
+        with self._lock:
+            data = self._load()
+            lists = self._clean_lists(data.get("lists"))
+            target = self._find_list(lists, name)
+            created = target is None
+            if created:
+                if len(lists) >= MAX_LISTS:
+                    raise ValueError(f"Es gibt schon {MAX_LISTS} Listen. Lösche zuerst eine in der Seitenleiste.")
+                target = {"name": name, "items": []}
+                lists.append(target)
+            added, already = [], []
+            for text in wanted:
+                same = [i for i in target["items"] if i["text"].casefold() == text.casefold()]
+                if same and not same[0]["done"]:
+                    already.append(same[0]["text"])
+                elif same:
+                    same[0]["done"] = False
+                    added.append(same[0]["text"])
+                else:
+                    if len(target["items"]) >= MAX_LIST_ITEMS:
+                        raise ValueError(f"Auf „{target['name']}“ passen höchstens {MAX_LIST_ITEMS} Einträge.")
+                    target["items"].append({"text": text, "done": False})
+                    added.append(text)
+            data["lists"] = lists
+            self._save(data)
+        return {"list": target["name"], "created": created, "added": added, "already": already}
+
+    def change_list_item(self, list_name, item, mode):
+        """Einen Eintrag abhaken ("done") oder streichen ("remove"). Der Eintrag wird genau, sonst per eindeutigem Teilwort gefunden."""
+        if mode not in ("done", "remove"):
+            raise ValueError("Abhaken oder streichen?")
+        wanted = " ".join(str(item or "").split()).casefold()
+        if not wanted:
+            raise ValueError("Welchen Eintrag meinst du?")
+        with self._lock:
+            data = self._load()
+            lists = self._clean_lists(data.get("lists"))
+            target = self._find_list(lists, list_name) if " ".join(str(list_name or "").split()) else None
+            if target is None and len(lists) == 1 and not " ".join(str(list_name or "").split()):
+                target = lists[0]
+            if target is None:
+                raise ValueError("Diese Liste gibt es nicht." if lists else "Es gibt noch keine Liste.")
+            exact = [i for i in target["items"] if i["text"].casefold() == wanted]
+            near = exact or [i for i in target["items"] if wanted in i["text"].casefold()]
+            if not near:
+                raise ValueError(f"„{item}“ steht nicht auf der Liste „{target['name']}“.")
+            if len(near) > 1:
+                raise ValueError("Welchen Eintrag meinst du: " + ", ".join(i["text"] for i in near[:5]) + "?")
+            entry = near[0]
+            if mode == "done":
+                entry["done"] = True
+            else:
+                target["items"].remove(entry)
+            data["lists"] = lists
+            self._save(data)
+        return {"list": target["name"], "item": entry["text"], "mode": mode}
+
+    def get_lists(self, list_name=""):
+        """Alle Listen, oder die eine zum Namen (ValueError, wenn es sie nicht gibt)."""
+        lists = self._clean_lists(self._load().get("lists"))
+        if not " ".join(str(list_name or "").split()):
+            return lists
+        target = self._find_list(lists, list_name)
+        if target is None:
+            raise ValueError("Diese Liste gibt es nicht.")
+        return [target]
 
     @staticmethod
     def _clean_goals(items):
@@ -182,7 +348,7 @@ class WidgetStore:
         day = self.today()
         items = [dict(g, streak=self.streak(history, self.goal_key(g["text"]), day)) if g["daily"] else g for g in items]
         result = {"notes": notes, "goals": items, "date": today, "events": events,
-                  "week": self._week(history, items, day)}
+                  "week": self._week(history, items, day), "lists": self._clean_lists(data.get("lists"))}
         if self.remote is not None:
             # Termine aus Apple dazu (schreibgeschuetzt ausser im Schreib-Kalender); der Zustand der Verbindung steht dabei
             merged = events + self.remote.events()

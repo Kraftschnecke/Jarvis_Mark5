@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>J.A.R.V.I.S.</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#1d1c1b">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Jarvis">
   <script>
     // Gespeichertes Design sofort setzen, damit die Seite nicht aufblitzt
     try {
@@ -16,6 +23,10 @@
     } catch (e) { /* ohne Speicher gilt das Standard-Design */ }
   </script>
   <link rel="stylesheet" href="style.css">
+  <script>
+    // App-Installation (Step 4B.2): der Service-Worker reicht alles unveraendert durch (siehe sw.js)
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  </script>
 </head>
 <body>
   <div class="layout" id="layout">

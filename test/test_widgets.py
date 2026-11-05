@@ -27,7 +27,7 @@ def empty_week(end):
 
 
 assert not (folder / "w.json").exists(), "ohne Speichern entsteht keine Datei"
-assert store.get() == {"notes": "", "goals": [], "date": "2026-10-21", "events": [], "week": empty_week(date(2026, 10, 21))}
+assert store.get() == {"notes": "", "goals": [], "date": "2026-10-21", "events": [], "week": empty_week(date(2026, 10, 21)), "lists": []}
 
 store.set_notes("Milch kaufen\nÜmlaut ß")
 assert store.get()["notes"] == "Milch kaufen\nÜmlaut ß"
@@ -73,7 +73,7 @@ assert len(store.get()["goals"]) == widgets.MAX_GOALS
 for content in ("{kaputt", "[1,2]", '{"notes": 5, "goals": "x"}', '{"goals": {"date": "2026-10-21", "items": [1, {"text": 3}]}}'):
     (folder / "k.json").write_text(content, encoding="utf-8")
     assert WidgetStore(folder / "k.json", today=lambda: date(2026, 10, 21)).get() == \
-        {"notes": "", "goals": [], "date": "2026-10-21", "events": [], "week": empty_week(date(2026, 10, 21))}, content
+        {"notes": "", "goals": [], "date": "2026-10-21", "events": [], "week": empty_week(date(2026, 10, 21)), "lists": []}, content
 # Speichern ueber kaputte Datei klappt
 WidgetStore(folder / "k.json").set_notes("ok")
 assert json.loads((folder / "k.json").read_text(encoding="utf-8"))["notes"] == "ok"

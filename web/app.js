@@ -406,6 +406,8 @@ function applyVoice() {
 function listenOnce(fromWake) {
   if (busy || ended || voice.isListening()) return;
   commandListening = fromWake === true;
+  // Der Browser erlaubt nur eine Spracherkennung zugleich: der Weckwort-Zuhoerer macht Platz
+  wake.setActive(false);
   const started = voice.startListening({
     onState: (state) => {
       micButton.classList.toggle("listening", state === "listening");
@@ -421,7 +423,7 @@ function listenOnce(fromWake) {
       if (busy || ended) return;
       sendMessage(text);
     },
-    onError: (code) => addMessage("error", "Spracheingabe nicht möglich (" + code + ")."),
+    onError: (code) => addMessage("error", window.JarvisVoice.describeSpeechError(code)),
   }, voiceSetting("input_language"));
   if (!started) { commandListening = false; refreshWake(); }
   updateWakeBadge();
@@ -442,7 +444,7 @@ const wake = window.JarvisWake.createWakeListener({
   onState: (state) => { wakeListening = state === "listening"; updateWakeBadge(); },
   onWake: handleWake,
   onError: (code) => {
-    addMessage("error", "Das Weckwort funktioniert gerade nicht (" + code + "). Du kannst es in den Einstellungen unter Voice aus- und wieder einschalten.");
+    addMessage("error", "Das Weckwort funktioniert gerade nicht. " + window.JarvisVoice.describeSpeechError(code) + " Du kannst es in den Einstellungen unter Voice aus- und wieder einschalten.");
   },
 });
 
@@ -513,7 +515,12 @@ function micUp() {
   voice.stopListening();
 }
 
-micButton.addEventListener("pointerdown", (event) => { event.preventDefault(); micDown(event); });
+micButton.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  // Der Knopf behaelt den Zeiger, auch wenn er beim Halten leicht wegrutscht (sonst endet die Aufnahme sofort)
+  try { micButton.setPointerCapture(event.pointerId); } catch (error) { /* ohne Capture gilt pointerleave */ }
+  micDown(event);
+});
 micButton.addEventListener("pointerup", micUp);
 micButton.addEventListener("pointerleave", micUp);
 micButton.addEventListener("pointercancel", micUp);
@@ -1005,6 +1012,124 @@ function renderGoals(section) {
   registerRefresher(section, apply);
 }
 
+// ---- Listen (Step 2.30): Einkauf, Packen, ... Jarvis setzt auf Zuruf Eintraege darauf, hier aenderst du alles von Hand
+function renderLists(section) {
+  const picker = wEl("select", "w-list-picker");
+  const removeList = wEl("button", "w-goal-remove", "🗑");
+  const head = wEl("div", "w-list-head");
+  const list = wEl("ul", "w-goals");
+  const form = wEl("form", "w-goal-form");
+  const field = wEl("input", "w-goal-input");
+  const add = wEl("button", "w-goal-add", "＋");
+  const newForm = wEl("form", "w-goal-form");
+  const newField = wEl("input", "w-goal-input");
+  const newAdd = wEl("button", "w-goal-add", "＋ Liste");
+  const status = wEl("div", "w-status w-muted", "");
+  picker.setAttribute("aria-label", "Liste wählen");
+  removeList.type = "button";
+  removeList.title = "Diese Liste löschen (zweimal klicken)";
+  removeList.setAttribute("aria-label", "Liste löschen");
+  head.append(picker, removeList);
+  field.type = "text"; field.maxLength = 100; field.placeholder = "Neuer Eintrag …"; field.setAttribute("aria-label", "Neuer Eintrag");
+  add.type = "submit"; add.setAttribute("aria-label", "Eintrag hinzufügen");
+  form.append(field, add);
+  newField.type = "text"; newField.maxLength = 40; newField.placeholder = "Neue Liste (z. B. Einkauf) …"; newField.setAttribute("aria-label", "Name der neuen Liste");
+  newAdd.type = "submit";
+  newForm.append(newField, newAdd);
+  section.append(wEl("h3", "w-title", "Listen"), head, list, form, newForm, status);
+
+  let lists = [];
+  let selected = 0;
+  let armed = false;
+
+  function draw() {
+    if (selected >= lists.length) selected = Math.max(0, lists.length - 1);
+    picker.replaceChildren();
+    lists.forEach((l, index) => {
+      const open = l.items.filter((i) => !i.done).length;
+      const option = wEl("option", "", l.name + (open ? " (" + open + ")" : ""));
+      option.value = String(index);
+      picker.append(option);
+    });
+    picker.value = String(selected);
+    head.hidden = form.hidden = !lists.length;
+    armed = false;
+    removeList.textContent = "🗑";
+    list.replaceChildren();
+    if (!lists.length) { list.append(wEl("li", "w-muted", "Noch keine Liste. Lege unten eine an oder sag Jarvis: „Setz Milch auf die Einkaufsliste“.")); return; }
+    const items = lists[selected].items;
+    if (!items.length) list.append(wEl("li", "w-muted", "Diese Liste ist leer."));
+    items.forEach((item, index) => {
+      const row = wEl("li", "w-goal" + (item.done ? " done" : ""));
+      const box = wEl("input");
+      box.type = "checkbox";
+      box.checked = item.done;
+      box.setAttribute("aria-label", item.text);
+      box.addEventListener("change", () => { item.done = box.checked; persist(); });
+      const remove = wEl("button", "w-goal-remove", "×");
+      remove.type = "button";
+      remove.setAttribute("aria-label", "Eintrag löschen");
+      remove.addEventListener("click", () => { items.splice(index, 1); persist(); });
+      row.append(box, wEl("span", "w-goal-text", item.text), remove);
+      list.append(row);
+    });
+  }
+
+  let saving = Promise.resolve();
+  let queued = 0;
+
+  function persist() {
+    draw();
+    queued += 1;
+    saving = saving.then(async () => {
+      let data = null;
+      try {
+        data = await api("POST", "/api/widgets/lists", { lists });
+        widgetData = data;
+        status.textContent = "";
+      } catch (error) {
+        status.textContent = "Nicht gespeichert: " + error.message;
+      }
+      queued -= 1;
+      if (queued === 0 && data) { lists = data.lists; draw(); }
+    });
+  }
+
+  picker.addEventListener("change", () => { selected = Number(picker.value); draw(); });
+  removeList.addEventListener("click", () => {
+    if (!armed) {
+      armed = true;
+      removeList.textContent = "Sicher?";
+      setTimeout(() => { if (armed) { armed = false; removeList.textContent = "🗑"; } }, 3000);
+      return;
+    }
+    lists.splice(selected, 1);
+    persist();
+  });
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = field.value.trim();
+    if (!text || !lists.length) return;
+    lists[selected].items.push({ text, done: false });
+    field.value = "";
+    persist();
+  });
+  newForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = newField.value.trim();
+    if (!name) return;
+    lists.push({ name, items: [] });
+    selected = lists.length - 1;
+    newField.value = "";
+    persist();
+  });
+
+  loadWidgetData(true).then((data) => { lists = data.lists || []; draw(); })
+    .catch((error) => { status.textContent = error.message; });
+  // Jarvis hat per Chat etwas eingetragen: neu laden (Eingabefelder bleiben unberuehrt)
+  registerRefresher(section, (data) => { lists = data.lists || []; draw(); });
+}
+
 // ---- unten: Eishockey (Spielplan holt der Server von der NHL)
 function gameRow(game) {
   const info = window.JarvisWidgets.describeGame(game);
@@ -1148,7 +1273,7 @@ function renderPerformance(section) {
 const WIDGET_RENDERERS = {
   "PC Facts": renderPcFacts, Performance: renderPerformance,
   Clock: renderClock, Date: renderDate, Calendar: renderCalendar,
-  Notes: renderNotes, Goals: renderGoals,
+  Notes: renderNotes, Goals: renderGoals, Lists: renderLists,
   "Edmonton Oilers": (section) => renderHockey(section, "Oilers"),
   "Adler Mannheim": (section) => renderHockey(section, "Adler Mannheim"),
 };
@@ -1712,13 +1837,13 @@ const PAGES = [
     key: "Widgets", icon: "🧩", desc: "Die Seitenleiste rechts: fünf Felder, jedes einzeln wählbar. Bei „Off“ verschwindet das Feld. Die Leiste erscheint erst bei Fenstern ab etwa 1200 Pixel Breite.",
     rows: [
       { label: "Top widget", category: "widgets", key: "top", type: "select", options: ["Off", "Clock", "Date", "Calendar"], live: true },
-      { label: "Middle widget", category: "widgets", key: "middle", type: "select", options: ["Off", "Notes", "Goals"], live: true,
-        note: "Notizen, Ziele und Kalender-Termine liegen in der Datei widgets.json auf deinem Rechner. Ziele gelten nur für den heutigen Tag, außer du markierst sie mit ↻ als täglich." },
+      { label: "Middle widget", category: "widgets", key: "middle", type: "select", options: ["Off", "Notes", "Goals", "Lists"], live: true,
+        note: "Notizen, Ziele, Listen und Kalender-Termine liegen in der Datei widgets.json auf deinem Rechner. Ziele gelten nur für den heutigen Tag, außer du markierst sie mit ↻ als täglich. Lists zeigt deine Einkaufs- und Packlisten (Jarvis setzt auf Zuruf Einträge darauf)." },
       { label: "Bottom widget", category: "widgets", key: "bottom", type: "select", options: ["Off", "Edmonton Oilers", "Adler Mannheim"], live: true,
         note: "Das laufende oder letzte Spiel und die nächsten (Oilers: vier, Mannheim: drei). Oilers: öffentliche NHL-Schnittstelle, mit Ergebnissen. Mannheim: offizielle Kalenderdatei der Adler, nur Paarungen und Termine, keine Ergebnisse. Nur der Server ruft sie auf, höchstens alle 5 Minuten." },
-      { label: "Fourth widget", category: "widgets", key: "fourth", type: "select", options: ["Off", "PC Facts", "Performance"], live: true,
+      { label: "Fourth widget", category: "widgets", key: "fourth", type: "select", options: ["Off", "PC Facts", "Performance", "Lists"], live: true,
         note: "PC Facts: System, Prozessor, Kerne, Arbeitsspeicher und Laufwerke. Performance: CPU, RAM, Laufwerk, Akku (falls vorhanden) und Netzwerk, alle 2 Sekunden. Beides liest nur dein Rechner, es geht nichts ins Internet." },
-      { label: "Fifth widget", category: "widgets", key: "fifth", type: "select", options: ["Off", "PC Facts", "Performance"], live: true },
+      { label: "Fifth widget", category: "widgets", key: "fifth", type: "select", options: ["Off", "PC Facts", "Performance", "Lists"], live: true },
     ],
   },
   {
@@ -1794,6 +1919,19 @@ const PAGES = [
         note: "Ab der eingestellten Uhrzeit meldet sich Jarvis einmal am Tag im Chat, wenn noch Ziele offen sind, und nennt Serien, die sonst reißen. Das ist nur ein Hinweis: Jarvis hakt nichts ab und tut nichts von selbst. Die Seite muss dafür offen sein." },
       { label: "From (hour)", category: "goals", key: "evening_hour", type: "number", min: 17, max: 23, live: true,
         note: "Die Stunde, ab der die Abendfrage kommen darf (17 bis 23 Uhr)." },
+    ],
+  },
+  {
+    key: "Hints", icon: "💡", desc: "Jarvis meldet sich von selbst mit kurzen Hinweisen im Chat. Alles ist aus, bis du es einschaltest. Es ist immer nur eine Anzeige: Jarvis führt dabei nichts aus, öffnet nichts und ändert nichts. Die Seite muss offen sein. Abgelaufene Timer meldet schon der Ringer, Erinnerungen und Wecker melden sich selbst.",
+    rows: [
+      { label: "Appointment soon", category: "hints", key: "appointments", type: "toggle", live: true,
+        note: "„In 30 Minuten: Zahnarzt um 14:30 Uhr.“ Aus deinem Kalender (auch Apple); nur Termine mit Uhrzeit, jeder einmal. Braucht die Fähigkeit Kalender-Termine." },
+      { label: "Minutes before", category: "hints", key: "appointment_minutes", type: "number", min: 5, max: 120, live: true,
+        note: "So viele Minuten vor dem Termin kommt der Hinweis." },
+      { label: "Tomorrow's weather", category: "hints", key: "weather", type: "toggle", live: true,
+        note: "Abends einmal das Wetter von morgen am Heimatort (Open-Meteo). Braucht die Fähigkeit Wetter und einen Heimatort." },
+      { label: "Weather from (hour)", category: "hints", key: "weather_hour", type: "number", min: 15, max: 23, live: true,
+        note: "Die Stunde, ab der der Wetterhinweis kommen darf (15 bis 23 Uhr)." },
     ],
   },
   {
@@ -2559,6 +2697,19 @@ async function checkEvening() {
   }
 }
 setInterval(checkEvening, 5 * 60 * 1000);
+
+// Proaktive Hinweise (Step 2.29): Termin bald, Wetter von morgen. Nur Anzeige, nichts wird ausgefuehrt.
+async function checkHints() {
+  const h = settings.hints;
+  if (guestMode || !h || !(h.appointments || h.weather)) return;
+  try {
+    const data = await api("POST", "/api/hints", {});
+    data.hints.forEach((hint) => addMessage("background", hint.text, "HINWEIS"));
+  } catch (error) {
+    /* ohne Hinweise */
+  }
+}
+setInterval(checkHints, 60 * 1000);
 setTimeout(checkEvening, 4000);        // kurz nach dem Start (Einstellungen sind dann geladen), sonst beim naechsten Takt
 
 // ======================================================================

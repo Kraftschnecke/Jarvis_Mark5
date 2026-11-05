@@ -16,6 +16,7 @@ from tools.media_tool import media_control
 from tools.system_tool import system_control
 from tools.goals_tool import goal_overview
 from tools.history_tool import search_history
+from tools.lists_tool import add_to_list, remove_from_list, show_list
 from tools.browser_tool import open_website
 from tools.screen_tool import describe_screen
 from tools.clipboard_tool import read_clipboard
@@ -89,6 +90,12 @@ def execute_action(action):
     if action.name == "media_control":
         return media_control(action.parameters.get("command", ""))
 
+    if action.name == "add_to_list":
+        return add_to_list(action.parameters.get("list", ""), action.parameters.get("items", ""))
+    if action.name == "show_list":
+        return show_list(action.parameters.get("list", ""))
+    if action.name == "remove_from_list":
+        return remove_from_list(action.parameters.get("list", ""), action.parameters.get("item", ""), action.parameters.get("mode", "done"))
     if action.name == "goal_overview":
         return goal_overview()
     if action.name == "search_history":

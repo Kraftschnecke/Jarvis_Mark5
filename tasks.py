@@ -266,6 +266,75 @@ def create_goal_overview_task():
     return task
 
 
+def create_add_to_list_task():
+    task = Task(
+        "ADD_TO_LIST",
+        "Etwas auf eine Einkaufs- oder Packliste (oder eine andere Liste des Nutzers) setzen (Setz Milch und Eier auf die Einkaufsliste, Pack Ladekabel in die Packliste). Nicht für Termine, Erinnerungen oder Notizen"
+    )
+    task.add_action(
+        Action(
+            "add_to_list",
+            {
+                "list": {
+                    "description": "Name der Liste, so wie der Nutzer ihn sagt (Einkauf, Packen, Baumarkt). Sagt er Einkaufsliste, schreibe Einkauf; Packliste ist Packen",
+                    "type": "string"
+                },
+                "items": {
+                    "description": "Was auf die Liste soll, mehrere durch Kommas getrennt (Milch, Eier, Brot)",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_show_list_task():
+    task = Task(
+        "SHOW_LIST",
+        "Eine Einkaufs- oder Packliste vorlesen oder zeigen, was noch auf einer Liste steht (Was steht auf der Einkaufsliste? Was muss ich noch einpacken?). Ohne Namen alle Listen"
+    )
+    task.add_action(
+        Action(
+            "show_list",
+            {
+                "list": {
+                    "description": "Name der Liste (Einkauf, Packen). Nennt der Nutzer keine bestimmte, schreibe leer",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_remove_from_list_task():
+    task = Task(
+        "REMOVE_FROM_LIST",
+        "Einen Eintrag einer Einkaufs- oder Packliste abhaken (gekauft, eingepackt) oder von der Liste streichen (Hak Milch ab, Streich Brot von der Einkaufsliste). Ganze Listen löschen kann nur der Nutzer in der Seitenleiste"
+    )
+    task.add_action(
+        Action(
+            "remove_from_list",
+            {
+                "list": {
+                    "description": "Name der Liste (Einkauf, Packen). Nennt der Nutzer keine und es gibt nur eine, schreibe leer",
+                    "type": "string"
+                },
+                "item": {
+                    "description": "Der Eintrag, ein Teil des Namens reicht (Milch)",
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "done, wenn der Eintrag abgehakt wird (gekauft, eingepackt, erledigt). remove, wenn er ganz gestrichen oder gelöscht werden soll",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
 def create_check_mail_task():
     task = Task(
         "CHECK_MAIL",
@@ -1040,6 +1109,9 @@ def register_all_tasks(registry):
     registry.register(create_open_website_task())
     registry.register(create_search_history_task())
     registry.register(create_goal_overview_task())
+    registry.register(create_add_to_list_task())
+    registry.register(create_show_list_task())
+    registry.register(create_remove_from_list_task())
     registry.register(create_check_mail_task())
     registry.register(create_read_mail_task())
     registry.register(create_find_contact_task())

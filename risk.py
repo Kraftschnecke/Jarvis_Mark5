@@ -84,6 +84,9 @@ ACTION_RISK = {
     # liest nur die eigenen frueheren Gespraeche in der Datenbank (nichts wird geaendert) (Step 2.27)
     "search_history": SAFE,
     "goal_overview": SAFE,
+    "add_to_list": SAFE,          # lokale Liste in widgets.json, sichtbar und aenderbar im Widget
+    "show_list": SAFE,
+    "remove_from_list": SAFE,     # ein einzelner Eintrag; ganze Listen loescht nur die Seite
     # liest Absender/Betreff aus einem privaten Postfach (nur lesen): immer erst fragen
     "check_mail": CONFIRM,
     # liest Kontaktdaten (Namen, Nummern, Geburtstage) aus dem Apple-Adressbuch, nur lesen; die Antwort geht an das Sprachmodell: immer erst fragen

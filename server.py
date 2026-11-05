@@ -16,6 +16,7 @@ Dinge:
        GET  /api/background?after=<id>  ->  {"messages": [{"id": 3, "text": "..."}], "last": 3}
                              (ohne "after": nur den aktuellen Stand "last" melden)
        GET  /api/alarms      ->  alle Wecker fuer den Kalender; POST /api/alarms/add, /api/alarms/update und /api/alarms/delete (Step 2.11b)
+       POST /api/hints -> faellige proaktive Hinweise: {"hints": [{"kind", "text"}]} (Step 2.29, nur Anzeige)
        POST /api/goals/evening -> Abendfrage zu offenen Zielen: {"text": ...} oder null (Step 2.28)
        POST /api/briefing/auto -> Tagesbriefing beim ersten Start des Tages: {"text": ...} oder null (Step 2.12)
        GET  /api/folders     ->  freigegebene Ordner; POST /api/folders/add und /api/folders/remove pflegen sie (Step 2.14)
@@ -86,6 +87,7 @@ CONTENT_TYPES = {
     ".svg": "image/svg+xml",
     ".png": "image/png",
     ".ico": "image/x-icon",
+    ".webmanifest": "application/manifest+json; charset=utf-8",
 }
 
 
@@ -128,6 +130,10 @@ EDITABLE_SETTINGS[("focus", "long_break_minutes")] = lambda v: _is_int(v, 1, 60)
 EDITABLE_SETTINGS[("focus", "rounds")] = lambda v: _is_int(v, 1, 12)
 EDITABLE_SETTINGS[("briefing", "auto")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("briefing", "news")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("hints", "appointments")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("hints", "appointment_minutes")] = lambda v: _is_int(v, 5, 120)
+EDITABLE_SETTINGS[("hints", "weather")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("hints", "weather_hour")] = lambda v: _is_int(v, 15, 23)
 EDITABLE_SETTINGS[("goals", "evening")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("goals", "evening_hour")] = lambda v: _is_int(v, 17, 23)
 # Schalter fuer Faehigkeiten: eine Zeile je Eintrag in abilities.ABILITIES
@@ -690,7 +696,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 return self.handle_speak(data)
 
             # Notizen und Ziele speichern: kleine lokale Datei, braucht den message_lock nicht
-            if path in ("/api/widgets/notes", "/api/widgets/goals", "/api/widgets/events",
+            if path in ("/api/widgets/notes", "/api/widgets/goals", "/api/widgets/lists", "/api/widgets/events",
                         "/api/widgets/events/delete", "/api/widgets/events/delete_series"):
                 store = self.server.widget_store
                 try:
@@ -698,6 +704,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
                         store.set_notes(data.get("text"))
                     elif path.endswith("goals"):
                         store.set_goals(data.get("items"))
+                    elif path.endswith("lists"):
+                        store.set_lists(data.get("lists"))
                     elif path.endswith("delete"):
                         store.delete_event(data.get("id"))
                     elif path.endswith("delete_series"):
@@ -759,6 +767,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
                                             "state": focus.default_manager().state()})
 
             # Briefing beim ersten Start des Tages (Step 2.12): hoechstens einmal pro Tag, sonst text = null
+            if path == "/api/hints":
+                return self.send_json(200, {"hints": self.server.jarvis.proactive_hints()})
             if path == "/api/goals/evening":
                 return self.send_json(200, {"text": self.server.jarvis.evening_goals()})
             if path == "/api/briefing/auto":

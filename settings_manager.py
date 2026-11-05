@@ -70,6 +70,13 @@ class SettingsManager:
             "evening": False,         # abends von selbst fragen, was heute noch offen ist (nur Anzeige in der Seite)
             "evening_hour": 20,       # ab dieser Uhrzeit (Stunde, 17 bis 23)
         },
+        # Proaktive Hinweise (Mark 5, Step 2.29): nur Anzeige im Chat, alles aus
+        "hints": {
+            "appointments": False,    # "In 30 Minuten: Zahnarzt"
+            "appointment_minutes": 30,
+            "weather": False,         # abends das Wetter von morgen
+            "weather_hour": 19,       # ab dieser Uhrzeit (Stunde, 15 bis 23)
+        },
         # Tageslimits fuer kostenpflichtige OpenAI-Aufrufe (Mark 5, Step 1.4), 0 = kein Limit
         "limits": {
             "ai_calls_per_day": 500,
@@ -141,10 +148,10 @@ class SettingsManager:
         ("voice", "input_language"): ("German", "English"),
         ("alarm", "sound"): ("Computer", "Browser", "Aus"),
         ("widgets", "top"): ("Off", "Clock", "Date", "Calendar"),
-        ("widgets", "middle"): ("Off", "Notes", "Goals"),
+        ("widgets", "middle"): ("Off", "Notes", "Goals", "Lists"),
         ("widgets", "bottom"): ("Off", "Edmonton Oilers", "Adler Mannheim"),
-        ("widgets", "fourth"): ("Off", "PC Facts", "Performance"),
-        ("widgets", "fifth"): ("Off", "PC Facts", "Performance"),
+        ("widgets", "fourth"): ("Off", "PC Facts", "Performance", "Lists"),
+        ("widgets", "fifth"): ("Off", "PC Facts", "Performance", "Lists"),
     }
 
     def _fits(self, category, key, value):
