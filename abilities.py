@@ -68,9 +68,26 @@ ABILITIES = (
     Ability("focus", "Fokus-Timer",
             "Pomodoro-Sitzungen: Fokusphasen und Pausen im Wechsel (Standard 25/5 Minuten, 4 Runden, nach der 4. Runde lange Pause) mit Meldung und kurzem Ton bei jedem Wechsel. Die Sitzung liegt im Speicher und ist nach einem Neustart weg.",
             ("START_FOCUS", "FOCUS_STATUS", "STOP_FOCUS")),
-    Ability("calendar", "Kalender-Termine", "Termine in den Kalender eintragen und vorlesen (widgets.json).",
+    Ability("calendar", "Kalender-Termine", "Termine in den Kalender eintragen und vorlesen (widgets.json). Mit Apple-Kalender in der .env (CALDAV_…) zeigt Jarvis auch dessen Termine und schreibt einfache Termine nach Rückfrage in den einen Schreib-Kalender (auch am Handy).",
             ("ADD_CALENDAR_EVENT", "LIST_CALENDAR_EVENTS")),
     Ability("volume", "Lautstärke", "Die Systemlautstärke einstellen.", ("SET_VOLUME",)),
+    Ability("music", "Musiksteuerung",
+            "Musik mit den Windows-Medientasten steuern: abspielen/pausieren (eine Taste), nächster und vorheriger Titel. Wirkt auf den Player, den Windows gerade führt (Spotify, Browser …). Keine Konten, kein Netz; einen bestimmten Titel starten kann Jarvis damit nicht.",
+            ("MEDIA_CONTROL",)),
+    Ability("system", "Rechner-Grundfunktionen",
+            "Ton stumm schalten, Bildschirm sperren, alle Fenster minimieren und die Helligkeit ändern (Helligkeit nur bei Bildschirmen, die Windows dimmen kann, meist Laptops). "
+            "Nur das Sperren fragt vorher nach. Keine Konten, kein Netz; Jarvis schließt oder löscht dabei nichts.",
+            ("SYSTEM_CONTROL",)),
+    Ability("mail", "E-Mail lesen",
+            "Mails auflisten (Absender, Betreff, Datum; neue oder die letzten bis zu 20) und auf Wunsch den Text einer gezeigten Mail zusammenfassen, aus einem Postfach per IMAP, das nur du in der .env einträgst. "
+            "Nur lesen: nichts senden, antworten, löschen oder als gelesen markieren, keine Anhänge. Immer erst nach deinem Ja. "
+            "Absender, Betreff und der Text einer ausgewählten Mail gehen wie jede Antwort an OpenAI.",
+            ("CHECK_MAIL", "READ_MAIL"), default=False),
+    Ability("contacts", "Kontakte & Geburtstage",
+            "Zu einem Kontakt aus deinem Apple-Adressbuch den Geburtstag, die Telefonnummer oder die E-Mail-Adresse nennen und die nächsten Geburtstage auflisten. "
+            "Nur lesen (dieselben CALDAV_…-Zugangsdaten in der .env wie beim Kalender): nichts anlegen, ändern oder löschen. Immer erst nach deinem Ja. "
+            "Nur das Gefragte (Name, Geburtstag, Nummer oder Adresse der Treffer) geht wie jede Antwort an OpenAI.",
+            ("FIND_CONTACT", "UPCOMING_BIRTHDAYS"), default=False),
     Ability("programs", "Programme",
             "Programme aus programs.json starten (mit Rückfrage) und laufende Programme zeigen.",
             ("FIND_PROGRAM", "START_PROGRAM", "GET_RUNNING_PROGRAMS")),

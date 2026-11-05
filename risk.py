@@ -23,7 +23,8 @@ import re
 from pathlib import Path
 
 import reminders
-from tools import note_tool, page_tool
+import widgets
+from tools import contacts_tool, mail_tool, note_tool, page_tool, system_tool
 from tools.file_tool import BLOCKED_EXTENSIONS, URI_PATTERN
 
 SAFE = "safe"
@@ -70,6 +71,16 @@ ACTION_RISK = {
     "list_calendar_events": SAFE,
     # veraendert nur die Lautstaerke, sofort wieder korrigierbar
     "set_volume": SAFE,
+    # drueckt nur eine Medientaste (Play/Pause, Weiter, Zurueck), sofort wieder umkehrbar
+    "media_control": SAFE,
+    # Stumm, Desktop zeigen, Helligkeit: sofort umkehrbar, nichts geht verloren (Step 2.23). Nur "lock" fragt (siehe action_risk)
+    "system_control": SAFE,
+    # liest Absender/Betreff aus einem privaten Postfach (nur lesen): immer erst fragen
+    "check_mail": CONFIRM,
+    # liest Kontaktdaten (Namen, Nummern, Geburtstage) aus dem Apple-Adressbuch, nur lesen; die Antwort geht an das Sprachmodell: immer erst fragen
+    "find_contact": CONFIRM,
+    "upcoming_birthdays": CONFIRM,
+    "read_mail": CONFIRM,         # liest den Text einer Mail (privat, geht an das Sprachmodell): immer erst fragen
     # greift auf deinen Rechner zu: erst fragen
     "write_note": CONFIRM,        # schreibt eine Datei: immer erst fragen (Vorschau), nur .txt/.md, nie ueberschreiben
     "open_file": CONFIRM,
@@ -96,6 +107,14 @@ def _is_series_scope(value):
     return isinstance(value, str) and value.strip().casefold() in ("series", "serie", "all", "alle", "ganze serie")
 
 
+def _writes_to_apple(parameters):
+    """True, wenn dieser Termin (ohne Wiederholung) in den Apple-Kalender gehen wuerde."""
+    if not widgets.default_store().remote_write_enabled():
+        return False
+    repeat = parameters.get("repeat")
+    return not (isinstance(repeat, str) and repeat.strip() and repeat.strip().lower() not in ("none", "null", "leer", "-"))
+
+
 def higher(a, b):
     """Die riskantere von zwei Stufen."""
     return a if _ORDER[a] >= _ORDER[b] else b
@@ -116,6 +135,14 @@ def action_risk(action):
         or _is_series_scope(action.parameters.get("scope"))
     ):
         return higher(level, CONFIRM)        # alle Erinnerungen oder eine ganze Serie auf einmal: erst fragen
+
+    # Ein einfacher Termin per Chat landet im echten Apple-Kalender (und am Handy): erst fragen. Serien bleiben lokal.
+    if action.name == "add_calendar_event" and _writes_to_apple(action.parameters):
+        return higher(level, CONFIRM)
+
+    # Den Bildschirm sperren unterbricht deine Arbeit und braucht dein Passwort zum Entsperren: erst fragen
+    if action.name == "system_control" and system_tool.normalize_command(action.parameters.get("command")) == "lock":
+        return higher(level, CONFIRM)
 
     if action.name == "read_page" and not page_tool.is_known_address(action.parameters):
         return higher(level, CONFIRM)
@@ -143,6 +170,39 @@ def describe_task(task):
             goal = "Notiz in eine Datei schreiben"               # kurz: das lange Aufgabenziel enthaelt Beispielsaetze fuer den Router
             p = action.parameters
             details += note_tool.default_writer().describe(p.get("filename", ""), p.get("content", ""), p.get("folder", ""), p.get("mode", "new"))
+            continue
+
+        if action.name == "check_mail":
+            goal = "E-Mail-Betreffzeilen abrufen"
+            details += mail_tool.describe(action.parameters.get("account", ""))
+            continue
+
+        if action.name == "add_calendar_event" and _writes_to_apple(action.parameters):
+            goal = "Termin in den Apple-Kalender eintragen"
+            p = action.parameters
+            when = " ".join(str(p.get(k) or "").strip() for k in ("date", "time") if isinstance(p.get(k), str) and p.get(k).strip())
+            details += [str(p.get("title") or "")[:100], when,
+                        f"Kalender: {widgets.default_store().remote.write_name} (erscheint auch auf deinem Handy)"]
+            continue
+
+        if action.name == "system_control":
+            goal = "Rechnerbefehl ausführen"
+            details += system_tool.describe(action.parameters.get("command", ""), action.parameters.get("value", ""))
+            continue
+
+        if action.name == "find_contact":
+            goal = "Kontaktdaten aus dem Adressbuch abrufen"
+            details += contacts_tool.describe_find(action.parameters.get("name", ""), action.parameters.get("topic", ""))
+            continue
+
+        if action.name == "upcoming_birthdays":
+            goal = "Geburtstage aus dem Adressbuch abrufen"
+            details += contacts_tool.describe_birthdays(action.parameters.get("days", ""))
+            continue
+
+        if action.name == "read_mail":
+            goal = "E-Mail lesen und zusammenfassen"
+            details += mail_tool.describe_read(action.parameters.get("which", ""))
             continue
 
         for name, value in action.parameters.items():

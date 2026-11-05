@@ -88,7 +88,7 @@ for task in registry.get_all():
     assert any(line.startswith(f"- {task.goal}") for line in task_section), task.task_type
 
 # 3) Hinweis "ich frage vorher nach" genau bei den Aufgaben der Stufe confirm
-asking = {t.goal for t in registry.get_all() if t.task_type in ("START_PROGRAM", "OPEN_FILE", "READ_PAGE", "WRITE_NOTE")}
+asking = {t.goal for t in registry.get_all() if t.task_type in ("START_PROGRAM", "OPEN_FILE", "READ_PAGE", "WRITE_NOTE", "CHECK_MAIL", "READ_MAIL", "FIND_CONTACT", "UPCOMING_BIRTHDAYS")}
 for task in registry.get_all():
     line = next(l for l in task_section if l.startswith(f"- {task.goal}"))
     assert ("(ich frage vorher nach)" in line) == (task.goal in asking), line
@@ -100,7 +100,7 @@ registry.register(extra)
 with_extra = describe_capabilities(registry, "Chef")
 assert "- Eine E-Mail senden (ich frage vorher nach)" in with_extra
 del registry.tasks["MAIL_SENDEN"]
-assert "E-Mail" not in describe_capabilities(registry, "Chef")
+assert "Eine E-Mail senden" not in describe_capabilities(registry, "Chef")
 
 # Eine Aufgabe mit einer gar nicht eingestuften Action ist verboten: Zeile ohne Zusatz, aber vorhanden
 odd = Task("ODD", "Etwas Eigenes")
@@ -126,7 +126,7 @@ assert "Das Gedächtnis ist gerade ausgeschaltet." in describe_capabilities(regi
 # 7) Ehrlich: sagt klar, dass es sonst nichts kann; nennt nichts, was es nicht gibt
 assert "Alles andere kann ich nicht" in text
 assert "Termin" in text and "Kalender" in text      # seit Etappe C (ADD_CALENDAR_EVENT)
-for invented in ("E-Mail", "Google", "Smart", "Kamera"):
+for invented in ("E-Mail senden", "Mails senden", "Google", "Smart", "Kamera"):
     assert invented not in text, invented
 
 # Sprache gibt es seit Step 6 und ist aus, bis man sie einschaltet

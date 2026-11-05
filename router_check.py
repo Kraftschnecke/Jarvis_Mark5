@@ -1,6 +1,9 @@
 """Prueft die Erkennung mit dem ECHTEN Sprachmodell (kostet ein paar Cent).
 
 Start im Projektordner:   py router_check.py
+                          py router_check.py Notiz     # nur Saetze, die "Notiz" enthalten
+
+Die Saetze werden parallel abgefragt (dauert ca. 20 Sekunden statt 3 Minuten).
 
 Das Skript laeuft mit dem neuen Router (router.py) UND mit dem alten Verfahren
 (command.py + task_recognizer.py im Tag mark4.vor-router). So kann man beide
@@ -10,7 +13,9 @@ Es nutzt weder die Datenbank noch fuehrt es Aufgaben aus. Es fragt nur, wie das
 Modell jeden Beispielsatz einordnet.
 """
 
+import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from openai import OpenAI
 
@@ -110,6 +115,26 @@ FAELLE = [
     ("Was steht in der Datei Mietvertrag.docx über die Kündigungsfrist?", "TASK", "READ_DOCUMENT", {"param:question": "kündigungsfrist"}),
     ("Schreib eine Notiz mit dem Namen Einkaufen: Milch, Eier, Brot", "TASK", "WRITE_NOTE", {"param:filename": "einkaufen", "param:content": "milch"}),
     ("Schreib eine Notiz Einkaufen: Milch, Brot", "TASK", "WRITE_NOTE", {"exact:filename": "Einkaufen", "param:content": "milch"}),
+    ("Stell den Ton stumm", "TASK", "SYSTEM_CONTROL", {"exact:command": "mute"}),
+    ("Sperr den Bildschirm", "TASK", "SYSTEM_CONTROL", {"exact:command": "lock"}),
+    ("Zeig mir den Desktop", "TASK", "SYSTEM_CONTROL", {"exact:command": "show_desktop"}),
+    ("Mach den Bildschirm dunkler", "TASK", "SYSTEM_CONTROL", {"exact:command": "brightness_down"}),
+    ("Stell die Helligkeit auf 50 Prozent", "TASK", "SYSTEM_CONTROL", {"exact:command": "brightness_set", "exact:value": "50"}),
+    ("Mach die Lautstärke auf 30 Prozent", "TASK", "SET_VOLUME", {}),
+    ("Pause die Musik", "TASK", "MEDIA_CONTROL", {"exact:command": "play_pause"}),
+    ("Nächstes Lied bitte", "TASK", "MEDIA_CONTROL", {"exact:command": "next"}),
+    ("Skip to the previous track", "TASK", "MEDIA_CONTROL", {"exact:command": "previous"}),
+    ("Habe ich neue Mails?", "TASK", "CHECK_MAIL", {"exact:unread_only": "true"}),
+    ("Welche Mail habe ich zuletzt bekommen?", "TASK", "CHECK_MAIL", {"exact:unread_only": "false"}),
+    ("Zeig mir meine letzten 20 Mails", "TASK", "CHECK_MAIL", {"exact:unread_only": "false", "exact:count": "20"}),
+    ("Check my inbox", "TASK", "CHECK_MAIL", {}),
+    ("Wann hat Anna Geburtstag?", "TASK", "FIND_CONTACT", {"param:name": "anna", "exact:topic": "birthday"}),
+    ("Wie ist die Handynummer von Max Müller?", "TASK", "FIND_CONTACT", {"param:name": "max", "exact:topic": "phone"}),
+    ("What is Julia's email address?", "TASK", "FIND_CONTACT", {"param:name": "julia", "exact:topic": "email"}),
+    ("Wer hat bald Geburtstag?", "TASK", "UPCOMING_BIRTHDAYS", {}),
+    ("Hat diese Woche jemand Geburtstag?", "TASK", "UPCOMING_BIRTHDAYS", {"exact:days": "7"}),
+    ("Ruf Anna an", "CHAT", None, {}),
+    ("Antworte auf die letzte Mail von Anna", "CHAT", None, {}),
     ("Speichere das als Notiz", "TASK", "WRITE_NOTE", {"exact:content": ""}),
     ("Hänge an meine Datei ideen.txt an: Jarvis soll morgens grüßen", "TASK", "WRITE_NOTE", {"param:mode": "append", "param:filename": "ideen"}),
     ("Fasse es zusammen", "TASK", "READ_DOCUMENT", {"exact:file": ""}),
@@ -148,6 +173,18 @@ FOLGEFAELLE = [
     ("Stelle einen Timer auf 10 Sekunden", "TASK", "START_TIMER", {}),
     ("Hallo, wie geht's?", "CHAT", None, {}),
     ("Erkläre mir kurz, wie ein Timer funktioniert", "CHAT", None, {}),
+]
+
+
+# Folgefragen, wenn Jarvis gerade eine nummerierte Mail-Liste gezeigt hat
+MAIL_FOLGEFAELLE = [
+    ("Fass mir die dritte Mail zusammen", "TASK", "READ_MAIL", {"exact:which": "3"}),
+    ("Was steht in Mail 2?", "TASK", "READ_MAIL", {"exact:which": "2"}),
+    ("Lies die neueste Mail", "TASK", "READ_MAIL", {"exact:which": "1"}),
+    ("Was will der Chef in seiner Mail?", "TASK", "READ_MAIL", {"param:which": "chef"}),
+    ("Bis wann soll ich auf die erste antworten?", "TASK", "READ_MAIL", {"exact:which": "1", "param:question": "antwort"}),
+    ("Wie spät ist es?", "TASK", "GET_TIME", {}),
+    ("Hallo, wie geht's?", "CHAT", None, {}),
 ]
 
 
@@ -192,23 +229,39 @@ def main():
     if VERFAHREN.startswith("Router"):
         import router
         faelle += [(*fall, router.document_context(DATEI_KONTEXT)) for fall in FOLGEFAELLE]
+        faelle += [(*fall, router.mail_context(5)) for fall in MAIL_FOLGEFAELLE]
 
-    print(f"Verfahren: {VERFAHREN}, {len(faelle)} Beispielsätze ({len(faelle) - len(FAELLE)} davon mit gelesener Datei)\n")
+    filtern = [a.casefold() for a in sys.argv[1:]]
+    if filtern:
+        faelle = [f for f in faelle if any(x in f[0].casefold() for x in filtern)]
+        if not faelle:
+            print("Kein Beispielsatz passt zum Filter.")
+            return
+
+    print(f"Verfahren: {VERFAHREN}, {len(faelle)} Beispielsätze ({sum(1 for f in faelle if f[4])} davon mit Datei- oder Mail-Hinweis)\n")
+
+    def abfragen(fall):
+        satz, art, name, extras, kontext = fall
+        start = time.perf_counter()
+        try:
+            route = route_message(client, satz, registry, context=kontext) if kontext else route_message(client, satz, registry)
+        except Exception as error:
+            return None, f"{type(error).__name__}: {error}", time.perf_counter() - start
+        return route, None, time.perf_counter() - start
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        antworten = list(pool.map(abfragen, faelle))
 
     richtig = 0
     gesamt_zeit = 0.0
 
-    for nummer, (satz, art, name, extras, kontext) in enumerate(faelle, start=1):
-        start = time.perf_counter()
+    for nummer, ((satz, art, name, extras, kontext), (route, fehler, dauer)) in enumerate(zip(faelle, antworten), start=1):
+        gesamt_zeit += dauer
 
-        try:
-            route = route_message(client, satz, registry, context=kontext) if kontext else route_message(client, satz, registry)
-        except Exception as error:
-            print(f"{nummer:2}. FEHLER   {satz!r}: {type(error).__name__}: {error}")
+        if fehler:
+            print(f"{nummer:2}. FEHLER   {satz!r}: {fehler}")
             continue
 
-        dauer = time.perf_counter() - start
-        gesamt_zeit += dauer
         ok, erhalten = pruefen(route, art, name, extras)
         richtig += ok
         erwartet = art if name is None else f"{art}/{name}"
@@ -218,7 +271,7 @@ def main():
 
     print()
     print(f"{richtig} von {len(faelle)} richtig, "
-          f"{gesamt_zeit:.1f} s gesamt, "
+          f"{gesamt_zeit:.1f} s Summe der Einzelzeiten, "
           f"{gesamt_zeit / len(faelle):.2f} s pro Satz "
           f"({AUFRUFE_PRO_SATZ} KI-Aufruf(e) pro Satz)")
 

@@ -35,10 +35,11 @@ _TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 class WidgetStore:
-    def __init__(self, path="widgets.json", today=date.today):
+    def __init__(self, path="widgets.json", today=date.today, remote=None):
         self.path = Path(path)
         self.today = today
         self._lock = _FILE_LOCK
+        self.remote = remote            # Apple-Kalender (calendar_sync.AppleCalendar) oder None
 
     def _load(self):
         try:
@@ -132,7 +133,19 @@ class WidgetStore:
         if goals.get("date") != today:
             # Neuer Tag: einmalige Ziele sind weg, taegliche kommen wieder, als noch nicht erledigt
             items = [dict(g, done=False) for g in items if g["daily"]]
-        return {"notes": notes, "goals": items, "date": today, "events": self._clean_events(data.get("events"))}
+        events = self._clean_events(data.get("events"))
+        result = {"notes": notes, "goals": items, "date": today, "events": events}
+        if self.remote is not None:
+            # Termine aus Apple dazu (schreibgeschuetzt ausser im Schreib-Kalender); der Zustand der Verbindung steht dabei
+            merged = events + self.remote.events()
+            merged.sort(key=lambda e: (e["date"], e["time"] or "00:00", e["title"]))
+            result["events"] = merged
+            result["sync"] = self.remote.status()
+        return result
+
+    def remote_write_enabled(self):
+        """True, wenn neue einfache Termine in den Apple-Kalender gehen."""
+        return self.remote is not None and self.remote.can_write()
 
     def set_notes(self, text):
         if not isinstance(text, str) or len(text) > MAX_NOTES:
@@ -185,6 +198,9 @@ class WidgetStore:
 
     def add_event(self, title, day, at=""):
         title, at, chosen = self._check_event(title, day, at)
+        # Einfache Termine gehen in den Apple-Kalender (dann sind sie auch am Handy). Erinnerungs-Eintraege ("⏰ ...") bleiben lokal.
+        if self.remote_write_enabled() and not title.startswith("⏰"):
+            return self.remote.add(title, day, at)
         today = self.today()
         with self._lock:
             data = self._load()
@@ -256,6 +272,11 @@ class WidgetStore:
         return len(events) - len(kept)
 
     def delete_event(self, event_id):
+        if isinstance(event_id, str) and event_id.startswith("apple:"):
+            if self.remote is None:
+                raise ValueError("Dieser Termin gehört zum Apple-Kalender, der gerade nicht eingerichtet ist.")
+            self.remote.delete(event_id)
+            return
         if not isinstance(event_id, str):
             raise ValueError("Ungültiger Termin.")
         with self._lock:
@@ -294,6 +315,11 @@ def default_store():
     if _default_store is None:
         _default_store = WidgetStore()
     return _default_store
+
+
+def attach_remote(remote):
+    """Haengt den Apple-Kalender an den gemeinsamen Speicher (nur beim echten Start des Servers, nie in Tests)."""
+    default_store().remote = remote
 
 
 def set_default_store(store):

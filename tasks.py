@@ -127,6 +127,140 @@ def create_set_volume_task():
     return task
 
 
+def create_media_control_task():
+    task = Task(
+        "MEDIA_CONTROL",
+        "Die Musik auf dem Computer mit den Medientasten steuern: abspielen oder pausieren, nächster oder vorheriger Titel (Pause die Musik. Nächstes Lied. Spiel weiter. Zurück zum letzten Titel). Kann keinen bestimmten Titel oder Künstler starten"
+    )
+    task.add_action(
+        Action(
+            "media_control",
+            {
+                "command": {
+                    "description": "play_pause für abspielen, pausieren, stoppen oder weiterspielen (eine Taste), next für nächster Titel, previous für vorheriger Titel",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_system_control_task():
+    task = Task(
+        "SYSTEM_CONTROL",
+        "Den Computer kurz steuern: Ton stumm schalten, Bildschirm sperren, alle Fenster minimieren (Desktop zeigen), die Helligkeit des Bildschirms ändern (Stell den Ton stumm. Sperr den Bildschirm. Zeig den Desktop. Mach den Bildschirm dunkler. Helligkeit auf 50 Prozent). Nicht für die Lautstärke in Prozent und nicht für Musik"
+    )
+    task.add_action(
+        Action(
+            "system_control",
+            {
+                "command": {
+                    "description": "mute für stumm schalten oder Ton wieder an, lock für Bildschirm sperren, show_desktop für alle Fenster minimieren oder Desktop zeigen, brightness_set für Helligkeit auf einen Wert, brightness_up für heller, brightness_down für dunkler",
+                    "type": "string"
+                },
+                "value": {
+                    "description": "Nur bei brightness_set: die Prozentzahl von 0 bis 100 als Ziffern (50). Sonst schreibe leer",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_check_mail_task():
+    task = Task(
+        "CHECK_MAIL",
+        "E-Mails im eingerichteten Postfach auflisten: nur Absender, Betreff und Datum, nummeriert, ohne den Text zu lesen (Habe ich neue Mails? Welche Mail habe ich zuletzt bekommen? Zeig meine letzten 20 Mails). Kann keine Mails schreiben, senden, beantworten oder löschen"
+    )
+    task.add_action(
+        Action(
+            "check_mail",
+            {
+                "account": {
+                    "description": "Der Name des Postfachs (z. B. strato), wenn der Nutzer eines nennt. Sonst schreibe leer",
+                    "type": "string"
+                },
+                "unread_only": {
+                    "description": "true nur, wenn der Nutzer ausdrücklich neue oder ungelesene Mails meint (Habe ich neue Mails?). false bei letzte, zuletzt, neueste, die letzten Mails, Posteingang oder wenn gelesene Mails mitgemeint sind (Welche Mail habe ich zuletzt bekommen?)",
+                    "type": "string"
+                },
+                "count": {
+                    "description": "Wie viele Mails höchstens (1 bis 20). Nennt der Nutzer keine Zahl, schreibe 10; bei die letzten 20 Mails schreibe 20",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_read_mail_task():
+    task = Task(
+        "READ_MAIL",
+        "Den Text einer E-Mail aus der zuletzt gezeigten Mail-Liste lesen, um sie zusammenzufassen oder eine Frage dazu zu beantworten (Fass mir die dritte Mail zusammen. Was steht in der Mail vom Chef? Lies Mail 2). Nur nach einer gezeigten Liste; kann nicht antworten oder senden"
+    )
+    task.add_action(
+        Action(
+            "read_mail",
+            {
+                "which": {
+                    "description": "Welche Mail aus der Liste: die Nummer als Ziffer (die dritte = 3, Mail 2 = 2; die neueste oder letzte = 1, denn die Liste beginnt mit der neuesten), oder ein Teil des Absenders oder Betreffs (vom Chef = chef). Meint der Nutzer keine bestimmte, schreibe leer",
+                    "type": "string"
+                },
+                "question": {
+                    "description": "Die Frage des Nutzers zur Mail, wenn er etwas Bestimmtes wissen will (Was will der Absender? Bis wann soll ich antworten?). Bei Zusammenfassen schreibe leer",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_find_contact_task():
+    task = Task(
+        "FIND_CONTACT",
+        "Zu einem Kontakt aus dem Adressbuch den Geburtstag, die Telefonnummer oder die E-Mail-Adresse nennen (Wann hat Anna Geburtstag? Wie ist die Nummer von Max? Welche Mailadresse hat Julia?). Kann keine Kontakte anlegen oder ändern"
+    )
+    task.add_action(
+        Action(
+            "find_contact",
+            {
+                "name": {
+                    "description": "Name oder Teil des Namens des Kontakts, genau wie genannt (Anna, Max Müller)",
+                    "type": "string"
+                },
+                "topic": {
+                    "description": "birthday bei Geburtstag, phone bei Telefonnummer oder Handynummer, email bei E-Mail-Adresse. Fragt der Nutzer allgemein nach dem Kontakt, schreibe leer",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_upcoming_birthdays_task():
+    task = Task(
+        "UPCOMING_BIRTHDAYS",
+        "Die nächsten Geburtstage aus dem Adressbuch auflisten (Wer hat bald Geburtstag? Hat diese Woche jemand Geburtstag? Geburtstage im nächsten Monat). Nur für Geburtstage vieler Kontakte, nicht für eine bestimmte Person"
+    )
+    task.add_action(
+        Action(
+            "upcoming_birthdays",
+            {
+                "days": {
+                    "description": "Wie viele Tage voraus als Zahl: diese Woche = 7, nächster Monat = 30, Nennt der Nutzer keinen Zeitraum, schreibe 30",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
 def create_find_program_task():
     task = Task(
         "FIND_PROGRAM",
@@ -802,6 +936,12 @@ def register_all_tasks(registry):
     registry.register(create_open_file_task())
     registry.register(create_get_running_programs_task())
     registry.register(create_set_volume_task())
+    registry.register(create_media_control_task())
+    registry.register(create_system_control_task())
+    registry.register(create_check_mail_task())
+    registry.register(create_read_mail_task())
+    registry.register(create_find_contact_task())
+    registry.register(create_upcoming_birthdays_task())
     registry.register(create_find_program_task())
     registry.register(create_start_program_task())
     registry.register(create_start_timer_task())

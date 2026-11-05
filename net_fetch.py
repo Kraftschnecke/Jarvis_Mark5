@@ -141,15 +141,18 @@ def _download(request, hosts, timeout, max_bytes):
 
 
 def fetch_text(url, hosts, *, params=None, headers=None, timeout=DEFAULT_TIMEOUT,
-               max_bytes=DEFAULT_MAX_BYTES, fallback_encoding=None):
-    """Holt Text per GET. ``hosts``: Tupel erlaubter Hostnamen oder ``ANY_PUBLIC_HOST``.
+               max_bytes=DEFAULT_MAX_BYTES, fallback_encoding=None, method="GET", data=None):
+    """Holt Text per GET (``method``/``data`` nur fuer Dienste wie CalDAV: PROPFIND, REPORT, PUT, DELETE). ``hosts``: Tupel erlaubter Hostnamen oder ``ANY_PUBLIC_HOST``.
 
     Text wird als UTF-8 gelesen; mit ``fallback_encoding`` (z.B. "cp1252") wird bei Fehlern
     diese Kodierung versucht (aeltere Webseiten)."""
     if params:
         url = url + ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
     check_url(url, hosts)
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
+    if method not in ("GET", "PROPFIND", "REPORT", "PUT", "DELETE"):
+        raise NetError("Interner Fehler: unerlaubte Methode.")
+    body = data.encode("utf-8") if isinstance(data, str) else data
+    request = urllib.request.Request(url, data=body, method=method, headers={"User-Agent": USER_AGENT, **(headers or {})})
     try:
         raw = _download(request, hosts, timeout, max_bytes)
     except NetError:

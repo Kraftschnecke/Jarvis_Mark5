@@ -12,6 +12,10 @@ import reminders
 import ringing
 import widgets
 from tools.volume_tool import set_volume
+from tools.media_tool import media_control
+from tools.system_tool import system_control
+from tools.contacts_tool import find_contact, upcoming_birthdays
+from tools.mail_tool import check_mail, read_mail
 from tools.time_tool import get_current_time, get_current_date
 from tools.process_tool import get_running_programs
 from tools.file_tool import open_file
@@ -76,6 +80,25 @@ def execute_action(action):
 
     if action.name == "set_volume":
         return set_volume(action.parameters["percentage"])
+
+    if action.name == "media_control":
+        return media_control(action.parameters.get("command", ""))
+
+    if action.name == "system_control":
+        return system_control(action.parameters.get("command", ""), action.parameters.get("value", ""))
+
+    if action.name == "check_mail":
+        return check_mail(action.parameters.get("account", ""), action.parameters.get("unread_only", True),
+                          action.parameters.get("count", 10))
+
+    if action.name == "read_mail":
+        return read_mail(action.parameters.get("which", ""), action.parameters.get("question", ""))
+
+    if action.name == "find_contact":
+        return find_contact(action.parameters.get("name", ""), action.parameters.get("topic", ""))
+
+    if action.name == "upcoming_birthdays":
+        return upcoming_birthdays(action.parameters.get("days", 30))
 
     if action.name == "find_program":
         return find_program(action.parameters["program"])
@@ -145,6 +168,11 @@ def execute_action(action):
             return ToolResult(success=False, error=str(error))
         event = created[0]
         data = {"title": event["title"], "date": describe_day(event["date"]), "time": event["time"] or "ganztägig"}
+        if event.get("source") == "apple":
+            data["calendar"] = event["calendar"]
+            data["synced"] = True                    # auch am Handy
+        elif store.remote_write_enabled() and event.get("series"):
+            data["note"] = "Wiederholungen speichert Jarvis nur bei sich, nicht im Apple-Kalender."
         if event.get("series"):
             data["repeat"] = event["repeat"]
             data["events_created"] = len(created)
@@ -313,7 +341,8 @@ def execute_action(action):
         else:
             return ToolResult(success=False, error="Das Datum habe ich nicht verstanden.")
         shown = [dict({"date": describe_day(e["date"]), "time": e["time"] or "ganztägig", "title": e["title"]},
-                      **({"repeat": e["repeat"]} if e.get("repeat") else {}))
+                      **({"repeat": e["repeat"]} if e.get("repeat") else {}),
+                      **({"calendar": e["calendar"]} if e.get("calendar") else {}))
                  for e in events]
         return ToolResult(success=True, data={"events": shown} if shown else {"events": [], "info": "Keine Termine."})
 

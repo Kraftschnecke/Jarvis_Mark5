@@ -179,6 +179,21 @@ def document_context(name):
     )
 
 
+def mail_context(count):
+    """Hinweis fuer den Router: Eine nummerierte Mail-Liste wurde gerade gezeigt ("fass die dritte zusammen")."""
+    try:
+        count = int(count)
+    except (TypeError, ValueError):
+        return ""
+    if count < 1:
+        return ""
+    return (
+        f"A numbered list of {min(count, 20)} e-mails (newest first) was just shown to the user. If the message refers to one of them "
+        "(\"the third\", \"mail 2\", \"the one from the boss\") and asks to summarize it, read it or asks what it says, choose TASK READ_MAIL "
+        "and put the number as a digit (or part of the sender/subject) in \"which\". Messages that have nothing to do with the mails are routed as usual."
+    )
+
+
 def build_prompt(message, task_registry, today=None, context=""):
     today = today or datetime.now()
     # Wochentag selbst benennen: strftime("%A") richtet sich nach der Spracheinstellung des Rechners

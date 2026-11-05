@@ -47,3 +47,54 @@ FOLDERS_FILE = Path(__file__).resolve().parent / "folders.json"
 # Web-Oberflaeche (server.py). Der Server lauscht nur auf dem eigenen Rechner.
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = int(os.getenv("JARVIS_PORT", "8000"))
+
+
+def mail_accounts():
+    """E-Mail-Postfaecher aus der .env (Mark 5, Step 2.20). Nur der Besitzer traegt sie dort ein.
+
+    MAIL_ACCOUNTS=strato,uni            (Namen, kleingeschrieben, Buchstaben/Ziffern)
+    MAIL_STRATO_HOST=imap.strato.de     MAIL_STRATO_USER=...     MAIL_STRATO_PASSWORD=...
+    MAIL_STRATO_PORT=993                (optional)
+    MAIL_STRATO_CAFILE=C:\\pfad\\zertifikat.pem   (optional: eigene Zertifikatsdatei, wenn die Pruefung sonst scheitert)
+    Gibt {name: {"host", "port", "user", "password", "cafile"}} zurueck; unvollstaendige Eintraege fehlen.
+    Das Passwort steht nur hier und wird nie angezeigt, geloggt oder an das Sprachmodell gegeben.
+    """
+    accounts = {}
+
+    for name in os.getenv("MAIL_ACCOUNTS", "").replace(";", ",").split(","):
+        name = name.strip().lower()
+
+        if not name or not name.isalnum():
+            continue
+
+        prefix = f"MAIL_{name.upper()}_"
+        host = os.getenv(prefix + "HOST", "").strip()
+        user = os.getenv(prefix + "USER", "").strip()
+        password = os.getenv(prefix + "PASSWORD", "")
+        port_text = os.getenv(prefix + "PORT", "993").strip()
+        cafile = os.getenv(prefix + "CAFILE", "").strip()
+
+        if not (host and user and password and port_text.isdigit()):
+            continue
+
+        accounts[name] = {"host": host, "port": int(port_text), "user": user, "password": password, "cafile": cafile}
+
+    return accounts
+
+
+def caldav_account():
+    """Apple-Kalender (iCloud) aus der .env (Mark 5, Step 2.19). None, wenn nicht eingerichtet.
+
+    CALDAV_USER (Apple-ID), CALDAV_PASSWORD (app-spezifisches Passwort),
+    CALDAV_CALENDARS=Privat,Arbeit   Kalender, die Jarvis LIEST (leer = alle mit Terminen),
+    CALDAV_WRITE_CALENDAR=Privat     der EINE Kalender, in den Jarvis schreibt (leer = Jarvis schreibt nirgends hin).
+    """
+    user = os.getenv("CALDAV_USER", "").strip()
+    password = os.getenv("CALDAV_PASSWORD", "")
+
+    if not user or not password:
+        return None
+
+    read = [n.strip() for n in os.getenv("CALDAV_CALENDARS", "").replace(";", ",").split(",") if n.strip()]
+    return {"user": user, "password": password, "calendars": read,
+            "write_calendar": os.getenv("CALDAV_WRITE_CALENDAR", "").strip()}

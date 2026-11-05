@@ -3,6 +3,9 @@
 Aufruf (im Projektordner):
     py run_tests.py          # kurze Uebersicht, Ausgabe nur bei Fehlern
     py run_tests.py -v       # zusaetzlich die Ausgabe jedes Tests
+    py run_tests.py notes    # nur Tests, deren Dateiname "notes" enthaelt
+
+Die Tests laufen parallel (so viele gleichzeitig wie der Rechner Kerne hat).
 
 Jeder Test laeuft in einem eigenen Python-Prozess, damit sich die Tests nicht
 gegenseitig beeinflussen. Kein Test spricht mit der echten Datenbank, der
@@ -10,9 +13,11 @@ OpenAI-API oder startet Programme: alles ist durch Fakes ersetzt.
 Exit-Code 0 = alles gruen, 1 = mindestens ein Test ist fehlgeschlagen.
 """
 
+import os
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -44,17 +49,26 @@ def run_test(path):
 
 
 def main():
-    verbose = "-v" in sys.argv[1:]
+    args = sys.argv[1:]
+    verbose = "-v" in args
+    filters = [a.lower() for a in args if not a.startswith("-")]
     tests = sorted(TEST_DIR.glob("test_*.py"))
 
+    if filters:
+        tests = [t for t in tests if any(f in t.name.lower() for f in filters)]
+
     if not tests:
-        print(f"Keine Tests gefunden in {TEST_DIR}")
+        print(f"Keine passenden Tests gefunden in {TEST_DIR}")
         return 1
+
+    workers = max(2, min(len(tests), os.cpu_count() or 4))
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        outcomes = list(pool.map(run_test, tests))
 
     results = []
 
-    for path in tests:
-        passed, output, seconds = run_test(path)
+    for path, (passed, output, seconds) in zip(tests, outcomes):
         results.append((path.name, passed, output, seconds))
 
         status = "OK     " if passed else "FEHLER "

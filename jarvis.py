@@ -26,6 +26,7 @@ import plan_view
 from capabilities import describe_capabilities
 import risk
 import tools.document_tool as document_tool
+import tools.mail_tool as mail_tool
 import tools.note_tool as note_tool
 from task_executor import (
     execute_registered_task, execute_task, prepare_registered_task
@@ -588,9 +589,15 @@ class Jarvis:
         """Hinweis fuer den Router, wenn es gerade um eine gelesene Datei geht (Folgefragen ohne Dateinamen)."""
         registry = getattr(self, "task_registry", None)
 
-        if registry is None or registry.get("READ_DOCUMENT") is None:
+        if registry is None:
             return ""
-        return router_module.document_context(document_tool.default_reader().active_name())
+
+        parts = []
+        if registry.get("READ_DOCUMENT") is not None:
+            parts.append(router_module.document_context(document_tool.default_reader().active_name()))
+        if registry.get("READ_MAIL") is not None and mail_tool.default_state().active():
+            parts.append(router_module.mail_context(len(mail_tool.default_state().items)))
+        return " ".join(p for p in parts if p)
 
     def prepare_note(self, prepared):
         """Notizen: fehlt der Text, ist Jarvis' letzte Antwort gemeint. Ungueltiges wird abgelehnt, bevor gefragt wird.
@@ -601,6 +608,9 @@ class Jarvis:
             return None
 
         for action in prepared.actions:
+            if action.name == "read_mail":
+                return mail_tool.check_selection(action.parameters.get("which", ""))
+
             if action.name != "write_note":
                 continue
 

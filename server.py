@@ -56,6 +56,7 @@ from urllib.parse import parse_qs, urlparse
 
 import abilities
 import action_log
+import calendar_sync
 import speech
 import timer
 import reminders
@@ -841,6 +842,10 @@ def main(argv=None):
 
         jarvis = Jarvis()
         reminders.start_scheduler()         # Erinnerungen (Step 2.9): nur im normalen Modus, nie im Gastmodus
+        apple = calendar_sync.from_config()  # Apple-Kalender (Step 2.19): nur wenn in der .env eingerichtet
+        if apple is not None:
+            widgets.attach_remote(apple)
+            threading.Thread(target=apple.events, daemon=True).start()     # Termine schon beim Start holen
         ringing.start_ticker()              # beendet zu lange laeutende Wecker/Timer (Step 2.11)
 
     server = JarvisServer((SERVER_HOST, args.port), jarvis, guest=args.guest)
