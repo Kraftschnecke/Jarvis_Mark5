@@ -65,12 +65,22 @@ ABILITIES = (
     Ability("briefing", "Tagesbriefing",
             "Kurzer Tagesüberblick auf Zuruf („Briefing“): Datum, Termine, Erinnerungen, Wetter, Ziele, offene Timer und Schlagzeilen. Wetter und News nur, wenn diese Fähigkeiten an sind (Open-Meteo und die News-Seiten). Der Text wird ohne KI zusammengesetzt. Auf Wunsch kommt er beim ersten Start des Tages von selbst (Seite Briefing).",
             ("GET_BRIEFING",)),
+    Ability("focus", "Fokus-Timer",
+            "Pomodoro-Sitzungen: Fokusphasen und Pausen im Wechsel (Standard 25/5 Minuten, 4 Runden, nach der 4. Runde lange Pause) mit Meldung und kurzem Ton bei jedem Wechsel. Die Sitzung liegt im Speicher und ist nach einem Neustart weg.",
+            ("START_FOCUS", "FOCUS_STATUS", "STOP_FOCUS")),
     Ability("calendar", "Kalender-Termine", "Termine in den Kalender eintragen und vorlesen (widgets.json).",
             ("ADD_CALENDAR_EVENT", "LIST_CALENDAR_EVENTS")),
     Ability("volume", "Lautstärke", "Die Systemlautstärke einstellen.", ("SET_VOLUME",)),
     Ability("programs", "Programme",
             "Programme aus programs.json starten (mit Rückfrage) und laufende Programme zeigen.",
             ("FIND_PROGRAM", "START_PROGRAM", "GET_RUNNING_PROGRAMS")),
+    Ability("documents", "Dokumente",
+            "Freigegebene Ordner anzeigen und Dateien darin nach Name oder Inhalt finden. Jarvis liest nur in Ordnern, die du selbst in den Einstellungen unter „Folders“ einträgst (folders.json); Dateien darin lesen (txt, md, csv, html, docx, pdf) und zusammenfassen. Per Chat lässt sich kein Ordner freigeben. Dateinamen, Textauszüge und der gelesene Text gehen wie jede Antwort an OpenAI.",
+            ("LIST_FOLDERS", "FIND_FILES", "READ_DOCUMENT")),
+    Ability("notes", "Notizen speichern",
+            "Notizen als .txt- oder .md-Datei in einem freigegebenen Ordner speichern. Immer erst nach deinem Ja, mit Vorschau; "
+            "nie ein bestehendes Dokument überschreiben (stattdessen „Name (2).txt“); nur Textdateien, nie Programme.",
+            ("WRITE_NOTE",)),
     Ability("files", "Dateien öffnen", "Dateien auf dem Computer öffnen (mit Rückfrage).", ("OPEN_FILE",)),
 )
 

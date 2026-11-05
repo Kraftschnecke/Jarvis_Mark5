@@ -3,6 +3,11 @@ from timer import (
     format_duration, TimerError,
 )
 import briefing as daily_briefing
+import focus
+import tools.document_tool as document_tool
+import tools.file_search_tool as file_search
+import tools.note_tool as note_tool
+import folders
 import reminders
 import ringing
 import widgets
@@ -199,6 +204,60 @@ def execute_action(action):
         if entry["rolled"]:
             data["note"] = "Die Uhrzeit war heute schon vorbei, deshalb gilt der Wecker für morgen."
         return ToolResult(success=True, data=data)
+
+    if action.name == "start_focus":
+        params = action.parameters
+        try:
+            state = focus.default_manager().start(params.get("label"), params.get("work_minutes"),
+                                                  params.get("break_minutes"), None, params.get("rounds"))
+        except focus.FocusError as error:
+            return ToolResult(success=False, error=str(error))
+        data = {"label": state["label"] or None, "work_minutes": state["work_minutes"],
+                "break_minutes": state["break_minutes"], "rounds": state["rounds"],
+                "first_break_in_minutes": state["work_minutes"],
+                "note": "Die Sitzung liegt im Speicher: Startet Jarvis neu, ist sie weg."}
+        if state["rounds"] > focus.LONG_EVERY:
+            data["long_break_minutes"] = state["long_break_minutes"]
+            data["long_break_after_round"] = focus.LONG_EVERY
+        return ToolResult(success=True, data={k: v for k, v in data.items() if v is not None})
+
+    if action.name == "focus_status":
+        state = focus.default_manager().state()
+        if not state["active"]:
+            return ToolResult(success=True, data={"active": False, "info": "Es läuft keine Fokus-Sitzung."})
+        data = {"active": True, "phase": state["phase_name"], "round": state["round"], "rounds": state["rounds"],
+                "remaining": format_duration(max(1, state["remaining"]))}
+        if state["label"]:
+            data["label"] = state["label"]
+        return ToolResult(success=True, data=data)
+
+    if action.name == "stop_focus":
+        summary = focus.default_manager().stop()
+        if summary is None:
+            return ToolResult(success=True, data={"stopped": False, "info": "Es lief keine Fokus-Sitzung."})
+        data = {"stopped": True, "completed_rounds": summary["completed_rounds"], "rounds": summary["rounds"]}
+        if summary["label"]:
+            data["label"] = summary["label"]
+        return ToolResult(success=True, data=data)
+
+    if action.name == "list_folders":
+        shown = [f["path"] for f in folders.default_list().list() if f["exists"]]
+        if not shown:
+            return ToolResult(success=True, data={"folders": [], "info": "Es ist noch kein Ordner freigegeben. Du trägst sie selbst in den Einstellungen unter „Folders“ ein."})
+        return ToolResult(success=True, data={"folders": shown, "note": "Ordner kann nur der Nutzer in den Einstellungen ändern."})
+
+    if action.name == "write_note":
+        p = action.parameters
+        return note_tool.default_writer().write(p.get("filename", ""), p.get("content", ""), p.get("folder", ""), p.get("mode", "new"))
+
+    if action.name == "read_document":
+        return document_tool.default_reader().read(action.parameters.get("file", ""), action.parameters.get("part", 1),
+                                                   action.parameters.get("question", ""))
+
+    if action.name == "find_files":
+        p = action.parameters
+        return file_search.default_search().find(p.get("query", ""), p.get("mode", "name"), p.get("file_type", ""),
+                                                 p.get("folder", ""), p.get("count", file_search.DEFAULT_COUNT))
 
     if action.name == "get_briefing":
         return daily_briefing.get_briefing()

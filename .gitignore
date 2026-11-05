@@ -44,3 +44,6 @@ reminders.json
 
 # Tag des letzten Start-Briefings (Mark 5, Step 2.12)
 briefing_state.json
+
+# Freigegebene Ordner (Mark 5, Step 2.14)
+folders.json

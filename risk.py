@@ -23,7 +23,7 @@ import re
 from pathlib import Path
 
 import reminders
-from tools import page_tool
+from tools import note_tool, page_tool
 from tools.file_tool import BLOCKED_EXTENSIONS, URI_PATTERN
 
 SAFE = "safe"
@@ -54,6 +54,12 @@ ACTION_RISK = {
     "cancel_reminder": SAFE,      # eine einzelne; "alle" hebt action_risk() auf CONFIRM
     "set_alarm": SAFE,            # lokaler Eintrag (reminders.json), kein Kalender
     "list_alarms": SAFE,
+    "start_focus": SAFE,          # nur ein lokaler Zaehler im Speicher, keine Aussenwirkung
+    "focus_status": SAFE,
+    "stop_focus": SAFE,
+    "read_document": SAFE,        # nur lesen, nur in den freigegebenen Ordnern (folders.resolve)
+    "find_files": SAFE,           # nur lesen, nur in den freigegebenen Ordnern (folders.py walk)
+    "list_folders": SAFE,         # zeigt nur die vom Nutzer eingetragene Liste
     "get_briefing": SAFE,         # liest nur eigene Daten (Kalender, Ziele, Timer) und ruft Wetter/News ab, wenn diese an sind
     "cancel_alarm": SAFE,         # einer; "alle" oder die ganze Serie hebt action_risk() auf CONFIRM
     "stop_ringing": SAFE,         # schaltet nur aus, was gerade laeutet
@@ -65,6 +71,7 @@ ACTION_RISK = {
     # veraendert nur die Lautstaerke, sofort wieder korrigierbar
     "set_volume": SAFE,
     # greift auf deinen Rechner zu: erst fragen
+    "write_note": CONFIRM,        # schreibt eine Datei: immer erst fragen (Vorschau), nur .txt/.md, nie ueberschreiben
     "open_file": CONFIRM,
     "open_program": CONFIRM,
 }
@@ -129,8 +136,15 @@ def task_risk(task):
 def describe_task(task):
     """Kurzer Text fuer die Rueckfrage: was soll passieren, womit?"""
     details = []
+    goal = task.goal
 
     for action in task.actions:
+        if action.name == "write_note":
+            goal = "Notiz in eine Datei schreiben"               # kurz: das lange Aufgabenziel enthaelt Beispielsaetze fuer den Router
+            p = action.parameters
+            details += note_tool.default_writer().describe(p.get("filename", ""), p.get("content", ""), p.get("folder", ""), p.get("mode", "new"))
+            continue
+
         for name, value in action.parameters.items():
             if isinstance(value, (str, int, float)) and not isinstance(value, bool):
                 text = re.sub(r"[\x00-\x1f\x7f]", " ", str(value)).strip()
@@ -138,4 +152,4 @@ def describe_task(task):
                 if text:
                     details.append(text[:200])
 
-    return task.goal, details
+    return goal, details

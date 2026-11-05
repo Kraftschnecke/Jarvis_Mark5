@@ -209,7 +209,11 @@ while not ringing.default_ringer().is_ringing() and time.time() < deadline:
     time.sleep(0.02)
 rows = ringing.default_ringer().active()
 assert len(rows) == 1 and rows[0]["kind"] == "timer" and rows[0]["label"] == "Pizza", rows
+# Der Timer läutet kurz VOR der Meldung: auf sie warten, nicht annehmen, dass sie schon da ist
 msgs = background_tasks.get_results()
+while not msgs and time.time() < deadline:
+    time.sleep(0.02)
+    msgs = background_tasks.get_results()
 assert [m["type"] for m in msgs] == ["TIMER_FINISHED"] and msgs[0]["data"]["name"] == "Pizza"      # Meldung kommt weiterhin
 ringing.default_ringer().stop()
 

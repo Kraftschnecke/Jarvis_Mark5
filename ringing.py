@@ -97,6 +97,17 @@ class Siren:
             return False
         return True
 
+    def chime(self):
+        """Ein einzelner Durchgang des Tons (kein Loop). Laeuft gerade die Sirene, bleibt es still."""
+        if self.playing or self.player is None:
+            return False
+        try:
+            self.player.PlaySound(str(self._wav_path()), self.player.SND_FILENAME | self.player.SND_ASYNC)
+        except Exception as error:
+            print(f"[WECKER] Ton konnte nicht gespielt werden: {type(error).__name__}")
+            return False
+        return True
+
     def stop(self):
         if not self.playing:
             return
@@ -181,6 +192,12 @@ class Ringer:
     def is_ringing(self):
         with self._lock:
             return bool(self._rings)
+
+    def chime(self):
+        """Kurzer einmaliger Ton (z. B. Phasenwechsel beim Fokus-Timer): nur bei Ton "Computer" und wenn nichts laeutet."""
+        with self._lock:
+            allowed = self.sound == "Computer" and not self._rings
+        return self.siren.chime() if allowed else False
 
     def state(self):
         """Für /api/ringing: was läutet, und wer macht den Ton?"""
@@ -358,6 +375,10 @@ def default_ringer():
     if _default_ringer is None:
         _default_ringer = Ringer()
     return _default_ringer
+
+
+def chime():
+    return default_ringer().chime()
 
 
 def set_default_ringer(ringer):

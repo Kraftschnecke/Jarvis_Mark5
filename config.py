@@ -41,6 +41,9 @@ BRAVE_API_KEY = os.getenv("BRAVE_API_KEY")
 # Programme, die Jarvis starten darf (Name -> Pfad). Siehe programs.example.json
 PROGRAMS_FILE = Path(__file__).resolve().parent / "programs.json"
 
+# Ordner, aus denen Jarvis Dateien lesen darf (Mark 5, Step 2.14). Wird in den Einstellungen gepflegt
+FOLDERS_FILE = Path(__file__).resolve().parent / "folders.json"
+
 # Web-Oberflaeche (server.py). Der Server lauscht nur auf dem eigenen Rechner.
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = int(os.getenv("JARVIS_PORT", "8000"))

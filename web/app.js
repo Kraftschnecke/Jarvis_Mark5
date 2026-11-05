@@ -1732,6 +1732,22 @@ const PAGES = [
     ],
   },
   {
+    key: "Folders", icon: "📁", desc: "Ordner, aus denen J.A.R.V.I.S. Dateien lesen darf (Suchen, Lesen und Zusammenfassen folgen in den nächsten Schritten). Nur du trägst hier Ordner ein: Per Chat kann J.A.R.V.I.S. keinen freigeben, auch nicht auf Anweisung aus einem Dokument. Nicht erlaubt sind ganze Laufwerke, dein kompletter Benutzerordner, Systemordner und der Ordner von J.A.R.V.I.S. selbst. Schlüssel- und Zugangsdateien (.env, .ssh, *.pem, …) bleiben auch in freigegebenen Ordnern gesperrt.",
+    rows: [
+      { type: "folder-list", live: true },
+    ],
+  },
+  {
+    key: "Focus", icon: "🍅", desc: "Fokus-Sitzungen (Pomodoro): Fokusphasen und Pausen im Wechsel. Starte sie mit „Starte einen Pomodoro“ oder „Fokus für 50 Minuten mit 10 Minuten Pause“. Hier stehen die Werte, die gelten, wenn du keine Zahlen nennst. Bei jedem Wechsel kommt eine Meldung (und ein kurzer Ton, wenn unter Alarm der Sound „Computer“ eingestellt ist). Eine Sitzung ist nach einem Neustart von Jarvis weg.",
+    rows: [
+      { label: "Focus phase (minutes)", category: "focus", key: "work_minutes", type: "number", min: 1, max: 120, live: true },
+      { label: "Break (minutes)", category: "focus", key: "break_minutes", type: "number", min: 1, max: 60, live: true },
+      { label: "Long break (minutes)", category: "focus", key: "long_break_minutes", type: "number", min: 1, max: 60, live: true,
+        note: "Nach jeder 4. Fokusphase, wenn noch weitere folgen." },
+      { label: "Rounds", category: "focus", key: "rounds", type: "number", min: 1, max: 12, live: true },
+    ],
+  },
+  {
     key: "Briefing", icon: "🗞️", desc: "Das Tagesbriefing nennt Datum, Termine, Erinnerungen, Wetter, deine Ziele, offene Timer und Schlagzeilen. Du bekommst es mit „Briefing“ oder „Was steht heute an?“. Wetter, Termine, Erinnerungen, Timer und News kommen nur dazu, wenn die jeweilige Fähigkeit unter Abilities an ist. Der Text wird ohne KI zusammengesetzt.",
     rows: [
       { label: "At first start of the day", category: "briefing", key: "auto", type: "toggle", live: true,
@@ -1985,6 +2001,61 @@ function buildActionList() {
   return box;
 }
 
+// Freigegebene Ordner (Step 2.14): Liste mit Entfernen und ein Feld zum Hinzufuegen (Pfad aus dem Explorer einfuegen)
+function buildFolderList() {
+  const box = el("div", "folder-list");
+  const error = el("p", "dialog-error");
+  error.hidden = true;
+
+  function showError(message) {
+    error.textContent = message;
+    error.hidden = !message;
+  }
+
+  async function send(path, body) {
+    try {
+      render(await api("POST", path, body));
+      return true;
+    } catch (err) {
+      showError(err.message);
+      return false;
+    }
+  }
+
+  function render(data) {
+    showError("");
+    box.replaceChildren();
+    if (data.folders.length === 0) {
+      box.appendChild(el("p", "memory-empty", "Noch kein Ordner freigegeben: J.A.R.V.I.S. liest keine Dateien."));
+    }
+    data.folders.forEach((folder) => {
+      const item = el("div", "folder-item");
+      const name = el("span", "folder-path", folder.path);
+      name.title = folder.path;
+      const remove = smallButton("Entfernen", "secondary danger-text", () => send("/api/folders/remove", { path: folder.path }));
+      item.append(name, remove);
+      if (!folder.exists) item.appendChild(el("span", "folder-missing", "gibt es nicht mehr"));
+      box.appendChild(item);
+    });
+    const input = el("input", "folder-input");
+    input.type = "text";
+    input.placeholder = "Ordnerpfad, z. B. C:\\Users\\du\\Documents";
+    input.maxLength = 400;
+    input.setAttribute("aria-label", "Ordnerpfad");
+    const add = smallButton("Hinzufügen", "", async () => {
+      if (await send("/api/folders/add", { path: input.value })) return;
+      input.focus();
+    });
+    input.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); add.click(); } });
+    const form = el("div", "folder-form");
+    form.append(input, add);
+    box.append(form, error, el("p", "setting-note", "Tipp: Im Explorer den Ordner öffnen, in die Adressleiste klicken und den Pfad kopieren. Höchstens " + data.max + " Ordner."));
+  }
+
+  api("GET", "/api/folders").then(render).catch((err) => box.replaceChildren(el("p", "memory-empty", err.message)));
+  return box;
+}
+
 function buildMemoryList() {
   const box = el("div", "memory-list");
 
@@ -2227,6 +2298,11 @@ function renderSettings() {
       return;
     }
 
+    if (row.type === "folder-list") {
+      settingsRows.appendChild(buildFolderList());
+      return;
+    }
+
     const wrapper = document.createElement("div");
     wrapper.className = "setting-row" + (row.live ? "" : " unavailable");
 
@@ -2339,6 +2415,56 @@ async function refreshTimers() {
 setInterval(refreshTimers, 1000);
 
 // ----------------------------------------------------------------------
+// Fokus-Sitzung (Step 2.13): eine Anzeige mit Phase, Runde, Restzeit und Abbrechen
+// ----------------------------------------------------------------------
+
+const focusBar = document.getElementById("focus");
+let shownFocusKey = "";
+
+function renderFocus(state) {
+  if (!state || !state.active) {
+    focusBar.hidden = true;
+    focusBar.replaceChildren();
+    shownFocusKey = "";
+    return;
+  }
+  focusBar.hidden = false;
+  const key = [state.phase, state.round, state.rounds, state.label].join("|");
+  if (key === shownFocusKey) {
+    const time = focusBar.querySelector("[data-focus-time]");
+    if (time) time.textContent = window.JarvisStatus.formatRemaining(state.remaining);
+    return;
+  }
+  shownFocusKey = key;
+  const icon = state.phase === "work" ? "🍅 Fokus " : state.phase === "long_break" ? "☕ Lange Pause " : "☕ Pause ";
+  const chip = el("span", "timer-chip focus-chip");
+  const time = el("span", "timer-time", window.JarvisStatus.formatRemaining(state.remaining));
+  time.dataset.focusTime = "1";
+  const cancel = el("button", "timer-cancel", "✕");
+  cancel.type = "button";
+  cancel.title = "Fokus-Sitzung beenden";
+  cancel.setAttribute("aria-label", cancel.title);
+  cancel.addEventListener("click", async () => {
+    cancel.disabled = true;
+    try { await api("POST", "/api/focus/stop", {}); } catch (error) { /* naechste Runde zeigt den Stand */ }
+    refreshFocus();
+  });
+  chip.append(el("span", "timer-name", icon + state.round + "/" + state.rounds + (state.label ? " · " + state.label : "")), time, cancel);
+  focusBar.replaceChildren(chip);
+}
+
+async function refreshFocus() {
+  if (guestMode) return;
+  try {
+    renderFocus(await api("GET", "/api/focus"));
+  } catch (error) {
+    /* Server nicht erreichbar: pollBackground zeigt OFFLINE */
+  }
+}
+
+setInterval(refreshFocus, 1000);
+
+// ----------------------------------------------------------------------
 // Wecker und Timer laeuten (Step 2.11): Banner "Aus" / "Schlummern", Ton im Browser (web/alarm.js)
 // ----------------------------------------------------------------------
 
@@ -2437,4 +2563,4 @@ const GUEST_WELCOME =
   "Willkommen im Gastmodus. Ich kann mich unterhalten, die Uhrzeit und das Datum nennen, " +
   "rechnen und im Web suchen. Auf diesem Rechner kann ich nichts tun.";
 
-loadSettings().finally(() => { showStartupReport(); refreshTree(); refreshTimers(); });
+loadSettings().finally(() => { showStartupReport(); refreshTree(); refreshTimers(); refreshFocus(); });

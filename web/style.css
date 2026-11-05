@@ -432,6 +432,12 @@ dialog.settings { width: min(800px, 94vw); height: min(560px, 90vh); padding: 0;
 input[type="checkbox"].setting-control { min-width: 0; width: 18px; height: 18px; accent-color: var(--accent); }
 
 /* Gespeicherte Erinnerungen (Settings > Memory) */
+.folder-list { display: flex; flex-direction: column; gap: 6px; }
+.folder-item { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 14px; background: var(--base); border: 1px solid var(--line); border-radius: 10px; }
+.folder-path { flex: 1 1 12em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
+.folder-missing { flex-basis: 100%; color: var(--muted); font-size: 0.8rem; }
+.folder-form { display: flex; gap: 8px; margin-top: 4px; }
+.folder-input { flex: 1; min-width: 0; }
 .memory-list { display: flex; flex-direction: column; gap: 6px; }
 .memory-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 2px 4px; }
 .memory-summary { font-size: 13px; color: var(--muted); }
@@ -491,6 +497,7 @@ button.danger-text { color: #d9695f; }
 .timers { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0 0; }
 .timers[hidden] { display: none; }
 .timer-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--base); border: 1px solid var(--line); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 0.85rem; }
+.timer-chip.focus-chip { border-color: var(--accent); }
 .timer-name { color: var(--text); max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .timer-time { color: var(--accent); font-variant-numeric: tabular-nums; }
 .timer-cancel { padding: 0 8px; background: transparent; color: var(--muted); border: 0; font-size: 0.9rem; line-height: 1.6; }

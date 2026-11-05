@@ -18,6 +18,7 @@ bekannten Befehlen und registrierten Aufgaben passt, wird zu "CHAT".
 """
 
 import json
+import re
 from datetime import datetime
 
 from config import MODEL
@@ -162,11 +163,28 @@ def describe_disabled(task_registry):
     )
 
 
-def build_prompt(message, task_registry, today=None):
+def document_context(name):
+    """Hinweis fuer den Router: Der Nutzer arbeitet gerade mit dieser Datei (Folgefragen ohne Dateiname, Step 2.17).
+
+    Der Name stammt aus dem Dateisystem: Sonderzeichen und Laenge werden begrenzt, damit er keine Anweisung enthalten kann.
+    """
+    safe = re.sub(r"[^\w .()\-]", "", str(name or ""))[:60].strip()
+    if not safe:
+        return ""
+    return (
+        f'The user is currently working with the file "{safe}" (read a moment ago). If the message asks about the '
+        "content of that file (details, numbers, names, dates, conditions; \"what does it say about ...\") or asks to "
+        "summarize it or to continue reading it, choose TASK READ_DOCUMENT, leave \"file\" empty and put the "
+        "question in \"question\". Messages that have nothing to do with the file are routed as usual."
+    )
+
+
+def build_prompt(message, task_registry, today=None, context=""):
     today = today or datetime.now()
     # Wochentag selbst benennen: strftime("%A") richtet sich nach der Spracheinstellung des Rechners
     weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][today.weekday()]
     today_text = f"{today.strftime('%Y-%m-%d')} ({weekday})"
+    situation_block = f"Current situation (from the application, not from the user): {context}\n\n" if context else ""
 
     return f"""
 Today's date is {today_text}. Use it to turn words like "tomorrow" or "Friday"
@@ -265,15 +283,15 @@ User message: "starte Notepad und sag mir die Uhrzeit"
 User message: "Erkläre mir, wie ein Motor funktioniert"
 {{"kind": "CHAT", "intent": null, "project_name": null, "conversation_name": null, "new_conversation_name": null, "task_type": null, "parameters": {{}}}}
 
-User message (as a JSON string):
+{situation_block}User message (as a JSON string):
 {json.dumps(message, ensure_ascii=False)}
 """
 
 
-def route_message(client, message, task_registry):
+def route_message(client, message, task_registry, context=""):
     response = client.responses.create(
         model=MODEL,
-        input=build_prompt(message, task_registry)
+        input=build_prompt(message, task_registry, context=context)
     )
 
     raw = parse_llm_json(response.output_text, {"kind": "CHAT"})

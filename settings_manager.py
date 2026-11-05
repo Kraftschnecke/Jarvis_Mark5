@@ -53,6 +53,13 @@ class SettingsManager:
             "snooze_minutes": 5,
             "briefing": True,         # neue Wecker sprechen beim Ausschalten Termine und Wetter
         },
+        # Fokus-Timer / Pomodoro (Mark 5, Step 2.13): Voreinstellungen, wenn der Nutzer keine Zahlen nennt
+        "focus": {
+            "work_minutes": 25,
+            "break_minutes": 5,
+            "long_break_minutes": 15,  # nach jeder 4. Runde, wenn noch Runden folgen
+            "rounds": 4,
+        },
         # Tagesbriefing (Mark 5, Step 2.12)
         "briefing": {
             "auto": False,            # beim ersten Start des Tages von selbst vorlesen

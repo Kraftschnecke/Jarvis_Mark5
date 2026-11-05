@@ -14,6 +14,7 @@ from settings_manager import SettingsManager
 from personality import get_address, set_address, DEFAULT_ADDRESS
 import abilities
 import briefing
+import focus
 import reminders
 import ringing
 import timer as timer_module
@@ -24,6 +25,8 @@ from task_registry import TaskRegistry
 import plan_view
 from capabilities import describe_capabilities
 import risk
+import tools.document_tool as document_tool
+import tools.note_tool as note_tool
 from task_executor import (
     execute_registered_task, execute_task, prepare_registered_task
 )
@@ -36,6 +39,7 @@ from project_context import (
     add_to_project_section
 )
 from project_analyzer import process_project_context
+import router as router_module
 from router import route_message
 from background_tasks import get_results
 from timer import (
@@ -136,6 +140,12 @@ class Jarvis:
         ringer.briefing_provider = self.wakeup_briefing
         ringer.snooze_handler = self.snooze_ring
         briefing.set_provider(self.daily_briefing)          # Tagesbriefing (Step 2.12)
+        focus.default_manager().configure(                  # Voreinstellungen des Fokus-Timers (Step 2.13)
+            work=settings.get("focus", "work_minutes", focus.DEFAULT_WORK),
+            brk=settings.get("focus", "break_minutes", focus.DEFAULT_BREAK),
+            long=settings.get("focus", "long_break_minutes", focus.DEFAULT_LONG_BREAK),
+            rounds=settings.get("focus", "rounds", focus.DEFAULT_ROUNDS),
+        )
 
     def wakeup_briefing(self):
         """Kurzer Tagesueberblick fuer das Ausschalten eines Weckers (Wetter nur, wenn die Faehigkeit an ist)."""
@@ -574,11 +584,48 @@ class Jarvis:
             "Du kannst sie in den Einstellungen unter Abilities einschalten."
         )
 
+    def router_context(self):
+        """Hinweis fuer den Router, wenn es gerade um eine gelesene Datei geht (Folgefragen ohne Dateinamen)."""
+        registry = getattr(self, "task_registry", None)
+
+        if registry is None or registry.get("READ_DOCUMENT") is None:
+            return ""
+        return router_module.document_context(document_tool.default_reader().active_name())
+
+    def prepare_note(self, prepared):
+        """Notizen: fehlt der Text, ist Jarvis' letzte Antwort gemeint. Ungueltiges wird abgelehnt, bevor gefragt wird.
+
+        Gibt den Fehlertext zurueck (oder None). Die Rueckfrage und das spaetere Schreiben sehen denselben Text.
+        """
+        if prepared is None:
+            return None
+
+        for action in prepared.actions:
+            if action.name != "write_note":
+                continue
+
+            params = action.parameters
+            content = params.get("content")
+
+            if not isinstance(content, str) or not content.strip():
+                params["content"] = getattr(self, "last_reply", None) or ""
+
+            return note_tool.default_writer().check(
+                params.get("filename", ""), params.get("content", ""), params.get("folder", ""), params.get("mode", "new")
+            )
+
+        return None
+
     def run_task(self, message, route):
         """Fuehrt eine Aufgabe aus - je nach Risikostufe sofort, nach Rueckfrage oder gar nicht."""
         prepared = prepare_registered_task(
             self.task_registry, route["task_type"], route["parameters"]
         )
+        problem = self.prepare_note(prepared)
+
+        if problem:
+            return {"status": "response", "content": f"{get_address()}, {problem[0].lower()}{problem[1:]}"}
+
         level = risk.task_risk(prepared) if prepared is not None else risk.SAFE
 
         if level == risk.FORBIDDEN:
@@ -793,9 +840,15 @@ class Jarvis:
         Strg+C (KeyboardInterrupt) wird bewusst nicht abgefangen.
         """
         ai_log.start_message(message)
+        answers_a_question = getattr(self, "pending_action", None) is not None     # "ja"/"nein" ist keine Antwort zum Merken
 
         try:
-            return self._process_message(message)
+            result = self._process_message(message)
+
+            if not answers_a_question and isinstance(result, dict) and result.get("status") == "response":
+                self.last_reply = result.get("content")        # fuer "Speichere das als Notiz"
+
+            return result
         except cost_guard.LimitReached as error:
             # Erwartbar, kein Fehler im Programm: kein Traceback, feste Meldung
             self.clear_pending()
@@ -868,11 +921,12 @@ class Jarvis:
             }
 
         # Ein einziger KI-Aufruf entscheidet: Befehl, Aufgabe oder Chat
-        route = route_message(
-            self.client,
-            message,
-            self.task_registry
-        )
+        context = self.router_context()
+
+        if context:
+            route = route_message(self.client, message, self.task_registry, context=context)
+        else:
+            route = route_message(self.client, message, self.task_registry)
 
         if route["kind"] == "COMMAND":
             command = route["command"]
@@ -924,10 +978,28 @@ class Jarvis:
         if result["type"] == "ALARM_DUE":
             return self.alarm_message(result["data"])
 
+        if result["type"] == "FOCUS_PHASE":
+            return self.focus_message(result["data"])
+
         if result["type"] == "RINGING_EXPIRED":
             data = result["data"]
             noun = "Wecker" if data.get("kind") == "alarm" else "Timer"
             return f"{get_address()}, ich habe den {noun} „{data.get('label', '')}“ nach {data.get('minutes')} Minuten von selbst ausgeschaltet."
+
+    def focus_message(self, data):
+        address = get_address()
+        label = f" ({data['label']})" if data.get("label") else ""
+        rounds, number = data.get("rounds"), data.get("round")
+        if data.get("finished"):
+            return (f"{address}, alle {rounds} Fokusphasen sind geschafft{label}. Gut gemacht, die Sitzung ist beendet."
+                    if rounds != 1 else f"{address}, die Fokusphase{label} ist geschafft. Gut gemacht, die Sitzung ist beendet.")
+        minutes = data.get("minutes")
+        if data.get("done") == "work":
+            kind = "lange Pause" if data.get("next") == "long_break" else "Pause"
+            return (f"{address}, Fokusphase {number} von {rounds}{label} geschafft. "
+                    f"Zeit für eine {kind}: {minutes} {'Minute' if minutes == 1 else 'Minuten'}.")
+        return (f"{address}, die Pause ist vorbei. Fokusphase {number} von {rounds}{label} beginnt: "
+                f"{minutes} {'Minute' if minutes == 1 else 'Minuten'}.")
 
     def reminder_message(self, data):
         message = f"{get_address()}, Erinnerung: {data.get('text', '')}"

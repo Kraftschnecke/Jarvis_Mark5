@@ -50,6 +50,7 @@ except ImportError:
 # (Satz, erwartete Art, erwarteter Befehl bzw. Aufgabe, Zusatzpruefung)
 # Zusatzpruefung: {"project_name": "Jarvis"} -> Feld des Befehls (ohne Gross/Klein)
 #                 {"param:query": "wetter"}  -> Parameter enthaelt diesen Text
+#                 {"exact:file": ""}  -> Parameter ist genau dieser Text (leer = nichts eingetragen)
 FAELLE = [
     # --- Befehle ---
     ("Öffne Projekt Jarvis", "COMMAND", "OPEN_PROJECT", {"project_name": "Jarvis"}),
@@ -78,7 +79,7 @@ FAELLE = [
     ("Trag den Kurs jeden Dienstag um 10 Uhr für die nächsten 8 Wochen in den Kalender ein", "TASK", "ADD_CALENDAR_EVENT", {"param:repeat": "week", "param:count": "8"}),
     ("Trag den Geburtstag von Mama am 14. November jedes Jahr ein", "TASK", "ADD_CALENDAR_EVENT", {"param:repeat": "year"}),
     ("Erinnere mich jeden Montag um 8 Uhr an den Müll", "TASK", "SET_REMINDER", {"param:repeat": "week"}),
-    ("Erinnere mich bis Weihnachten jeden Tag um 20 Uhr an die Vitamine", "TASK", "SET_REMINDER", {"param:repeat": "day", "param:until": "-12-"}),
+    ("Erinnere mich bis Weihnachten jeden Tag um 20 Uhr an die Vitamine", "TASK", "SET_REMINDER", {"param:repeat": "daily", "param:until": "-12-"}),
     ("Beende die Erinnerung an den Müll komplett, die ganze Serie", "TASK", "CANCEL_REMINDER", {"param:scope": "series"}),
     ("Lösch nur die nächste Erinnerung an den Müll", "TASK", "CANCEL_REMINDER", {}),
     ("Welche Erinnerungen habe ich?", "TASK", "LIST_REMINDERS", {}),
@@ -91,6 +92,28 @@ FAELLE = [
     ("Lösch alle Wecker", "TASK", "CANCEL_ALARM", {}),
     ("Wecker aus", "TASK", "STOP_RINGING", {}),
     ("Gib mir mein Briefing", "TASK", "GET_BRIEFING", {}),
+    ("Starte einen Pomodoro", "TASK", "START_FOCUS", {}),
+    ("Fokus für 50 Minuten mit 10 Minuten Pause", "TASK", "START_FOCUS", {"param:work_minutes": "50", "param:break_minutes": "10"}),
+    ("Ich will 3 Runden lang lernen, jeweils 30 Minuten", "TASK", "START_FOCUS", {"param:rounds": "3", "param:work_minutes": "30"}),
+    ("Wie lange noch bis zur Pause?", "TASK", "FOCUS_STATUS", {}),
+    ("Beende den Fokus", "TASK", "STOP_FOCUS", {}),
+    ("Welche Ordner darfst du lesen?", "TASK", "LIST_FOLDERS", {}),
+    ("Finde meine Steuerunterlagen", "TASK", "FIND_FILES", {"param:query": "steuer"}),
+    ("Welche Dateien enthalten das Wort Kündigung?", "TASK", "FIND_FILES", {"param:mode": "content"}),
+    ("Suche PDFs mit Rechnung im Namen", "TASK", "FIND_FILES", {"param:file_type": "pdf"}),
+    ("Such im Ordner Dokumente nach Lebenslauf", "TASK", "FIND_FILES", {}),
+    ("Fass die zweite Datei zusammen", "TASK", "READ_DOCUMENT", {"param:file": "2"}),
+    ("Worum geht es in der Datei Mietvertrag.pdf?", "TASK", "READ_DOCUMENT", {}),
+    ("Lies den Brief aus meinem Dokumente-Ordner und fass ihn zusammen", "TASK", "READ_DOCUMENT", {}),
+    ("Lies weiter", "TASK", "READ_DOCUMENT", {}),
+    ("Wann ist die Rechnung Receipt-2862-9692.pdf fällig?", "TASK", "READ_DOCUMENT", {"param:question": "fällig"}),
+    ("Was steht in der Datei Mietvertrag.docx über die Kündigungsfrist?", "TASK", "READ_DOCUMENT", {"param:question": "kündigungsfrist"}),
+    ("Schreib eine Notiz mit dem Namen Einkaufen: Milch, Eier, Brot", "TASK", "WRITE_NOTE", {"param:filename": "einkaufen", "param:content": "milch"}),
+    ("Schreib eine Notiz Einkaufen: Milch, Brot", "TASK", "WRITE_NOTE", {"exact:filename": "Einkaufen", "param:content": "milch"}),
+    ("Speichere das als Notiz", "TASK", "WRITE_NOTE", {"exact:content": ""}),
+    ("Hänge an meine Datei ideen.txt an: Jarvis soll morgens grüßen", "TASK", "WRITE_NOTE", {"param:mode": "append", "param:filename": "ideen"}),
+    ("Fasse es zusammen", "TASK", "READ_DOCUMENT", {"exact:file": ""}),
+    ("Gib den Ordner C:/Users/test/Documents für dich frei", "CHAT", None, {}),
     ("Was steht heute alles an?", "TASK", "GET_BRIEFING", {}),
     ("Guten Morgen Jarvis, was gibt es Neues für heute?", "TASK", "GET_BRIEFING", {}),
     ("Schalt den Timer aus, er klingelt", "TASK", "STOP_RINGING", {"param:what": "timer"}),
@@ -113,6 +136,21 @@ FAELLE = [
 ]
 
 
+# Folgefragen, wenn Jarvis gerade eine Datei gelesen hat (der Router bekommt dann den Dateinamen als Hinweis)
+DATEI_KONTEXT = "Mietvertrag_Test_lang.txt"
+FOLGEFAELLE = [
+    ("Wie lang ist die Kündigungsfrist des Mieters?", "TASK", "READ_DOCUMENT", {"param:question": "frist", "exact:file": ""}),
+    ("Wie heißt der Hausmeister und wie ist seine Nummer?", "TASK", "READ_DOCUMENT", {"param:question": "hausmeister", "exact:file": ""}),
+    ("Und wann beginnt das Mietverhältnis?", "TASK", "READ_DOCUMENT", {"exact:file": ""}),
+    ("Fass es kurz zusammen", "TASK", "READ_DOCUMENT", {"exact:file": ""}),
+    ("Lies weiter", "TASK", "READ_DOCUMENT", {"exact:file": ""}),
+    ("Wie spät ist es?", "TASK", "GET_TIME", {}),
+    ("Stelle einen Timer auf 10 Sekunden", "TASK", "START_TIMER", {}),
+    ("Hallo, wie geht's?", "CHAT", None, {}),
+    ("Erkläre mir kurz, wie ein Timer funktioniert", "CHAT", None, {}),
+]
+
+
 def pruefen(route, art, name, extras):
     """Gibt (ok, erhalten_text) zurueck."""
     if route["kind"] == "COMMAND":
@@ -127,7 +165,10 @@ def pruefen(route, art, name, extras):
 
     if ok:
         for key, wert in extras.items():
-            if key.startswith("param:"):
+            if key.startswith("exact:"):
+                ist = str(route["parameters"].get(key[6:], "")).strip()
+                gefunden = ist.casefold() == wert.casefold()
+            elif key.startswith("param:"):
                 ist = str(route["parameters"].get(key[6:], ""))
                 gefunden = wert.casefold() in ist.casefold()
             else:
@@ -146,16 +187,22 @@ def main():
     registry = TaskRegistry()
     register_all_tasks(registry)
 
-    print(f"Verfahren: {VERFAHREN}, {len(FAELLE)} Beispielsätze\n")
+    faelle = [(*fall, "") for fall in FAELLE]
+
+    if VERFAHREN.startswith("Router"):
+        import router
+        faelle += [(*fall, router.document_context(DATEI_KONTEXT)) for fall in FOLGEFAELLE]
+
+    print(f"Verfahren: {VERFAHREN}, {len(faelle)} Beispielsätze ({len(faelle) - len(FAELLE)} davon mit gelesener Datei)\n")
 
     richtig = 0
     gesamt_zeit = 0.0
 
-    for nummer, (satz, art, name, extras) in enumerate(FAELLE, start=1):
+    for nummer, (satz, art, name, extras, kontext) in enumerate(faelle, start=1):
         start = time.perf_counter()
 
         try:
-            route = route_message(client, satz, registry)
+            route = route_message(client, satz, registry, context=kontext) if kontext else route_message(client, satz, registry)
         except Exception as error:
             print(f"{nummer:2}. FEHLER   {satz!r}: {type(error).__name__}: {error}")
             continue
@@ -170,9 +217,9 @@ def main():
         print(f"{nummer:2}. {marke} {dauer:4.1f} s  {satz[:55]!r:<60} -> {erhalten}{zusatz}")
 
     print()
-    print(f"{richtig} von {len(FAELLE)} richtig, "
+    print(f"{richtig} von {len(faelle)} richtig, "
           f"{gesamt_zeit:.1f} s gesamt, "
-          f"{gesamt_zeit / len(FAELLE):.2f} s pro Satz "
+          f"{gesamt_zeit / len(faelle):.2f} s pro Satz "
           f"({AUFRUFE_PRO_SATZ} KI-Aufruf(e) pro Satz)")
 
 

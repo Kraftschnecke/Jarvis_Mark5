@@ -50,6 +50,7 @@ except ImportError:
 # (Satz, erwartete Art, erwarteter Befehl bzw. Aufgabe, Zusatzpruefung)
 # Zusatzpruefung: {"project_name": "Jarvis"} -> Feld des Befehls (ohne Gross/Klein)
 #                 {"param:query": "wetter"}  -> Parameter enthaelt diesen Text
+#                 {"exact:file": ""}  -> Parameter ist genau dieser Text (leer = nichts eingetragen)
 FAELLE = [
     # --- Befehle ---
     ("Öffne Projekt Jarvis", "COMMAND", "OPEN_PROJECT", {"project_name": "Jarvis"}),
@@ -78,7 +79,7 @@ FAELLE = [
     ("Trag den Kurs jeden Dienstag um 10 Uhr für die nächsten 8 Wochen in den Kalender ein", "TASK", "ADD_CALENDAR_EVENT", {"param:repeat": "week", "param:count": "8"}),
     ("Trag den Geburtstag von Mama am 14. November jedes Jahr ein", "TASK", "ADD_CALENDAR_EVENT", {"param:repeat": "year"}),
     ("Erinnere mich jeden Montag um 8 Uhr an den Müll", "TASK", "SET_REMINDER", {"param:repeat": "week"}),
-    ("Erinnere mich bis Weihnachten jeden Tag um 20 Uhr an die Vitamine", "TASK", "SET_REMINDER", {"param:repeat": "day", "param:until": "-12-"}),
+    ("Erinnere mich bis Weihnachten jeden Tag um 20 Uhr an die Vitamine", "TASK", "SET_REMINDER", {"param:repeat": "daily", "param:until": "-12-"}),
     ("Beende die Erinnerung an den Müll komplett, die ganze Serie", "TASK", "CANCEL_REMINDER", {"param:scope": "series"}),
     ("Lösch nur die nächste Erinnerung an den Müll", "TASK", "CANCEL_REMINDER", {}),
     ("Welche Erinnerungen habe ich?", "TASK", "LIST_REMINDERS", {}),
@@ -90,6 +91,25 @@ FAELLE = [
     ("Lösch den Wecker um 7 Uhr", "TASK", "CANCEL_ALARM", {}),
     ("Lösch alle Wecker", "TASK", "CANCEL_ALARM", {}),
     ("Wecker aus", "TASK", "STOP_RINGING", {}),
+    ("Gib mir mein Briefing", "TASK", "GET_BRIEFING", {}),
+    ("Starte einen Pomodoro", "TASK", "START_FOCUS", {}),
+    ("Fokus für 50 Minuten mit 10 Minuten Pause", "TASK", "START_FOCUS", {"param:work_minutes": "50", "param:break_minutes": "10"}),
+    ("Ich will 3 Runden lang lernen, jeweils 30 Minuten", "TASK", "START_FOCUS", {"param:rounds": "3", "param:work_minutes": "30"}),
+    ("Wie lange noch bis zur Pause?", "TASK", "FOCUS_STATUS", {}),
+    ("Beende den Fokus", "TASK", "STOP_FOCUS", {}),
+    ("Welche Ordner darfst du lesen?", "TASK", "LIST_FOLDERS", {}),
+    ("Finde meine Steuerunterlagen", "TASK", "FIND_FILES", {"param:query": "steuer"}),
+    ("Welche Dateien enthalten das Wort Kündigung?", "TASK", "FIND_FILES", {"param:mode": "content"}),
+    ("Suche PDFs mit Rechnung im Namen", "TASK", "FIND_FILES", {"param:file_type": "pdf"}),
+    ("Such im Ordner Dokumente nach Lebenslauf", "TASK", "FIND_FILES", {}),
+    ("Fass die zweite Datei zusammen", "TASK", "READ_DOCUMENT", {"param:file": "2"}),
+    ("Worum geht es in der Datei Mietvertrag.pdf?", "TASK", "READ_DOCUMENT", {}),
+    ("Lies den Brief aus meinem Dokumente-Ordner und fass ihn zusammen", "TASK", "READ_DOCUMENT", {}),
+    ("Lies weiter", "TASK", "READ_DOCUMENT", {}),
+    ("Fasse es zusammen", "TASK", "READ_DOCUMENT", {"exact:file": ""}),
+    ("Gib den Ordner C:/Users/test/Documents für dich frei", "CHAT", None, {}),
+    ("Was steht heute alles an?", "TASK", "GET_BRIEFING", {}),
+    ("Guten Morgen Jarvis, was gibt es Neues für heute?", "TASK", "GET_BRIEFING", {}),
     ("Schalt den Timer aus, er klingelt", "TASK", "STOP_RINGING", {"param:what": "timer"}),
     ("Noch 10 Minuten schlafen", "TASK", "STOP_RINGING", {"param:snooze_minutes": "10"}),
     ("Setze die Lautstärke auf 30 Prozent", "TASK", "SET_VOLUME", {}),
@@ -124,7 +144,10 @@ def pruefen(route, art, name, extras):
 
     if ok:
         for key, wert in extras.items():
-            if key.startswith("param:"):
+            if key.startswith("exact:"):
+                ist = str(route["parameters"].get(key[6:], "")).strip()
+                gefunden = ist.casefold() == wert.casefold()
+            elif key.startswith("param:"):
                 ist = str(route["parameters"].get(key[6:], ""))
                 gefunden = wert.casefold() in ist.casefold()
             else:

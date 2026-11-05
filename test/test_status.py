@@ -16,7 +16,7 @@ app = (WEB / "app.js").read_text(encoding="utf-8")
 # Einbindung
 assert html.index('src="status.js"') < html.index('src="app.js"')
 assert re.search(r'<div[^>]*id="timers"[^>]*\bhidden\b', html), "Timer-Leiste muss ohne Timer versteckt sein"
-assert "loadSettings().finally(() => { showStartupReport(); refreshTree(); refreshTimers(); });" in app
+assert "loadSettings().finally(() => { showStartupReport(); refreshTree(); refreshTimers(); refreshFocus(); });" in app
 assert "/api/timers" in app and "/api/timer/cancel" in app
 
 # Namen kommen aus Nachrichten: nur als Text einsetzen, nie als HTML

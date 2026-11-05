@@ -409,7 +409,7 @@ def create_get_world_time_task():
 def create_wiki_lookup_task():
     task = Task(
         "WIKI_LOOKUP",
-        "Etwas in Wikipedia nachschlagen: eine Person, einen Ort, ein Ereignis oder einen Begriff erklären (Wer war ..., Was ist ...)"
+        "Etwas in Wikipedia nachschlagen: eine Person, einen Ort, ein Ereignis oder einen Begriff erklären (Wer war ..., Was ist ...). Keine Wortbedeutungen und keine Fragen zur Sprache (Was bedeutet das Wort ...?): die beantwortet der normale Chat"
     )
     task.add_action(
         Action(
@@ -587,6 +587,157 @@ def create_get_briefing_task():
     return task
 
 
+def create_start_focus_task():
+    task = Task(
+        "START_FOCUS",
+        "Eine Fokus-Sitzung (Pomodoro) starten: Fokusphasen mit Pausen dazwischen und Meldung bei jedem Wechsel"
+    )
+    task.add_action(
+        Action(
+            "start_focus",
+            {
+                "work_minutes": {
+                    "description": "Länge einer Fokusphase in Minuten als Zahl. Nennt der Nutzer keine, schreibe standard",
+                    "type": "string"
+                },
+                "break_minutes": {
+                    "description": "Länge der Pause in Minuten als Zahl. Nennt der Nutzer keine, schreibe standard",
+                    "type": "string"
+                },
+                "rounds": {
+                    "description": "Anzahl der Fokusphasen (Runden) als Zahl. Nennt der Nutzer keine, schreibe standard",
+                    "type": "string"
+                },
+                "label": {
+                    "description": "Woran gearbeitet wird, z.B. Lernen. Nennt der Nutzer nichts, schreibe ohne",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_focus_status_task():
+    task = Task(
+        "FOCUS_STATUS",
+        "Zeigen, wie weit die laufende Fokus-Sitzung (Pomodoro) ist: welche Phase, welche Runde und wie lange es noch bis zur Pause oder bis zum Ende dauert (Wie lange noch bis zur Pause? Wie weit bin ich im Pomodoro? Läuft noch eine Fokus-Sitzung?)"
+    )
+    task.add_action(Action("focus_status"))
+    return task
+
+
+def create_stop_focus_task():
+    task = Task(
+        "STOP_FOCUS",
+        "Die laufende Fokus-Sitzung (Pomodoro) beenden"
+    )
+    task.add_action(Action("stop_focus"))
+    return task
+
+
+def create_list_folders_task():
+    task = Task(
+        "LIST_FOLDERS",
+        "Zeigen, in welchen freigegebenen Ordnern Jarvis Dateien lesen darf (Welche Ordner darfst du lesen? Auf welche Ordner hast du Zugriff?). Ordner kann nur der Nutzer selbst in den Einstellungen freigeben, nicht per Chat"
+    )
+    task.add_action(Action("list_folders"))
+    return task
+
+
+def create_find_files_task():
+    task = Task(
+        "FIND_FILES",
+        "Dateien auf dem Computer in den freigegebenen Ordnern nach Name oder Inhalt finden (Finde meine Steuerunterlagen. Welche Dateien enthalten das Wort Kündigung? Suche PDFs mit Rechnung im Namen). Nicht für das Internet und nicht zum Öffnen oder Lesen einer Datei"
+    )
+    task.add_action(
+        Action(
+            "find_files",
+            {
+                "query": {
+                    "description": "Die Suchwörter (Teil des Dateinamens oder Wort im Inhalt), höchstens 5. Sucht der Nutzer nur nach einem Dateityp oder Ordner, schreibe leer",
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "name (im Dateinamen, Standard), content (im Inhalt: Nutzer sagt enthalten, steht drin, im Text) oder both (Nutzer meint unklar, wo es steht)",
+                    "type": "string"
+                },
+                "file_type": {
+                    "description": "Der Dateityp: pdf, word, excel, text, bild, präsentation oder eine Endung wie docx. Nennt der Nutzer keinen, schreibe alle",
+                    "type": "string"
+                },
+                "folder": {
+                    "description": "Ein Teil des Ordnernamens, wenn der Nutzer einen Ordner nennt (im Ordner Dokumente). Sonst schreibe alle",
+                    "type": "string"
+                },
+                "count": {
+                    "description": "Wie viele Treffer (1 bis 20). Nennt der Nutzer keine Zahl, schreibe 8",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_read_document_task():
+    task = Task(
+        "READ_DOCUMENT",
+        "Eine Datei aus den freigegebenen Ordnern lesen, um sie zusammenzufassen oder Fragen zum Inhalt zu beantworten (Fass die zweite Datei zusammen. Wann ist die Rechnung fällig? Was steht im Vertrag über die Kündigungsfrist? Fasse es zusammen, nachdem Dateien gefunden wurden. Lies Lebenslauf.docx. Worum geht es im Brief?). Nicht zum Öffnen im Programm (das ist OPEN_FILE) und nicht für Webseiten"
+    )
+    task.add_action(
+        Action(
+            "read_document",
+            {
+                "file": {
+                    "description": "Die Datei: die Nummer aus der zuletzt genannten Trefferliste (zweite Datei = 2) oder der Dateiname oder der volle Pfad. Sagt der Nutzer nur es, sie oder die Datei ohne Namen und Nummer, oder meint er die zuletzt gelesene Datei (weiter, nächster Teil), schreibe leer",
+                    "type": "string"
+                },
+                "question": {
+                    "description": "Die Frage des Nutzers zum Inhalt in einem Satz (Wann ist die Rechnung fällig?). Will er nur eine Zusammenfassung oder weiterlesen, schreibe leer",
+                    "type": "string"
+                },
+                "part": {
+                    "description": "Der Teil bei langen Dateien (1, 2, 3 …). Nennt der Nutzer keinen, schreibe 1; bei weiterlesen den nächsten Teil",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
+def create_write_note_task():
+    task = Task(
+        "WRITE_NOTE",
+        "Text als Notiz in eine Textdatei (.txt oder .md) in einem freigegebenen Ordner speichern (Schreib eine Notiz Einkaufen: Milch, Brot. Speichere das als Notiz. Leg die Datei ideen.txt an. Hänge das an meine Datei tagebuch.txt an). Nicht für Termine oder Erinnerungen und nicht für andere Dateiarten"
+    )
+    task.add_action(
+        Action(
+            "write_note",
+            {
+                "filename": {
+                    "description": "Der Dateiname oder Titel der Notiz (nur der Name, kein Pfad, höchstens .txt oder .md). Steht in der Nachricht ein kurzer Titel vor dem Doppelpunkt (Schreib eine Notiz Einkaufen: Milch, Brot), ist das der Name: schreibe Einkaufen hierher und nur den Text danach in content. Nennt der Nutzer weder Namen noch Titel, schreibe leer",
+                    "type": "string"
+                },
+                "content": {
+                    "description": "Der Text für die Datei, so wie der Nutzer ihn nennt oder diktiert, ohne den Titel vor dem Doppelpunkt (bei einer Liste eine Zeile pro Eintrag). Meint der Nutzer deine letzte Antwort (Speichere das, die Zusammenfassung, das eben), schreibe leer",
+                    "type": "string"
+                },
+                "folder": {
+                    "description": "Ein Teil des Ordnernamens, wenn der Nutzer einen Ordner nennt (im Ordner Dokumente). Sonst schreibe leer",
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "append, wenn der Nutzer an eine bestehende Datei anhängen oder ergänzen will, sonst new",
+                    "type": "string"
+                }
+            }
+        )
+    )
+    return task
+
+
 def create_list_alarms_task():
     task = Task(
         "LIST_ALARMS",
@@ -670,6 +821,13 @@ def register_all_tasks(registry):
     registry.register(create_set_alarm_task())
     registry.register(create_list_alarms_task())
     registry.register(create_get_briefing_task())
+    registry.register(create_start_focus_task())
+    registry.register(create_focus_status_task())
+    registry.register(create_stop_focus_task())
+    registry.register(create_list_folders_task())
+    registry.register(create_find_files_task())
+    registry.register(create_read_document_task())
+    registry.register(create_write_note_task())
     registry.register(create_cancel_alarm_task())
     registry.register(create_stop_ringing_task())
     registry.register(create_search_web_task())

@@ -1,5 +1,6 @@
 openai==3.13.0
 psutil==7.2.2
+pypdf==5.9.0
 pycaw==20260921
 prompt_toolkit==3.0.53
 python-dotenv==1.2.3

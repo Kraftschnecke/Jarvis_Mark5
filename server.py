@@ -17,6 +17,8 @@ Dinge:
                              (ohne "after": nur den aktuellen Stand "last" melden)
        GET  /api/alarms      ->  alle Wecker fuer den Kalender; POST /api/alarms/add, /api/alarms/update und /api/alarms/delete (Step 2.11b)
        POST /api/briefing/auto -> Tagesbriefing beim ersten Start des Tages: {"text": ...} oder null (Step 2.12)
+       GET  /api/folders     ->  freigegebene Ordner; POST /api/folders/add und /api/folders/remove pflegen sie (Step 2.14)
+       GET  /api/focus       ->  laufende Fokus-Sitzung (Phase, Runde, Restzeit); POST /api/focus/stop beendet sie (Step 2.13)
        GET  /api/ringing     ->  was gerade laeutet (Wecker/Timer) und wer den Ton macht (Step 2.11)
        POST /api/ringing/stop ->  ausschalten oder schlummern, auch waehrend Jarvis antwortet
        GET  /api/system      ->  PC-Fakten fuer das Widget "PC Facts" (Step 2.8, lokal gelesen)
@@ -57,6 +59,8 @@ import action_log
 import speech
 import timer
 import reminders
+import focus
+import folders
 import ringing
 import widgets
 from tools import news_tool, system_status_tool, weather_tool
@@ -116,6 +120,10 @@ EDITABLE_SETTINGS[("alarm", "ring_timers")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("alarm", "briefing")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("alarm", "max_minutes")] = lambda v: _is_int(v, 1, 60)
 EDITABLE_SETTINGS[("alarm", "snooze_minutes")] = lambda v: _is_int(v, 1, 60)
+EDITABLE_SETTINGS[("focus", "work_minutes")] = lambda v: _is_int(v, 1, 120)
+EDITABLE_SETTINGS[("focus", "break_minutes")] = lambda v: _is_int(v, 1, 60)
+EDITABLE_SETTINGS[("focus", "long_break_minutes")] = lambda v: _is_int(v, 1, 60)
+EDITABLE_SETTINGS[("focus", "rounds")] = lambda v: _is_int(v, 1, 12)
 EDITABLE_SETTINGS[("briefing", "auto")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("briefing", "news")] = lambda v: isinstance(v, bool)
 # Schalter fuer Faehigkeiten: eine Zeile je Eintrag in abilities.ABILITIES
@@ -516,6 +524,12 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if path == "/api/ringing":
             return self.send_json(200, ringing.default_ringer().state())
 
+        if path == "/api/focus":
+            return self.send_json(200, focus.default_manager().state())
+
+        if path == "/api/folders":
+            return self.send_json(200, {"folders": folders.default_list().list(), "max": folders.MAX_FOLDERS})
+
         if path == "/api/alarms":
             return self.send_json(200, {"alarms": reminders.default_store().alarms_overview()})
 
@@ -719,6 +733,26 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 except reminders.ReminderError as error:
                     return self.send_json(400, {"error": str(error)})
                 return self.send_json(200, {"alarms": store.alarms_overview()})
+
+            # Freigegebene Ordner pflegen (Step 2.14): nur hier, nie per Chat; lokal, ohne message_lock
+            if path in ("/api/folders/add", "/api/folders/remove"):
+                folder = data.get("path")
+                if not isinstance(folder, str):
+                    return self.send_json(400, {"error": "Es wurde kein Ordner angegeben."})
+                try:
+                    if path.endswith("/add"):
+                        updated = folders.default_list().add(folder)
+                    else:
+                        updated = folders.default_list().remove(folder)
+                except folders.AccessError as error:
+                    return self.send_json(400, {"error": str(error)})
+                return self.send_json(200, {"folders": updated, "max": folders.MAX_FOLDERS})
+
+            # Fokus-Sitzung abbrechen (Step 2.13): lokal und harmlos, soll auch gehen, waehrend Jarvis antwortet
+            if path == "/api/focus/stop":
+                summary = focus.default_manager().stop()
+                return self.send_json(200, {"stopped": summary is not None, "summary": summary,
+                                            "state": focus.default_manager().state()})
 
             # Briefing beim ersten Start des Tages (Step 2.12): hoechstens einmal pro Tag, sonst text = null
             if path == "/api/briefing/auto":
