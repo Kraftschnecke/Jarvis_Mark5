@@ -156,7 +156,7 @@ timer.cancel_timer_by_id(owner_timer.id)
 background_tasks.get_results()
 
 # 6) Start nur ueber --guest: ohne Schalter ist der Server nicht im Gastmodus
-assert server.JarvisServer.__init__.__defaults__ == (False, None, None, None, None)
+assert server.JarvisServer.__init__.__defaults__ == (False, None, None, None, None, None)   # guest=False, ..., remote=None
 assert "--guest" in open(PROJECT_DIR / "server.py", encoding="utf-8").read()
 settings_source = open(PROJECT_DIR / "server.py", encoding="utf-8").read().split("EDITABLE_SETTINGS = {")[1].split("}")[0]
 assert "guest" not in settings_source, "der Gastmodus darf nicht ueber Einstellungen schaltbar sein"

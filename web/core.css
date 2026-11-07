@@ -1,0 +1,77 @@
+/* Jarvis-Kern (Mark 5, Step 4B.5). Farbe = Akzentfarbe der Seite; Zustand kommt aus data-state (siehe core.js). */
+.jarvis-core {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  color: var(--accent);
+  cursor: pointer;
+  overflow: visible;
+}
+
+.jarvis-core .ring {
+  fill: none;
+  stroke: currentColor;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Aussen: feine Punkte, langsam */
+.jarvis-core .ring-ticks { stroke-width: 2.5; stroke-dasharray: 1 11.2; opacity: 0.55; animation: core-spin 70s linear infinite; }
+/* Zweiter Ring: drei Boegen, gegenlaeufig */
+.jarvis-core .ring-arcs { stroke-width: 5; stroke-linecap: round; stroke-dasharray: 110 56.7; opacity: 0.9; animation: core-spin 26s linear infinite reverse; }
+/* Dritter Ring: duenne Linie, atmet */
+.jarvis-core .ring-thin { stroke-width: 1.5; opacity: 0.7; animation: core-breathe 6s ease-in-out infinite; }
+/* Innen: dicke Segmente */
+.jarvis-core .ring-bold { stroke-width: 7; stroke-dasharray: 58 23.7; opacity: 0.95; animation: core-spin 14s linear infinite; }
+
+.jarvis-core .core-glow { fill-opacity: 1; transform-box: fill-box; transform-origin: center; animation: core-glow 4s ease-in-out infinite; }
+.jarvis-core .core-dot { fill: currentColor; }
+
+@keyframes core-spin { to { transform: rotate(360deg); } }
+@keyframes core-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+@keyframes core-glow { 0%, 100% { transform: scale(0.92); opacity: 0.75; } 50% { transform: scale(1.06); opacity: 1; } }
+@keyframes core-ping { 0% { transform: scale(0.97); opacity: 0.5; } 60% { transform: scale(1.07); opacity: 1; } 100% { transform: scale(0.97); opacity: 0.5; } }
+@keyframes core-speak {
+  0%, 100% { transform: scale(0.95); opacity: 0.85; }
+  18% { transform: scale(1.22); opacity: 1; }
+  40% { transform: scale(1.0); }
+  62% { transform: scale(1.3); opacity: 1; }
+  80% { transform: scale(1.05); }
+}
+@keyframes core-think { 0%, 100% { opacity: 0.55; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.0); } }
+
+/* Zuhoeren: Kern leuchtet gross, Ringe pochen ruhig nach aussen */
+.jarvis-core[data-state="listening"] .core-glow { animation: core-ping 1.6s ease-in-out infinite; transform: scale(1.2); }
+.jarvis-core[data-state="listening"] .ring-thin { animation: core-ping 1.6s ease-in-out infinite; }
+.jarvis-core[data-state="listening"] .ring-ticks { animation-duration: 40s; }
+
+/* Denken: Ringe drehen schnell und gegenlaeufig, Kern flackert */
+.jarvis-core[data-state="thinking"] .ring-ticks { animation-duration: 9s; }
+.jarvis-core[data-state="thinking"] .ring-arcs { animation-duration: 3.2s; }
+.jarvis-core[data-state="thinking"] .ring-bold { animation-duration: 1.7s; animation-direction: reverse; }
+.jarvis-core[data-state="thinking"] .core-glow { animation: core-think 0.9s ease-in-out infinite; }
+
+/* Sprechen: Kern schlaegt im Sprechrhythmus, der innere Ring pulsiert mit */
+.jarvis-core[data-state="speaking"] .core-glow { animation: core-speak 0.8s ease-in-out infinite; }
+.jarvis-core[data-state="speaking"] .ring-bold { animation-duration: 8s; }
+.jarvis-core[data-state="speaking"] .ring-thin { animation: core-ping 0.8s ease-in-out infinite; }
+
+/* Fehler: rot, Ringe stehen still, Kern flackert langsam */
+.jarvis-core[data-state="error"] { color: #d9695f; }
+.jarvis-core[data-state="error"] .ring { animation: none; }
+.jarvis-core[data-state="error"] .core-glow { animation: core-think 2.4s ease-in-out infinite; }
+
+/* Ohne Bewegung bleiben die Zustaende am Aussehen erkennbar */
+.jarvis-core[data-state="listening"] .core-glow { transform: scale(1.2); }
+.jarvis-core[data-state="speaking"] .core-glow { transform: scale(1.15); }
+.jarvis-core[data-state="thinking"] .core-glow { transform: scale(0.85); }
+
+/* Bewegung aus: durch Klick auf den Kern (html[data-motion="off"]) oder durch die Systemeinstellung */
+html[data-motion="off"] .jarvis-core *,
+html[data-motion="off"] .jarvis-core { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="on"]) .jarvis-core *,
+  html:not([data-motion="on"]) .jarvis-core { animation: none !important; }
+}
+
+.brand { display: flex; align-items: center; gap: 12px; }

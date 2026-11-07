@@ -6,3 +6,5 @@ prompt_toolkit==3.0.53
 python-dotenv==1.2.3
 tzdata>=2025.2
 psycopg[binary]==3.3.6
+pystray==0.19.5
+Pillow>=10.0

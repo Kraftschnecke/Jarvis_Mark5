@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>J.A.R.V.I.S.</title>
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#1d1c1b">
@@ -23,6 +23,7 @@
     } catch (e) { /* ohne Speicher gilt das Standard-Design */ }
   </script>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="core.css">
   <script>
     // App-Installation (Step 4B.2): der Service-Worker reicht alles unveraendert durch (siehe sw.js)
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -46,17 +47,25 @@
       <button class="side-button settings-button" id="open-settings" type="button">
         <span class="plus">⚙</span> Settings
       </button>
+      <button class="side-button settings-button" id="open-phone-prefs" type="button" hidden>
+        <span class="plus">🎨</span> Handy-Einstellungen
+      </button>
     </aside>
 
     <main class="app">
       <header class="topbar">
         <button class="menu-button" id="menu-button" type="button" aria-label="Seitenleiste">☰</button>
-        <span class="logo">J.A.R.V.I.S.</span>
+        <span class="brand">
+          <span id="core-slot" title="Klick: Bewegung an/aus"></span>
+          <span class="logo">J.A.R.V.I.S.</span>
+        </span>
         <span class="status" id="status" data-state="ready">● READY</span>
         <span class="wake" id="wake" hidden></span>
         <button class="widgets-button" id="widgets-button" type="button" hidden
                 aria-label="Widgets ein- oder ausblenden" aria-expanded="false" title="Widgets">🧩</button>
       </header>
+
+      <div class="remote-banner" id="remote-banner" hidden role="status"></div>
 
       <section class="chat" id="chat" aria-live="polite"></section>
 
@@ -126,6 +135,19 @@
     </form>
   </dialog>
 
+  <!-- Handy-Einstellungen (nur am Handy, siehe remote_prefs.js) -->
+  <dialog id="phone-prefs">
+    <form method="dialog" id="phone-prefs-form">
+      <h3>Handy-Einstellungen</h3>
+      <p>Gilt nur auf diesem Handy, der PC bleibt wie er ist.</p>
+      <div class="phone-prefs-rows" id="phone-prefs-rows"></div>
+      <p class="dialog-error" id="phone-prefs-error" hidden></p>
+      <div class="dialog-buttons">
+        <button type="button" class="secondary" id="phone-prefs-close">Schließen</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Einstellungen -->
   <dialog id="settings" class="settings">
     <div class="settings-shell">
@@ -145,6 +167,11 @@
   </dialog>
 
   <script src="links.js"></script>
+  <script src="core.js"></script>
+  <script src="sync.js"></script>
+  <script src="remote_admin.js"></script>
+  <script src="remote_mode.js"></script>
+  <script src="remote_prefs.js"></script>
   <script src="status.js"></script>
   <script src="alarm.js"></script>
   <script src="voice.js"></script>

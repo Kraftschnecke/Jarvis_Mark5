@@ -26,6 +26,7 @@ Thumbs.db
 settings.json
 programs.json
 projects/
+.jarvis_app_profile/
 
 widgets.json
 widgets.tmp
@@ -47,3 +48,7 @@ briefing_state.json
 
 # Freigegebene Ordner (Mark 5, Step 2.14)
 folders.json
+
+#remote_devicess
+remote_devices.json
+remote_devices.json.defekt

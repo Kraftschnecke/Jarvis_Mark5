@@ -26,6 +26,7 @@ function readyLabel() {
 }
 
 let guestMode = false;      // Server laeuft mit --guest: nur plaudern, siehe guest.py
+let remoteMode = false;     // Seite wird ueber Remote (Handy) benutzt: eingeschraenkt, siehe remote_mode.js
 let projects = [];
 let active = { project_id: null, conversation_id: null };
 const expanded = loadExpanded();
@@ -49,6 +50,10 @@ function saveExpanded() {
     /* ohne Speicher funktioniert die Seite trotzdem */
   }
 }
+
+// Aktionen, die die offene Konversation aendern: danach merkt sich der Live-Abgleich den neuen Stand nur
+const OWN_CHANGE_PATHS = ["/api/message", "/api/confirm", "/api/plan/", "/api/conversation/", "/api/project/"];
+let syncControl = null;
 
 // Spricht mit dem Server. Wirft einen Error mit dem Text des Servers.
 async function api(method, path, body) {
@@ -75,6 +80,10 @@ async function api(method, path, body) {
 
   if (!response.ok) {
     throw new Error(data.error || "Fehler " + response.status);
+  }
+
+  if (method === "POST" && syncControl && OWN_CHANGE_PATHS.some((prefix) => path.startsWith(prefix))) {
+    syncControl.markOwnChange();
   }
 
   return data;
@@ -345,6 +354,7 @@ const voice = window.JarvisVoice.createVoice({
   onSpeaking: (value) => {
     speakingNow = value;
     updateStopButton();
+    refreshCore();
     if (!value && awaitingAck) { awaitingAck = false; listenOnce(true); }
     refreshWake();
   },
@@ -465,7 +475,7 @@ function updateWakeBadge() {
 // Zuhoeren nur, wenn alles ruhig ist: nicht waehrend Jarvis spricht oder antwortet
 // (er soll sich nicht selbst hoeren) und nicht, waehrend das Mikrofon schon laeuft.
 function refreshWake() {
-  const wanted = voiceSetting("wake_word") === true && !guestMode && !ended && wake.canListen() &&
+  const wanted = voiceSetting("wake_word") === true && !guestMode && !remoteMode && !ended && wake.canListen() &&
     !busy && !speakingNow && !awaitingAck && !voice.isListening();
   wake.setActive(wanted, wanted ? INPUT_LOCALES[voiceSetting("input_language")] : undefined);
 }
@@ -552,7 +562,8 @@ function wEl(tag, className, text) {
 
 function widgetChoice(slot) {
   if (guestMode) return "Off";
-  return (settings.widgets || {})[slot] || "Off";
+  const choice = (settings.widgets || {})[slot] || "Off";
+  return remoteMode && !window.JarvisRemoteMode.widgetAllowed(choice) ? "Off" : choice;
 }
 
 function loadWidgetData(force) {
@@ -864,25 +875,79 @@ function renderCalendar(section) {
 function renderNotes(section) {
   const area = wEl("textarea", "w-notes");
   const status = wEl("div", "w-status w-muted", "");
+  const modes = wEl("div", "w-note-modes");
+  const others = wEl("div", "w-note-others");
   area.rows = 7;
   area.maxLength = 5000;
-  area.placeholder = "Notizen …";
-  area.setAttribute("aria-label", "Notizen");
-  section.append(wEl("h3", "w-title", "Notizen"), area, status);
+  section.append(wEl("h3", "w-title", "Notizen"));
+
+  // Am Handy: "Allgemein" (fuer alle Geraete) oder "Nur dieses Gerät" (nur hier bearbeitet, der PC zeigt sie an)
+  let mode = "shared";
+  const buttons = {};
+  if (remoteMode) {
+    try { if (localStorage.getItem("jarvis.remote.notemode") === "device") mode = "device"; } catch (error) { /* ohne Speicher: allgemein */ }
+    [["shared", "Allgemein"], ["device", "Nur dieses Gerät"]].forEach(([key, label]) => {
+      const button = wEl("button", "w-note-mode", label);
+      button.type = "button";
+      button.addEventListener("click", () => switchMode(key));
+      buttons[key] = button;
+      modes.append(button);
+    });
+    section.append(modes);
+  }
+  section.append(area, status, others);
 
   let loaded = false;
   let timer = null;
+
+  function label() {
+    return mode === "device" ? "Notiz nur für dieses Gerät …" : "Notizen …";
+  }
+
+  function currentText(data) {
+    return mode === "device" ? (data.device_note || "") : data.notes;
+  }
+
+  function showModes() {
+    Object.keys(buttons).forEach((key) => {
+      buttons[key].classList.toggle("on", key === mode);
+      buttons[key].setAttribute("aria-pressed", String(key === mode));
+    });
+    area.placeholder = label();
+    area.setAttribute("aria-label", mode === "device" ? "Notiz nur für dieses Gerät" : "Notizen");
+  }
+
+  // Am PC: die Notizen der Handys, nur lesen (bearbeitet werden sie nur auf dem jeweiligen Handy)
+  function showOthers(data) {
+    others.replaceChildren();
+    (Array.isArray(data.device_notes) ? data.device_notes : []).forEach((note) => {
+      others.append(wEl("h4", "w-note-from", "Notiz von " + note.name), wEl("div", "w-note-text", note.text));
+    });
+  }
+
   async function save() {
     clearTimeout(timer);
     timer = null;
+    const saving = mode;
     try {
-      const data = await api("POST", "/api/widgets/notes", { text: area.value });
+      const data = await api("POST", saving === "device" ? "/api/widgets/device_note" : "/api/widgets/notes", { text: area.value });
       widgetData = data;
       status.textContent = "Gespeichert";
     } catch (error) {
       status.textContent = "Nicht gespeichert: " + error.message;
     }
   }
+
+  async function switchMode(key) {
+    if (key === mode) return;
+    if (timer) await save();                 // erst die offene Eingabe in die richtige Notiz schreiben
+    mode = key;
+    try { localStorage.setItem("jarvis.remote.notemode", key); } catch (error) { /* ohne Speicher gilt es nur bis zum Neuladen */ }
+    showModes();
+    area.value = widgetData ? currentText(widgetData) : "";
+    status.textContent = "";
+  }
+
   area.addEventListener("input", () => {
     if (!loaded) return;
     status.textContent = "…";
@@ -891,8 +956,16 @@ function renderNotes(section) {
   });
   area.addEventListener("blur", () => { if (timer) save(); });
 
+  // Aenderungen von aussen (anderes Geraet) uebernehmen, aber nie mitten in einer Eingabe
+  registerRefresher(section, (data) => {
+    if (!loaded || timer || document.activeElement === area) return;
+    area.value = currentText(data);
+    showOthers(data);
+  });
+
+  showModes();
   area.disabled = true;
-  loadWidgetData().then((data) => { area.value = data.notes; area.disabled = false; loaded = true; })
+  loadWidgetData().then((data) => { area.value = currentText(data); showOthers(data); area.disabled = false; loaded = true; })
     .catch((error) => { status.textContent = error.message; });
 }
 
@@ -1017,6 +1090,7 @@ function renderLists(section) {
   const picker = wEl("select", "w-list-picker");
   const removeList = wEl("button", "w-goal-remove", "🗑");
   const head = wEl("div", "w-list-head");
+  const count = wEl("span", "w-list-count w-muted");
   const list = wEl("ul", "w-goals");
   const form = wEl("form", "w-goal-form");
   const field = wEl("input", "w-goal-input");
@@ -1029,7 +1103,7 @@ function renderLists(section) {
   removeList.type = "button";
   removeList.title = "Diese Liste löschen (zweimal klicken)";
   removeList.setAttribute("aria-label", "Liste löschen");
-  head.append(picker, removeList);
+  head.append(picker, count, removeList);
   field.type = "text"; field.maxLength = 100; field.placeholder = "Neuer Eintrag …"; field.setAttribute("aria-label", "Neuer Eintrag");
   add.type = "submit"; add.setAttribute("aria-label", "Eintrag hinzufügen");
   form.append(field, add);
@@ -1046,12 +1120,13 @@ function renderLists(section) {
     if (selected >= lists.length) selected = Math.max(0, lists.length - 1);
     picker.replaceChildren();
     lists.forEach((l, index) => {
-      const open = l.items.filter((i) => !i.done).length;
-      const option = wEl("option", "", l.name + (open ? " (" + open + ")" : ""));
+      const option = wEl("option", "", l.name);       // nur der Name: die Zahl der offenen Eintraege steht daneben und aendert den Namen nicht
       option.value = String(index);
       picker.append(option);
     });
     picker.value = String(selected);
+    const openCount = lists.length ? lists[selected].items.filter((i) => !i.done).length : 0;
+    count.textContent = openCount ? openCount + " offen" : "";
     head.hidden = form.hidden = !lists.length;
     armed = false;
     removeList.textContent = "🗑";
@@ -1482,6 +1557,7 @@ function makeRow(className, label) {
 }
 
 function addMoreButton(row, items) {
+  if (remoteMode) return;        // Umbenennen, Loeschen, Zuruecksetzen gibt es nur am PC
   const more = document.createElement("span");
   more.className = "more";
   more.textContent = "⋯";
@@ -1518,7 +1594,9 @@ function renderTree() {
   if (projects.length === 0) {
     const hint = document.createElement("p");
     hint.className = "empty-hint";
-    hint.textContent = "Noch keine Projekte. Lege mit „New Project“ eins an.";
+    hint.textContent = remoteMode
+      ? "Noch keine Projekte. Lege sie am PC an."
+      : "Noch keine Projekte. Lege mit „New Project“ eins an.";
     tree.appendChild(hint);
     return;
   }
@@ -1894,6 +1972,24 @@ const PAGES = [
     ],
   },
   {
+    key: "Remote", icon: "📱", desc: "Zugriff vom Handy über Tailscale (privates Netz, nie öffentlich). Standardmäßig aus. Das Handy bekommt nur die Stufen, die du hier einschaltest, nie Programme, Dateien, Notizen oder Mail, und nie Rückfragen. Gekoppelte Geräte kannst du hier jederzeit sperren.",
+    rows: [
+      { label: "Remote enabled", category: "remote", key: "enabled", type: "toggle", live: true,
+        note: "Aus: Der Remote-Name wird abgelehnt, auch von schon gekoppelten Geräten. Braucht JARVIS_REMOTE_HOST in der .env." },
+      { label: "Auskunft", category: "remote", key: "info", type: "toggle", live: true,
+        note: "Websuche, Wetter, News, Übersetzen, Wikipedia, Weltuhr, Umrechnen, Uhrzeit, Rechnen." },
+      { label: "Alltag", category: "remote", key: "daily", type: "toggle", live: true,
+        note: "Timer, Erinnerungen, Wecker, Briefing, Fokus, Kalender, Listen, Ziele, „Wecker aus“." },
+      { label: "PC-Steuerung (harmlos)", category: "remote", key: "pc", type: "toggle", live: true,
+        note: "Lautstärke, Musik steuern, PC-Status. Programme starten und Dateien öffnen gibt es nie über Remote." },
+      { label: "Messages per 10 minutes", category: "remote", key: "max_messages", type: "number", min: 0, max: 1000, live: true,
+        note: "Je Gerät. 0 = unbegrenzt." },
+      { label: "AI calls per day", category: "remote", key: "max_ai_per_day", type: "number", min: 0, max: 100000, live: true,
+        note: "Für alle Handys zusammen. 0 = unbegrenzt." },
+      { type: "remote-panel", live: true },
+    ],
+  },
+  {
     key: "Focus", icon: "🍅", desc: "Fokus-Sitzungen (Pomodoro): Fokusphasen und Pausen im Wechsel. Starte sie mit „Starte einen Pomodoro“ oder „Fokus für 50 Minuten mit 10 Minuten Pause“. Hier stehen die Werte, die gelten, wenn du keine Zahlen nennst. Bei jedem Wechsel kommt eine Meldung (und ein kurzer Ton, wenn unter Alarm der Sound „Computer“ eingestellt ist). Eine Sitzung ist nach einem Neustart von Jarvis weg.",
     rows: [
       { label: "Focus phase (minutes)", category: "focus", key: "work_minutes", type: "number", min: 1, max: 120, live: true },
@@ -1994,18 +2090,58 @@ function applyAppearance() {
 
 matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyAppearance);
 
+// Handy (nach R6): Design, Farbe und Sprachausgabe stehen im Browser des Handys und ueberdecken die Werte des PC
+let serverSettings = {};
+let phonePrefs = null;      // die Wuensche dieses Handys; einmal aus dem Browser-Speicher geladen, danach im Speicher gefuehrt
+
+function mergePhonePrefs() {
+  if (phonePrefs === null) phonePrefs = window.JarvisRemotePrefs.load(localStorage);
+  settings = remoteMode ? window.JarvisRemotePrefs.apply(serverSettings, phonePrefs) : serverSettings;
+}
+
 function applySettingsState(data) {
-  settings = data.settings;
+  serverSettings = data.settings;
+  settings = serverSettings;
   about = data.about;
   abilitiesInfo = Array.isArray(data.abilities) ? data.abilities : [];
   usageInfo = data.usage || null;
   guestMode = data.guest === true;
   document.body.classList.toggle("guest", guestMode);
+  setRemoteMode(data.remote === true);
+  mergePhonePrefs();
   if (guestMode) setStatus("ready", "GAST");
   applyAppearance();
   applyVoice();
   applyWidgets();
 }
+
+// Remote (R5): Streifen "Remote (eingeschraenkt)" und weniger Bedienung. Die Sperre steht im Server, das hier ist nur Anzeige.
+const remoteBanner = document.getElementById("remote-banner");
+
+async function refreshRemoteBanner() {
+  let info = null;
+  try {
+    info = await api("GET", "/api/remote/whoami");
+  } catch (error) {
+    info = { remote: true, levels: {}, device: "nicht angemeldet" };
+  }
+  const view = window.JarvisRemoteMode.bannerView(info);
+  remoteBanner.hidden = !view.show;
+  remoteBanner.replaceChildren();
+  if (view.show) {
+    remoteBanner.append(el("strong", "remote-banner-title", view.title), el("span", "remote-banner-detail", view.detail));
+  }
+}
+
+function setRemoteMode(value) {
+  const changed = value !== remoteMode;
+  remoteMode = value;
+  document.body.classList.toggle("remote", value);
+  document.getElementById("open-phone-prefs").hidden = !value;
+  if (value && changed) refreshRemoteBanner();
+  if (!value) remoteBanner.hidden = true;
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && remoteMode) refreshRemoteBanner(); });
 
 async function loadSettings() {
   try {
@@ -2231,6 +2367,158 @@ function buildFolderList() {
   }
 
   api("GET", "/api/folders").then(render).catch((err) => box.replaceChildren(el("p", "memory-empty", err.message)));
+  return box;
+}
+
+// Remote (R4): Status, Geraeteliste, Koppel-Link. Der Link steht nur hier und nur 5 Minuten, nie in der Liste.
+let lastPairLink = null;    // { link, name, until } in Sekunden wie Date.now() / 1000
+
+function buildRemotePanel() {
+  const admin = window.JarvisRemoteAdmin;
+  const box = el("div", "remote-panel");
+  const error = el("p", "dialog-error");
+  error.hidden = true;
+  let linkTimer = null;
+
+  function showError(message) {
+    error.textContent = message;
+    error.hidden = !message;
+  }
+
+  async function send(path, body) {
+    try {
+      const data = await api("POST", path, body);
+      showError("");
+      return data;
+    } catch (err) {
+      showError(err.message);
+      return null;
+    }
+  }
+
+  function stopTimer() {
+    if (linkTimer !== null) window.clearInterval(linkTimer);
+    linkTimer = null;
+  }
+
+  function renderLink(holder) {
+    holder.replaceChildren();
+    const view = admin.linkView(lastPairLink, Date.now() / 1000);
+    if (!view) {
+      lastPairLink = null;
+      stopTimer();
+      return;
+    }
+    const input = el("input", "folder-input");
+    input.type = "text";
+    input.readOnly = true;
+    input.value = view.link;
+    input.setAttribute("aria-label", "Koppel-Link für " + view.name);
+    input.addEventListener("focus", () => input.select());
+    const copy = smallButton("Kopieren", "", async () => {
+      try {
+        await navigator.clipboard.writeText(view.link);
+        copy.textContent = "Kopiert";
+      } catch (err) {
+        input.select();
+        copy.textContent = "Markiert: Strg+C";
+      }
+    });
+    const form = el("div", "folder-form");
+    form.append(input, copy);
+    holder.append(
+      el("p", "setting-label", "Link für „" + view.name + "“ (noch " + view.left + ")"),
+      form,
+      el("p", "setting-note", view.note)
+    );
+  }
+
+  function render(info) {
+    stopTimer();
+    box.replaceChildren();
+    const now = Date.now() / 1000;
+
+    const status = admin.statusView(info);
+    box.appendChild(el("p", "remote-status " + status.tone, status.text));
+
+    if (info.devices.length === 0) {
+      box.appendChild(el("p", "memory-empty", "Noch kein Gerät gekoppelt."));
+    }
+
+    info.devices.forEach((device) => {
+      const view = admin.deviceView(device, now);
+      const item = el("div", "folder-item remote-device " + view.state);
+      item.appendChild(el("span", "remote-device-name", view.name));
+      item.appendChild(el("span", "remote-device-state", view.label + " · " + view.seen));
+      if (view.canRevoke) {
+        item.appendChild(smallButton("Sperren", "secondary danger-text", async () => {
+          const data = await send("/api/remote/revoke", { id: device.id });
+          if (data) render(data.state);
+        }));
+      } else {
+        if (view.canRestore) {
+          item.appendChild(smallButton("Entsperren", "secondary", async () => {
+            const data = await send("/api/remote/restore", { id: device.id });
+            if (data) render(data.state);
+          }));
+        }
+        item.appendChild(smallButton("Entfernen", "secondary", async () => {
+          const data = await send("/api/remote/forget", { id: device.id });
+          if (data) render(data.state);
+        }));
+      }
+      box.appendChild(item);
+    });
+
+    if (admin.canPair(info)) {
+      const holder = el("div", "remote-link");
+      const name = el("input", "folder-input");
+      name.type = "text";
+      name.placeholder = "Name des Geräts, z. B. iPhone Moritz";
+      name.maxLength = 40;
+      name.setAttribute("aria-label", "Name des Geräts");
+      const make = smallButton("Koppel-Link erzeugen", "", async () => {
+        const data = await send("/api/remote/pair_link", { name: name.value });
+        if (!data) {
+          name.focus();
+          return;
+        }
+        lastPairLink = { link: data.link, name: data.name, until: Date.now() / 1000 + data.expires_in };
+        render(data.state);
+      });
+      name.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); make.click(); } });
+      const form = el("div", "folder-form");
+      form.append(name, make);
+      box.append(form, holder);
+
+      renderLink(holder);
+      if (lastPairLink) linkTimer = window.setInterval(() => (holder.isConnected ? renderLink(holder) : stopTimer()), 1000);
+    }
+
+    if (info.devices.some((device) => !device.revoked)) {
+      let armed = false;
+      let timer = null;
+      const all = smallButton("Alle Geräte sperren", "secondary danger-text", async () => {
+        if (!armed) {
+          armed = true;
+          all.textContent = "Wirklich alle sperren?";
+          timer = window.setTimeout(() => { armed = false; all.textContent = "Alle Geräte sperren"; }, 4000);
+          return;
+        }
+        window.clearTimeout(timer);
+        const data = await send("/api/remote/revoke_all", {});
+        if (data) {
+          lastPairLink = null;
+          render(data.state);
+        }
+      });
+      box.appendChild(all);
+    }
+
+    box.appendChild(error);
+  }
+
+  api("GET", "/api/remote/state").then(render).catch((err) => box.replaceChildren(el("p", "memory-empty", err.message)));
   return box;
 }
 
@@ -2481,6 +2769,11 @@ function renderSettings() {
       return;
     }
 
+    if (row.type === "remote-panel") {
+      settingsRows.appendChild(buildRemotePanel());
+      return;
+    }
+
     const wrapper = document.createElement("div");
     wrapper.className = "setting-row" + (row.live ? "" : " unavailable");
 
@@ -2507,6 +2800,91 @@ function renderSettings() {
     settingsRows.appendChild(wrapper);
   });
 }
+
+// Handy-Einstellungen: nur Anzeige und Browser-Speicher, es geht nichts an den Server
+const phonePrefsDialog = document.getElementById("phone-prefs");
+const phonePrefsRows = document.getElementById("phone-prefs-rows");
+const phonePrefsError = document.getElementById("phone-prefs-error");
+const PHONE_LABELS = {
+  Dark: "Dunkel", Light: "Hell", System: "Wie das Handy", "J.A.R.V.I.S. Blue": "Blau", "British Racing Green": "Grün",
+  Off: "Aus", Clock: "Uhr", Date: "Datum", Calendar: "Kalender", Notes: "Notizen", Goals: "Ziele", Lists: "Listen",
+};
+const PHONE_SLOT_LABELS = { top: "Seitenleiste: Feld 1", middle: "Seitenleiste: Feld 2", fourth: "Seitenleiste: Feld 3", fifth: "Seitenleiste: Feld 4" };
+
+function changePhonePref(change) {
+  const prefs = window.JarvisRemotePrefs;
+  phonePrefs = prefs.normalize(Object.assign({}, phonePrefs, change));
+  phonePrefsError.hidden = prefs.save(localStorage, phonePrefs);
+  phonePrefsError.textContent = "Der Speicher des Browsers ist gesperrt: Die Auswahl gilt nur, bis die Seite neu geladen wird.";
+  mergePhonePrefs();
+  applyAppearance();
+  applyVoice();
+  applyWidgets();
+}
+
+function phoneSelectRow(label, key, options, current, onChange) {
+  const row = el("div", "phone-prefs-row");
+  const id = "phone-pref-" + key;
+  const lab = el("label", "", label);
+  lab.htmlFor = id;
+  const select = el("select");
+  select.id = id;
+  options.forEach((option) => {
+    const item = el("option", "", PHONE_LABELS[option] || option);
+    item.value = String(option);
+    item.selected = String(option) === String(current);
+    select.appendChild(item);
+  });
+  select.addEventListener("change", () => (onChange || ((value) => changePhonePref({ [key]: value })))(select.value));
+  row.append(lab, select);
+  return row;
+}
+
+function renderPhonePrefs() {
+  const prefs = window.JarvisRemotePrefs;
+  mergePhonePrefs();
+  const shown = prefs.view(serverSettings, phonePrefs);
+  phonePrefsRows.replaceChildren();
+  phonePrefsRows.appendChild(phoneSelectRow("Design", "theme", prefs.THEMES, shown.theme));
+  phonePrefsRows.appendChild(phoneSelectRow("Akzentfarbe", "accent_color", prefs.ACCENTS, shown.accent_color));
+
+  const row = el("div", "phone-prefs-row phone-prefs-switch");
+  const lab = el("label", "", "Antworten vorlesen");
+  lab.htmlFor = "phone-pref-speech";
+  const box = el("input");
+  box.type = "checkbox";
+  box.id = "phone-pref-speech";
+  box.checked = shown.speech;
+  box.addEventListener("change", () => changePhonePref({ speech: box.checked }));
+  row.append(lab, box);
+  phonePrefsRows.appendChild(row);
+
+  phonePrefsRows.appendChild(phoneSelectRow("Schriftgröße (px)", "font_size", prefs.FONT_SIZES, shown.font_size,
+    (value) => changePhonePref({ font_size: Number(value) })));
+  Object.keys(prefs.SLOTS).forEach((slot) => {
+    phonePrefsRows.appendChild(phoneSelectRow(PHONE_SLOT_LABELS[slot], "widget-" + slot, prefs.SLOTS[slot], shown.widgets[slot],
+      (value) => changePhonePref({ widgets: Object.assign({}, phonePrefs.widgets || shown.widgets, { [slot]: value }) })));
+  });
+
+  const reset = smallButton("Alles wie am PC", "secondary", () => {
+    phonePrefs = {};
+    prefs.save(localStorage, phonePrefs);
+    mergePhonePrefs();
+    applyAppearance();
+    applyVoice();
+    applyWidgets();
+    renderPhonePrefs();
+  });
+  phonePrefsRows.appendChild(reset);
+  phonePrefsError.hidden = true;
+}
+
+document.getElementById("open-phone-prefs").addEventListener("click", () => {
+  layout.classList.remove("sidebar-open");
+  renderPhonePrefs();
+  phonePrefsDialog.showModal();
+});
+document.getElementById("phone-prefs-close").addEventListener("click", () => phonePrefsDialog.close());
 
 document.getElementById("open-settings").addEventListener("click", async () => {
   layout.classList.remove("sidebar-open");
@@ -2541,6 +2919,30 @@ async function pollBackground() {
 }
 
 setInterval(pollBackground, 1000);
+
+// ----------------------------------------------------------------------
+// Live-Abgleich (R2b): was auf dem anderen Geraet (PC oder Handy) in dieser
+// Konversation passiert, erscheint hier ohne Neuladen
+// ----------------------------------------------------------------------
+
+syncControl = window.JarvisSync.createSync({
+  api: api,
+  isHidden: () => document.hidden,
+  // Nicht mitten in einer Antwort, bei offener Rueckfrage oder in der Gast-Version
+  canApply: () => !guestMode && !busy && !ended && !document.querySelector(".confirm-row"),
+  apply: (data) => {
+    showHistory(data.messages);
+    if (data.projects && data.active) applyState({ projects: data.projects, active: data.active });
+    chat.scrollTop = chat.scrollHeight;
+  },
+});
+syncControl.start({
+  setInterval: (fn, ms) => window.setInterval(fn, ms),
+  clearInterval: (id) => window.clearInterval(id),
+});
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) syncControl.poll();
+});
 
 // ----------------------------------------------------------------------
 // Laufende Timer (Step 6b): kleine Leiste ueber dem Eingabefeld
@@ -2688,7 +3090,7 @@ setInterval(pollRinging, 1000);
 // Abendfrage zu offenen Zielen (Step 2.28): nur ein Hinweis im Chat, Jarvis tut nichts
 // ======================================================================
 async function checkEvening() {
-  if (guestMode || !(settings.goals && settings.goals.evening)) return;
+  if (guestMode || remoteMode || !(settings.goals && settings.goals.evening)) return;
   try {
     const data = await api("POST", "/api/goals/evening", {});
     if (data.text) addMessage("jarvis", data.text);
@@ -2701,7 +3103,7 @@ setInterval(checkEvening, 5 * 60 * 1000);
 // Proaktive Hinweise (Step 2.29): Termin bald, Wetter von morgen. Nur Anzeige, nichts wird ausgefuehrt.
 async function checkHints() {
   const h = settings.hints;
-  if (guestMode || !h || !(h.appointments || h.weather)) return;
+  if (guestMode || remoteMode || !h || !(h.appointments || h.weather)) return;
   try {
     const data = await api("POST", "/api/hints", {});
     data.hints.forEach((hint) => addMessage("background", hint.text, "HINWEIS"));
@@ -2725,7 +3127,7 @@ async function showStartupReport() {
   }
 
   // Briefing beim ersten Start des Tages: ersetzt dann die kurze Begruessung (Step 2.12)
-  if (settings.briefing && settings.briefing.auto) {
+  if (!remoteMode && settings.briefing && settings.briefing.auto) {
     try {
       const data = await api("POST", "/api/briefing/auto", {});
       if (data.text) {
@@ -2768,5 +3170,42 @@ async function showStartupReport() {
 const GUEST_WELCOME =
   "Willkommen im Gastmodus. Ich kann mich unterhalten, die Uhrzeit und das Datum nennen, " +
   "rechnen und im Web suchen. Auf diesem Rechner kann ich nichts tun.";
+
+// ======================================================================
+// Jarvis-Kern (Step 4B.5): Ringe in der Titelleiste, zeigen ruhig / zuhoeren / denken / sprechen / Fehler
+// ======================================================================
+
+const core = window.JarvisCore.create(document, "idle");
+document.getElementById("core-slot").appendChild(core);
+
+function refreshCore() {
+  core.setAttribute("data-state", window.JarvisCore.resolveState({
+    error: statusEl.dataset.state === "error",
+    speaking: speakingNow,
+    listening: micButton.classList.contains("listening"),
+    thinking: statusEl.dataset.state === "busy",
+  }));
+}
+new MutationObserver(refreshCore).observe(statusEl, { attributes: true, attributeFilter: ["data-state"] });
+new MutationObserver(refreshCore).observe(micButton, { attributes: true, attributeFilter: ["class"] });
+
+// Klick auf den Kern: Bewegung an/aus. Die Wahl bleibt in diesem Browser gespeichert,
+// ohne Wahl folgt die Seite der Systemeinstellung "Animationen reduzieren".
+function savedMotion() {
+  try { return localStorage.getItem("jarvis.motion"); } catch (error) { return null; }
+}
+if (savedMotion() === "on" || savedMotion() === "off") document.documentElement.dataset.motion = savedMotion();
+core.addEventListener("click", () => {
+  const now = window.JarvisCore.motionOn(savedMotion(), matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const next = now ? "off" : "on";
+  document.documentElement.dataset.motion = next;
+  try { localStorage.setItem("jarvis.motion", next); } catch (error) { /* ohne Speicher gilt es nur bis zum Neuladen */ }
+});
+
+// Hotkey der Desktop-App (Step 4B.4): kommt das Fenster nach vorn, steht der Cursor sofort im Eingabefeld.
+window.addEventListener("focus", () => {
+  const active = document.activeElement;
+  if (!active || active === document.body) input.focus();
+});
 
 loadSettings().finally(() => { showStartupReport(); refreshTree(); refreshTimers(); refreshFocus(); });

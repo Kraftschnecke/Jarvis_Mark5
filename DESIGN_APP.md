@@ -102,3 +102,56 @@ Die `.env` mit dem OpenAI-Schlüssel kommt nie in den Installer; beim ersten Sta
 3. In dem Fenster: Chat, Einstellungen, Seitenleiste und Sprache wie im Browser. Wake Word ein: reagiert "Hey Jarvis"?
 4. Server beenden und wieder starten, dann das App-Fenster neu laden: es zeigt den neuen Stand (nichts veraltet).
 5. In den Browser-Entwicklertools (F12, Reiter "Application", "Service Workers") steht `sw.js` als aktiv; "Cache Storage" ist leer.
+
+## 7. 4B.3 Desktop-Hülle (gebaut): Weg A
+
+**Entscheidung:** Weg A. Das Fenster ist Edge (oder Chrome) im `--app`-Modus, also ohne Adressleiste, mit eigenem Profil
+(`.jarvis_app_profile/`, nicht im Git). Grund: Spracherkennung und Wake-Word laufen weiter über die Browser-Funktion, die
+ein eingebettetes Fenster oft nicht hat.
+
+**Wie es läuft (`jarvis_app.py`):**
+- Der Server läuft im selben Prozess in einem Thread (`server.main(..., on_ready=..., open_browser=False)`). So kann "Beenden"
+  ihn mit `shutdown()` sauber anhalten und `main()` räumt wie immer auf (Erinnerungen, Wecker-Ton, Port frei).
+  Es gibt bewusst keinen "Beenden"-Endpunkt im Server.
+- Zweiter Start, während Jarvis läuft: Port belegt, also wird nur ein Fenster geöffnet, nichts doppelt gestartet.
+- Fenster schließen: Jarvis läuft im Tray weiter. Tray-Menü: Jarvis öffnen (Doppelklick), Mit Windows starten (Haken), Beenden.
+- Ohne pystray/Pillow: kein Tray, Fenster schließen beendet Jarvis (Hinweis in der Konsole).
+- Ohne Edge/Chrome: Notausgang über den Standardbrowser.
+- Autostart: Eintrag im Run-Schlüssel des Benutzers (HKCU, keine Adminrechte), Start mit `--background` (ohne Fenster, nur Tray).
+- Der Server bleibt auf 127.0.0.1. Neu ist nichts von außen erreichbar.
+
+**Start:** `start_jarvis_app.bat` (nutzt `pyw`, kein Konsolenfenster). `start_jarvis.bat` bleibt als Notweg mit Konsole.
+
+**Abnahme von Hand (4B.3):**
+1. `py -m pip install -r requirements.txt` (neu: pystray, Pillow), dann `start_jarvis_app.bat`: App-Fenster öffnet, Tray-Symbol erscheint.
+2. Fenster schließen: Tray-Symbol bleibt. Doppelklick darauf öffnet das Fenster wieder (Verlauf noch da).
+3. Zweites Mal `start_jarvis_app.bat` während es läuft: kein zweiter Server, nur das Fenster.
+4. Mikrofon-Knopf im App-Fenster ausprobieren (Weg-A-Test). Beim ersten Mal Mikrofon erlauben.
+5. Tray: "Mit Windows starten" anhaken, abmelden/anmelden: Jarvis ist im Tray, ohne Fenster. Danach wieder abhaken.
+6. Tray: Beenden: Symbol weg, `http://localhost:8000` nicht mehr erreichbar.
+
+## 8. 4B.4 Systemanbindung (gebaut)
+
+**Hotkey (`desktop_system.py`):** Standard `Strg+Leertaste`, einstellbar mit `JARVIS_HOTKEY` in der `.env` (z. B. `alt+j`,
+`ctrl+shift+f9`; `off` schaltet ihn aus). Erlaubt: Strg/Alt/Shift/Win plus Buchstabe, Ziffer, Leertaste oder F1-F12; mindestens ein
+Modifier. Technik: `RegisterHotKey` von Windows. Windows meldet nur genau diese Kombination, es wird keine Taste mitgelesen
+(kein Tastatur-Hook, kein Zusatzpaket). Ist die Kombination schon von einem anderen Programm belegt, steht ein Hinweis in der
+Konsole und Jarvis läuft ohne Hotkey weiter.
+
+**Was der Hotkey tut:** Er bringt das Jarvis-Fenster nach vorn (oder öffnet es, wenn keins da ist) und setzt den Cursor ins
+Eingabefeld (`window focus` in `app.js`). Das ist die Schnelleingabe: Hotkey, tippen, Enter. Die Nachricht läuft wie immer über
+`/api/message`, also mit denselben Risikostufen und Rückfragen. Der Hotkey sendet und führt nichts aus. Dieselbe Funktion holt auch
+bei einem zweiten Start von `start_jarvis_app.bat` das vorhandene Fenster nach vorn, statt ein zweites zu öffnen.
+
+**Benachrichtigungen:** Wenn ein Wecker oder Timer läutet und das Jarvis-Fenster nicht vorn ist, zeigt Windows eine Meldung über das
+Tray-Symbol. Inhalt nur der kurze Name ("Timer abgelaufen: Pizza"), nie Mail- oder Dateiinhalte. Die App fragt dafür `/api/ringing`
+ab, so wie die Seite es auch tut. Erinnerungen und die Hinweise aus 2.29 kommen später (sie laufen bisher nur im Seitenfenster).
+
+**Abnahme 4B.4 (von Hand):**
+1. `py jarvis_app.py`: In der Konsole steht "Hotkey Strg+Leertaste ist aktiv".
+2. Ein anderes Programm vorn, `Strg+Leertaste`: Jarvis-Fenster kommt nach vorn, Cursor blinkt im Eingabefeld. Fenster minimiert: es wird wiederhergestellt.
+3. Fenster ganz schließen (X), `Strg+Leertaste`: Fenster öffnet sich neu.
+4. Kurzen Timer stellen ("Timer 1 Minute Test"), Fenster in den Hintergrund legen: Windows-Meldung "Timer abgelaufen: ...". Ist das Fenster vorn, kommt keine Meldung.
+5. `start_jarvis_app.bat` bei laufender App erneut starten: das vorhandene Fenster kommt nach vorn, kein zweites.
+6. `JARVIS_HOTKEY=alt+j` in die `.env`, neu starten: nur `Alt+J` geht. `JARVIS_HOTKEY=off`: kein Hotkey, Hinweis entfällt.
+7. Beenden im Tray: Hotkey ist wieder frei.

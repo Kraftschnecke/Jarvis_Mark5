@@ -18,6 +18,8 @@ import net_fetch
 import recurrence
 
 MAX_NOTES = 5000
+MAX_DEVICE_NOTES = 10            # Notizen einzelner Geraete (Handy), eine je Geraet
+MAX_DEVICE_NAME = 40
 MAX_GOALS = 20
 MAX_GOAL_LENGTH = 200
 MAX_EVENTS = 500
@@ -368,6 +370,41 @@ class WidgetStore:
             data = self._load()
             data["notes"] = text
             self._save(data)
+
+    def set_device_note(self, device_id, name, text, keep_ids=None):
+        """Die Notiz eines einzelnen Geraets (Handy). Nur dieses Geraet aendert sie, der PC zeigt sie nur an.
+
+        keep_ids: die Geraete, die es noch gibt. Notizen gesperrter oder entfernter Geraete werden dabei aufgeraeumt.
+        """
+        if not isinstance(device_id, str) or not device_id or len(device_id) > 64:
+            raise ValueError("Diese Notiz gibt es nur an einem gekoppelten Handy.")
+        if not isinstance(text, str) or len(text) > MAX_NOTES:
+            raise ValueError(f"Die Notiz darf höchstens {MAX_NOTES} Zeichen lang sein.")
+        label = " ".join(str(name).split())[:MAX_DEVICE_NAME] or "Handy"
+        with self._lock:
+            data = self._load()
+            notes = data.get("device_notes") if isinstance(data.get("device_notes"), dict) else {}
+            if keep_ids is not None:
+                notes = {key: value for key, value in notes.items() if key in keep_ids or key == device_id}
+            if device_id not in notes and len(notes) >= MAX_DEVICE_NOTES:
+                raise ValueError(f"Höchstens {MAX_DEVICE_NOTES} Geräte können eine eigene Notiz haben.")
+            notes[device_id] = {"name": label, "text": text}
+            data["device_notes"] = notes
+            self._save(data)
+
+    def device_notes(self, only=None):
+        """Alle Geraete-Notizen als Liste (nur die mit Text). only: nur diese Geraete-Nummern."""
+        with self._lock:
+            data = self._load()
+        notes = data.get("device_notes") if isinstance(data.get("device_notes"), dict) else {}
+        result = []
+        for device_id, entry in notes.items():
+            if only is not None and device_id not in only:
+                continue
+            if not isinstance(entry, dict) or not isinstance(entry.get("text"), str) or not isinstance(entry.get("name"), str):
+                continue
+            result.append({"id": device_id, "name": entry["name"][:MAX_DEVICE_NAME], "text": entry["text"][:MAX_NOTES]})
+        return result
 
     def set_goals(self, items):
         if not isinstance(items, list) or len(items) > MAX_GOALS:

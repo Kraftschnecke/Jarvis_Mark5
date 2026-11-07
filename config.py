@@ -6,6 +6,7 @@ load_dotenv() oder os.getenv() auf.
 """
 
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -47,6 +48,22 @@ FOLDERS_FILE = Path(__file__).resolve().parent / "folders.json"
 # Web-Oberflaeche (server.py). Der Server lauscht nur auf dem eigenen Rechner.
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = int(os.getenv("JARVIS_PORT", "8000"))
+
+# Globaler Hotkey der Desktop-App (Step 4B.4): bringt das Jarvis-Fenster nach vorn. Mindestens ein Modifier
+# (ctrl, alt, shift, win) plus Taste, z. B. ctrl+space, alt+j, ctrl+shift+f9. "off" schaltet ihn aus.
+# Ueberschreibbar mit JARVIS_HOTKEY in der .env
+HOTKEY = os.getenv("JARVIS_HOTKEY", "ctrl+space")
+
+# Zugriff vom Handy (Remote, siehe DESIGN_REMOTE.md): der Tailscale-Name dieses PCs, z. B. mein-pc.tailabc.ts.net.
+# Leer = Remote ist komplett aus (Voreinstellung). Zusaetzlich muss es in den Einstellungen eingeschaltet werden.
+# Ueberschreibbar mit JARVIS_REMOTE_HOST in der .env
+def _clean_host(value):
+    name = (value or "").strip().lower()
+    valid = re.fullmatch(r"[a-z0-9]([a-z0-9.-]*[a-z0-9])?", name) and "." in name and not re.fullmatch(r"[0-9.]+", name)
+    return name if valid else ""
+
+
+REMOTE_HOST = _clean_host(os.getenv("JARVIS_REMOTE_HOST", ""))
 
 
 def mail_accounts():

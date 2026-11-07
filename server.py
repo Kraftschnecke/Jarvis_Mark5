@@ -29,6 +29,8 @@ Dinge:
        POST /api/speak {"text": "..."}  ->  audio/mpeg  (Sprachausgabe mit der eingestellten Stimme, Step 6b)
        POST /api/timer/cancel {"id": 3}  ->  {"cancelled": true|false}  (einen Timer abbrechen)
        GET  /api/projects    ->  {"projects": [...], "active": {...}}
+       GET  /api/remote/state ->  Remote-Verwaltung am PC: Schalter, Stufen, Geraete (R4); POST /api/remote/pair_link, /revoke, /restore, /revoke_all, /forget
+       GET  /api/sync?known=<v> ->  Live-Abgleich: {"version", "active"} und bei neuem Stand "messages" + "projects" (R2b)
        GET  /api/settings    ->  {"settings": {...}, "about": {...}}
        GET  /api/actions     ->  {"actions": [{"time", "goal", "details", "decision", "status", "summary"}]}  (Aktionsprotokoll, Step 4.3)
        GET  /api/memories    ->  {"enabled": true, "memories": [{"key", "value", "type"}]}
@@ -46,10 +48,12 @@ Gastmodus (zum Ausprobieren durch andere, ohne Zugriff auf deinen Rechner):
         py server.py --guest   (siehe guest.py; erlaubt nur /api/message, /api/background, /api/settings)
 """
 
+import hashlib
 import json
 import platform
 import sys
 import threading
+import time
 import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -64,10 +68,11 @@ import timer
 import reminders
 import focus
 import folders
+import remote_policy
 import ringing
 import widgets
 from tools import news_tool, system_status_tool, weather_tool
-from config import SERVER_HOST, SERVER_PORT, VERSION
+from config import REMOTE_HOST, SERVER_HOST, SERVER_PORT, VERSION
 from memory import MAX_VALUE_LENGTH, VALID_TYPES
 from personality import get_address, is_valid_address
 from settings_manager import SettingsManager
@@ -136,6 +141,13 @@ EDITABLE_SETTINGS[("hints", "weather")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("hints", "weather_hour")] = lambda v: _is_int(v, 15, 23)
 EDITABLE_SETTINGS[("goals", "evening")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("goals", "evening_hour")] = lambda v: _is_int(v, 17, 23)
+# Zugriff vom Handy (Remote): nur am PC aenderbar, das Handy hat keinen Zugriff auf /api/settings (remote_policy.py)
+EDITABLE_SETTINGS[("remote", "enabled")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("remote", "info")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("remote", "daily")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("remote", "pc")] = lambda v: isinstance(v, bool)
+EDITABLE_SETTINGS[("remote", "max_messages")] = lambda v: _is_int(v, 0, 1000)
+EDITABLE_SETTINGS[("remote", "max_ai_per_day")] = lambda v: _is_int(v, 0, 100000)
 # Schalter fuer Faehigkeiten: eine Zeile je Eintrag in abilities.ABILITIES
 EDITABLE_SETTINGS[("limits", "ai_calls_per_day")] = lambda v: _is_int(v, 0, 100000)
 EDITABLE_SETTINGS[("limits", "speech_calls_per_day")] = lambda v: _is_int(v, 0, 100000)
@@ -206,6 +218,98 @@ def sidebar_state(jarvis, **extra):
         "active": jarvis.get_active()
     }
     state.update(extra)
+    return state
+
+
+def remote_panel_state(gate, now=None):
+    """Die Remote-Verwaltung am PC (R4): was die Einstellungsseite zeigt. Nie Hashes oder Codes."""
+    now = time.time() if now is None else now
+
+    if gate is None:
+        return {"available": False, "host": "", "enabled": False, "active": False,
+                "levels": dict(remote_policy.DEFAULT_LEVELS), "devices": [], "pending": 0}
+
+    devices = [
+        {"id": d["id"], "name": d["name"], "created": d["created"], "last_seen": d["last_seen"],
+         "revoked": bool(d["revoked"]), "expired": d["expires"] <= now}
+        for d in sorted(gate.store.devices(), key=lambda d: d["created"], reverse=True)
+    ]
+
+    return {
+        "available": bool(gate.host),
+        "host": gate.host,
+        "enabled": gate.settings.get("remote", "enabled", False) is True,
+        "active": gate.active(),
+        "levels": gate.levels(),
+        "devices": devices,
+        "pending": gate.store.pending_count(),
+    }
+
+
+def remote_admin_post(gate, path, data):
+    """Remote-Verwaltung am PC: Koppel-Link erzeugen, Geraete sperren oder entfernen. Gibt (Status, Antwort) zurueck."""
+    if gate is None:
+        return 404, {"error": "Remote ist nicht eingerichtet."}
+
+    if path == "/api/remote/pair_link":
+        if not gate.host:
+            return 400, {"error": "Der Remote-Name fehlt: Trage JARVIS_REMOTE_HOST in die .env ein."}
+
+        if not gate.active():
+            return 400, {"error": "Remote ist ausgeschaltet. Schalte es zuerst ein."}
+
+        name = data.get("name")
+
+        if not isinstance(name, str) or not name.strip() or len(name.strip()) > 40:
+            return 400, {"error": "Bitte einen Namen für das Gerät angeben (höchstens 40 Zeichen)."}
+
+        pairing = gate.store.create_pairing(name)
+
+        return 200, {
+            "link": f"https://{gate.host}/pair#{pairing['code']}",
+            "name": pairing["name"],
+            "expires_in": max(0, int(pairing["expires"] - gate.store.clock())),
+            "state": remote_panel_state(gate),
+        }
+
+    if path == "/api/remote/revoke_all":
+        count = gate.store.revoke_all()
+        return 200, {"revoked": count, "state": remote_panel_state(gate)}
+
+    device_id = data.get("id")
+
+    if not isinstance(device_id, str) or not device_id or len(device_id) > 64:
+        return 400, {"error": "Ungültige Anfrage"}
+
+    actions = {"/api/remote/revoke": gate.store.revoke, "/api/remote/restore": gate.store.restore, "/api/remote/forget": gate.store.forget}
+    done = actions[path](device_id)
+
+    if not done:
+        return 404, {"error": "Gerät nicht gefunden."}
+
+    return 200, {"state": remote_panel_state(gate)}
+
+
+def sync_state(jarvis, known=""):
+    """Live-Abgleich (R2b): Stand der offenen Konversation als kurzer Fingerabdruck.
+
+    PC und Handy fragen alle paar Sekunden nach. Ist der Fingerabdruck anders als
+    der, den die Seite kennt, kommen Verlauf und Seitenleiste gleich mit, sonst nur
+    die Version. Gelesen wird ohne message_lock: eine halbfertige Antwort steht
+    erst in der Liste, wenn sie fertig ist.
+    """
+    active = jarvis.get_active()
+    messages = [dict(message) for message in list(jarvis.conversation.messages)]
+
+    raw = json.dumps([active, messages], sort_keys=True, default=str, ensure_ascii=False)
+    version = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+    state = {"version": version, "active": active}
+
+    if known != version:
+        state["messages"] = messages
+        state["projects"] = jarvis.get_tree()
+
     return state
 
 
@@ -434,10 +538,11 @@ class JarvisServer(ThreadingHTTPServer):
     # kurz hintereinander: auf Windows kann sonst eine Verbindung ins Leere laufen.
     request_queue_size = 128
 
-    def __init__(self, address, jarvis, guest=False, widget_store=None, hockey=None, weather=None, monitor=None):
+    def __init__(self, address, jarvis, guest=False, widget_store=None, hockey=None, weather=None, monitor=None, remote=None):
         super().__init__(address, JarvisHandler)
         self.jarvis = jarvis
         self.guest = guest
+        self.remote = remote          # Pforte fuer Zugriff vom Handy (remote_gate.py), None = Remote gibt es nicht
         self.widget_store = widget_store or widgets.default_store()
         self.hockey = hockey or widgets.HockeyFeed()
         self.weather = weather or weather_tool.default_service()
@@ -463,12 +568,21 @@ class JarvisHandler(BaseHTTPRequestHandler):
         except ConnectionError:
             self.close_connection = True
 
-    def send_json(self, status, data):
+    def end_headers(self):
+        # Antworten ueber den Remote-Namen: Browser soll nichts raten und keine Adresse weitergeben
+        if getattr(self, "kind", None) == "remote":
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+        super().end_headers()
+
+    def send_json(self, status, data, headers=()):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in headers:
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -503,27 +617,156 @@ class JarvisHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(audio)
 
+    def request_kind(self):
+        """"local" (am PC), "remote" (vom Handy ueber den Remote-Namen) oder None (abgelehnt)."""
+        host_header = self.headers.get("Host")
+        if (host_header or "").rsplit(":", 1)[0] in ("localhost", "127.0.0.1", "[::1]"):
+            return "local"
+        gate = self.server.remote
+        if gate is None:
+            return None
+        return gate.request_kind(host_header, self.client_address[0])
+
     def host_allowed(self):
-        """Nur Anfragen an localhost zulassen (Schutz vor DNS-Rebinding)."""
-        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
-        return host in ("localhost", "127.0.0.1", "[::1]")
+        """Nur Anfragen an localhost (oder, wenn eingeschaltet, an den Remote-Namen) zulassen (Schutz vor DNS-Rebinding)."""
+        return self.request_kind() is not None
 
     def origin_allowed(self):
         """Eine fremde Webseite darf Jarvis nicht fernsteuern."""
         origin = self.headers.get("Origin")
+        kind = getattr(self, "kind", None) or self.request_kind()
+
+        if kind == "remote":
+            return self.server.remote.origin_ok("remote", origin)
 
         if origin is None:
             return True
 
         return urlparse(origin).hostname in ("localhost", "127.0.0.1", "::1")
 
+    # --- Zugriff vom Handy (Remote, siehe DESIGN_REMOTE.md) --------------------
+
+    def remote_get(self, path):
+        """Pforte fuer GET-Anfragen ueber den Remote-Namen. True = Antwort ist schon gesendet."""
+        gate = self.server.remote
+        self.device = gate.device_from_cookie(self.headers.get("Cookie"))
+
+        if self.device is None:
+            if remote_policy.is_public("GET", path):
+                self.send_static("/pair.html")
+            elif path in remote_policy.PUBLIC_STATIC:
+                self.send_static(path)
+            elif path.startswith("/api/"):
+                self.send_json(401, {"error": "Nicht angemeldet.", "pair": True})
+            else:
+                self.send_static("/pair.html", status=401)     # nicht gekoppelt: die Seite erklaert, was zu tun ist
+            return True
+
+        if path.startswith("/api/") and not remote_policy.api_allowed("GET", path):
+            self.send_json(403, {"error": "Über Remote nicht verfügbar."})
+            return True
+
+        if path == "/api/remote/whoami":
+            self.send_json(200, {"remote": True, "device": self.device["name"], "levels": gate.levels()})
+            return True
+
+        if path == "/api/settings":
+            self.send_json(200, gate.settings_for_remote(settings_state(self.server.jarvis)))
+            return True
+
+        if remote_policy.is_public("GET", path):
+            self.send_static("/pair.html")
+            return True
+
+        return False
+
+    def remote_post(self, path, data):
+        """Pforte fuer POST-Anfragen ueber den Remote-Namen. True = Antwort ist schon gesendet."""
+        gate = self.server.remote
+
+        if remote_policy.is_public("POST", path):
+            code = data.get("code")
+            status, token, device = gate.store.redeem(code if isinstance(code, str) else None, "remote-pairing")
+            if status == "ok":
+                self.send_json(200, {"ok": True, "name": device["name"]},
+                               headers=[("Set-Cookie", gate.set_cookie_header(token))])
+            elif status == "locked":
+                self.send_json(429, {"error": "Zu viele Versuche. Bitte später noch einmal."})
+            else:
+                self.send_json(400, {"error": "Der Link ist ungültig, abgelaufen oder schon benutzt."})
+            return True
+
+        self.device = gate.device_from_cookie(self.headers.get("Cookie"))
+
+        if self.device is None:
+            self.send_json(401, {"error": "Nicht angemeldet.", "pair": True})
+            return True
+
+        if not remote_policy.api_allowed("POST", path, gate.levels()):
+            self.send_json(403, {"error": "Über Remote nicht verfügbar."})
+            return True
+
+        return False
+
+    def remote_message(self, data):
+        """Nachricht vom Handy: eigene Grenzen, eigener Weg in Jarvis (nur erlaubte Stufen), nie Rueckfragen."""
+        gate = self.server.remote
+        text = data.get("message")
+
+        if not isinstance(text, str) or not text.strip() or len(text.strip()) > remote_policy.MAX_REMOTE_MESSAGE_CHARS:
+            return self.send_json(400, {"error": "Ungültige Anfrage"})
+
+        handler = getattr(self.server.jarvis, "process_remote_message", None)
+
+        if handler is None:
+            return self.send_json(503, {"error": "Nachrichten über Remote sind noch nicht freigeschaltet."})
+
+        gate.refresh_limits()
+
+        if not gate.limits.allow_message(self.device["id"]) or not gate.limits.allow_ai_call():
+            return self.send_json(429, {"error": "Zu viele Anfragen. Bitte etwas warten."})
+
+        with self.server.message_lock:
+            response = handler(text.strip(), self.device["name"], gate.levels())
+
+        if response.get("status") != "response":
+            # Rueckfragen, Plaene und Befehle gibt es nur am PC
+            return self.send_json(200, {"status": "response", "content": "Das geht nur am PC."})
+
+        return self.send_json(200, {"status": "response", "content": response["content"]})
+
+    def widgets_payload(self):
+        """Seitenleisten-Daten. Mit Remote dazu: am PC die Notizen der gekoppelten Handys (nur lesen), am Handy nur die eigene."""
+        data = self.server.widget_store.get()
+        gate = self.server.remote
+
+        if gate is None:
+            return data
+
+        store = self.server.widget_store
+
+        if self.device is not None:
+            mine = store.device_notes(only={self.device["id"]})
+            data["device_note"] = mine[0]["text"] if mine else ""
+        else:
+            known = {d["id"] for d in gate.store.devices() if not d["revoked"]}
+            data["device_notes"] = [note for note in store.device_notes(only=known) if note["text"].strip()]
+
+        return data
+
     # --- Anfragen -------------------------------------------------------
 
     def do_GET(self):
-        if not self.host_allowed():
+        self.kind = self.request_kind()
+        self.device = None
+
+        if self.kind is None:
             return self.send_json(403, {"error": "Host nicht erlaubt"})
 
         path = urlparse(self.path).path
+
+        if self.kind == "remote" and self.remote_get(path):
+            return
 
         if self.server.guest and path.startswith("/api/"):
             return self.guest_get(path)
@@ -536,6 +779,9 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
         if path == "/api/focus":
             return self.send_json(200, focus.default_manager().state())
+
+        if path == "/api/remote/state":
+            return self.send_json(200, remote_panel_state(self.server.remote))
 
         if path == "/api/folders":
             return self.send_json(200, {"folders": folders.default_list().list(), "max": folders.MAX_FOLDERS})
@@ -567,7 +813,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
         # Seitenleiste: Notizen und Ziele (lokale Datei), Spielplan (Server holt ihn selbst)
         if path == "/api/widgets":
-            return self.send_json(200, self.server.widget_store.get())
+            return self.send_json(200, self.widgets_payload())
 
         if path == "/api/hockey":
             team = self.server.jarvis.settings_manager.get("widgets", "bottom")
@@ -628,6 +874,16 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 traceback.print_exc()
                 return self.send_json(500, {"error": "Projekte konnten nicht geladen werden."})
 
+        if path == "/api/sync":
+            try:
+                known = parse_qs(urlparse(self.path).query).get("known", [""])[0]
+                return self.send_json(200, sync_state(self.server.jarvis, known))
+            except ConnectionError:
+                raise            # Browser hat aufgelegt: kein Fehler von Jarvis
+            except Exception:
+                traceback.print_exc()
+                return self.send_json(500, {"error": "Abgleich nicht moeglich."})
+
         if path.startswith("/api/"):
             return self.send_json(404, {"error": "Unbekannte Adresse"})
 
@@ -646,7 +902,10 @@ class JarvisHandler(BaseHTTPRequestHandler):
         elif length > MAX_DRAIN_BYTES:
             self.close_connection = True
 
-        if not self.host_allowed() or not self.origin_allowed():
+        self.kind = self.request_kind()
+        self.device = None
+
+        if self.kind is None or not self.origin_allowed():
             return self.send_json(403, {"error": "Nicht erlaubt"})
 
         path = urlparse(self.path).path
@@ -672,6 +931,9 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             return self.send_json(400, {"error": "Ungueltige Anfrage"})
 
+        if self.kind == "remote" and self.remote_post(path, data):
+            return
+
         if self.server.guest and path != "/api/message":
             return self.send_json(403, GUEST_DENIED)
 
@@ -687,6 +949,9 @@ class JarvisHandler(BaseHTTPRequestHandler):
                     response = self.server.jarvis.process_message(get_text(data, "message"))
                 return self.send_json(200, {"status": "response", "content": response["content"]})
 
+            if self.device is not None and path == "/api/message":
+                return self.remote_message(data)
+
             if path == "/api/plan/abort":
                 return self.send_json(200, {"aborted": bool(self.server.jarvis.abort_plan())})
 
@@ -696,11 +961,17 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 return self.handle_speak(data)
 
             # Notizen und Ziele speichern: kleine lokale Datei, braucht den message_lock nicht
-            if path in ("/api/widgets/notes", "/api/widgets/goals", "/api/widgets/lists", "/api/widgets/events",
+            if path in ("/api/widgets/notes", "/api/widgets/goals", "/api/widgets/lists", "/api/widgets/events", "/api/widgets/device_note",
                         "/api/widgets/events/delete", "/api/widgets/events/delete_series"):
                 store = self.server.widget_store
                 try:
-                    if path.endswith("notes"):
+                    if path.endswith("device_note"):
+                        # Nur ein gekoppeltes Handy hat eine eigene Notiz, und es schreibt nur seine
+                        gate = self.server.remote
+                        known = {d["id"] for d in gate.store.devices() if not d["revoked"]} if gate is not None else None
+                        store.set_device_note(self.device["id"] if self.device else None, self.device["name"] if self.device else "",
+                                              data.get("text"), keep_ids=known)
+                    elif path.endswith("notes"):
                         store.set_notes(data.get("text"))
                     elif path.endswith("goals"):
                         store.set_goals(data.get("items"))
@@ -714,7 +985,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
                         store.add_event(data.get("title"), data.get("date"), data.get("time", ""))
                 except ValueError as error:
                     return self.send_json(400, {"error": str(error)})
-                return self.send_json(200, self.server.widget_store.get())
+                return self.send_json(200, self.widgets_payload())
 
             # Wecker im Kalender anlegen: Tag aus dem Kalender, Wiederholung wie beim Chat (recurrence.py)
             if path == "/api/alarms/add":
@@ -745,6 +1016,11 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 except reminders.ReminderError as error:
                     return self.send_json(400, {"error": str(error)})
                 return self.send_json(200, {"alarms": store.alarms_overview()})
+
+            # Remote-Verwaltung (R4): nur am PC (das Handy hat diese Adressen nicht), lokal, ohne message_lock
+            if path in ("/api/remote/pair_link", "/api/remote/revoke", "/api/remote/restore", "/api/remote/revoke_all", "/api/remote/forget"):
+                status, body = remote_admin_post(self.server.remote, path, data)
+                return self.send_json(status, body)
 
             # Freigegebene Ordner pflegen (Step 2.14): nur hier, nie per Chat; lokal, ohne message_lock
             if path in ("/api/folders/add", "/api/folders/remove"):
@@ -812,7 +1088,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
         self.send_json(200, result)
 
-    def send_static(self, url_path):
+    def send_static(self, url_path, status=200):
         if url_path == "/":
             url_path = "/index.html"
 
@@ -823,7 +1099,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
             return self.send_json(404, {"error": "Nicht gefunden"})
 
         body = target.read_bytes()
-        self.send_response(200)
+        self.send_response(status)
         self.send_header(
             "Content-Type",
             CONTENT_TYPES.get(target.suffix, "application/octet-stream")
@@ -834,7 +1110,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def main(argv=None):
+def main(argv=None, on_ready=None, open_browser=True):
+    """on_ready(server) und open_browser=False nutzt die Desktop-App (jarvis_app.py); sonst unveraendert."""
     import argparse
 
     parser = argparse.ArgumentParser(description="J.A.R.V.I.S. Weboberflaeche")
@@ -863,11 +1140,25 @@ def main(argv=None):
             threading.Thread(target=apple.events, daemon=True).start()     # Termine schon beim Start holen
         ringing.start_ticker()              # beendet zu lange laeutende Wecker/Timer (Step 2.11)
 
-    server = JarvisServer((SERVER_HOST, args.port), jarvis, guest=args.guest)
+    remote = None
+    if not args.guest and REMOTE_HOST:
+        # Zugriff vom Handy (siehe DESIGN_REMOTE.md): nur vorbereitet, an ist es erst mit dem Schalter in den Einstellungen
+        import remote_auth
+        import remote_gate
+        remote = remote_gate.RemoteGate(REMOTE_HOST, remote_auth.DeviceStore(), jarvis.settings_manager)
+
+    server = JarvisServer((SERVER_HOST, args.port), jarvis, guest=args.guest, remote=remote)
     url = f"http://localhost:{server.server_address[1]}"
 
     print(f"J.A.R.V.I.S. {'(GASTMODUS) ' if args.guest else ''}laeuft auf {url}  (beenden mit Strg+C)")
-    webbrowser.open(url)
+    if remote is not None:
+        print(f"Remote ist vorbereitet für https://{REMOTE_HOST} (aktuell {'AN' if remote.active() else 'AUS'}, "
+              f"Schalter in den Einstellungen).")
+
+    if open_browser:
+        webbrowser.open(url)
+    if on_ready is not None:
+        on_ready(server)
 
     try:
         server.serve_forever()

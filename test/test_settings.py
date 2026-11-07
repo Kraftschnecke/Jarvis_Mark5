@@ -28,6 +28,7 @@ assert sm.get_all() == {
     "briefing": {"auto": False, "news": True},
     "goals": {"evening": False, "evening_hour": 20},
     "hints": {"appointments": False, "appointment_minutes": 30, "weather": False, "weather_hour": 19},
+    "remote": {"enabled": False, "info": True, "daily": True, "pc": False, "max_messages": 0, "max_ai_per_day": 0},
     "limits": {"ai_calls_per_day": 500, "speech_calls_per_day": 200},
 }
 assert json.loads((folder / "neu.json").read_text(encoding="utf-8")) == sm.get_all()
@@ -57,6 +58,7 @@ assert sm.get_all() == {
     "briefing": {"auto": False, "news": True},
     "goals": {"evening": False, "evening_hour": 20},
     "hints": {"appointments": False, "appointment_minutes": 30, "weather": False, "weather_hour": 19},
+    "remote": {"enabled": False, "info": True, "daily": True, "pc": False, "max_messages": 0, "max_ai_per_day": 0},
     "limits": {"ai_calls_per_day": 500, "speech_calls_per_day": 200},
 }, sm.get_all()
 # ... und die Datei selbst ist bereinigt

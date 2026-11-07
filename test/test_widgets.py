@@ -315,6 +315,56 @@ result = feed.get("Adler Mannheim")
 assert result["scores"] is False and len(result["next"]) == 3 and result["current"]["state"] == "live"
 assert HockeyFeed(fetch=lambda url: json.dumps(season), clock=lambda: 0).get("Edmonton Oilers")["scores"] is True
 
+# ---- Notizen einzelner Geraete (Handy)
+dn = WidgetStore(folder / "dn.json", today=lambda: date(2026, 11, 7))
+assert dn.device_notes() == [] and "device_notes" not in dn.get()                 # get() bleibt, wie es war
+dn.set_notes("gemeinsam")
+dn.set_device_note("a1", "iPhone  Moritz", "meine Notiz")
+assert dn.device_notes() == [{"id": "a1", "name": "iPhone Moritz", "text": "meine Notiz"}]
+assert dn.get()["notes"] == "gemeinsam"                                           # die gemeinsame Notiz bleibt unberuehrt
+dn.set_device_note("a1", "iPhone Moritz", "neu")
+assert [n["text"] for n in dn.device_notes()] == ["neu"]
+assert WidgetStore(folder / "dn.json").device_notes()[0]["text"] == "neu"         # bleibt nach Neustart
+dn.set_device_note("b2", "x" * 100, "")
+assert dn.device_notes(only={"b2"}) == [{"id": "b2", "name": "x" * 40, "text": ""}]    # Name gekuerzt, leere Notiz erlaubt
+assert dn.device_notes(only=set()) == [] and [n["id"] for n in dn.device_notes(only={"a1"})] == ["a1"]
+dn.set_device_note("c3", "   ", "t")
+assert [n["name"] for n in dn.device_notes(only={"c3"})] == ["Handy"]
+for bad_id in (None, "", 5, "x" * 65):
+    try:
+        dn.set_device_note(bad_id, "n", "t")
+        raise AssertionError(bad_id)
+    except ValueError:
+        pass
+for bad_text in (None, 5, "x" * 5001, ["a"]):
+    try:
+        dn.set_device_note("a1", "n", bad_text)
+        raise AssertionError(bad_text)
+    except ValueError:
+        pass
+dn.set_device_note("a1", "n", "x" * 5000)                                          # genau am Limit
+assert [n["text"] for n in dn.device_notes(only={"a1"})] == ["x" * 5000]
+# Aufraeumen: nur Geraete, die es noch gibt (das schreibende bleibt immer)
+dn.set_device_note("a1", "iPhone", "bleibt", keep_ids={"a1"})
+assert sorted(n["id"] for n in dn.device_notes()) == ["a1"]
+# Hoechstens zehn Geraete
+cap = WidgetStore(folder / "cap.json")
+for i in range(10):
+    cap.set_device_note(f"d{i}", "g", "t")
+try:
+    cap.set_device_note("neu", "g", "t")
+    raise AssertionError("elftes Geraet")
+except ValueError:
+    pass
+cap.set_device_note("d3", "g", "geaendert")                                        # ein bekanntes Geraet darf weiter schreiben
+cap.set_device_note("neu", "g", "t", keep_ids={"d0", "d1"})                        # nach dem Aufraeumen ist wieder Platz
+assert sorted(n["id"] for n in cap.device_notes()) == ["d0", "d1", "neu"]
+# kaputte Eintraege in der Datei stoeren nicht
+(folder / "bad.json").write_text(json.dumps({"device_notes": {"a": 5, "b": {"name": 1, "text": "x"}, "c": {"name": "ok", "text": "fein"}}}), encoding="utf-8")
+assert [n["id"] for n in WidgetStore(folder / "bad.json").device_notes()] == ["c"]
+(folder / "bad2.json").write_text(json.dumps({"device_notes": ["x"]}), encoding="utf-8")
+assert WidgetStore(folder / "bad2.json").device_notes() == []
+
 # ---- Weiterleitungen nur auf erlaubte Hosts (Regeln stehen in net_fetch, Test dort: test_net_fetch.py)
 import urllib.request
 redirects = net_fetch.SafeRedirects(widgets.ALLOWED_HOSTS)

@@ -369,6 +369,9 @@ button.danger-fill { background: #b84a40; }
 /* ---------- Einstellungen ---------- */
 
 .settings-button { margin-top: auto; }
+.side-button[hidden] { display: none; }               /* "hidden" gilt auch fuer Knoepfe, die sonst display: flex haben */
+#open-phone-prefs { margin-top: 0; }                  /* der Platz nach oben gehoert dem Settings-Knopf; am Handy steht dieser Knopf direkt darunter */
+body.remote #open-settings + #open-phone-prefs { margin-top: auto; }
 
 dialog.settings { width: min(800px, 94vw); height: min(560px, 90vh); padding: 0; overflow: hidden; }
 .settings[open] { display: flex; }
@@ -437,6 +440,14 @@ input[type="checkbox"].setting-control { min-width: 0; width: 18px; height: 18px
 .folder-path { flex: 1 1 12em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
 .folder-missing { flex-basis: 100%; color: var(--muted); font-size: 0.8rem; }
 .folder-form { display: flex; gap: 8px; margin-top: 4px; }
+.remote-panel { display: flex; flex-direction: column; gap: 8px; }
+.remote-status { margin: 0; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--base); font-size: 0.9rem; }
+.remote-status.on { border-color: #3fa66a; }
+.remote-status.off { color: var(--muted); }
+.remote-device-name { flex: 1 1 8em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remote-device-state { color: var(--muted); font-size: 0.8rem; }
+.remote-device.revoked .remote-device-name, .remote-device.expired .remote-device-name { color: var(--muted); text-decoration: line-through; }
+.remote-link { display: flex; flex-direction: column; gap: 4px; }
 .folder-input { flex: 1; min-width: 0; }
 .memory-list { display: flex; flex-direction: column; gap: 6px; }
 .memory-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 2px 4px; }
@@ -564,6 +575,12 @@ button.danger-text { color: #d9695f; }
 .w-goal-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .w-goal.done .w-goal-text { text-decoration: line-through; color: var(--muted); }
 .w-list-head { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.w-note-modes { display: flex; gap: 6px; margin-bottom: 6px; }
+.w-note-mode { flex: 1; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 0.85rem; }
+.w-note-mode.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.w-note-from { margin: 10px 0 2px; font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+.w-note-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9rem; padding: 6px 8px; border: 1px dashed var(--line); border-radius: 8px; }
+.w-list-count { align-self: center; white-space: nowrap; font-size: 0.8rem; }
 .w-list-picker { flex: 1; min-width: 0; background: var(--panel, transparent); color: inherit; border: 1px solid var(--border, rgba(128,128,128,.3)); border-radius: 6px; padding: 4px; }
 .w-streak { font-size: 12px; color: var(--accent); white-space: nowrap; }
 .w-week { display: flex; gap: 4px; margin: 6px 0; }
@@ -669,6 +686,35 @@ body.guest #mic,
 body.guest .wake,
 body.guest .widgets,
 body.guest .widgets-button { display: none !important; }
+
+/* Remote (Handy, Step R5): kein Verwalten, kein Weckwort. Die Sperre steht im Server, das hier ist nur Anzeige. */
+body.remote #open-settings,
+body.remote #new-project,
+body.remote .wake,
+body.remote .row .more { display: none !important; }
+body.remote #open-phone-prefs { display: flex !important; }
+.phone-prefs-rows { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
+.phone-prefs-row { display: flex; flex-direction: column; gap: 4px; }
+.phone-prefs-row label { color: var(--muted); font-size: 0.85rem; }
+.phone-prefs-row select { width: 100%; }
+.phone-prefs-switch { flex-direction: row; align-items: center; justify-content: space-between; }
+.phone-prefs-switch label { color: inherit; font-size: 1rem; flex: 1; }
+.remote-banner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 6px 12px; margin-top: 8px;
+  background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--radius); font-size: 0.85rem; }
+.remote-banner[hidden] { display: none; }
+.remote-banner-title { color: var(--accent); }
+.remote-banner-detail { color: var(--muted); }
+
+/* Handy: iOS zoomt in Felder unter 16 px hinein; die Kopfzeile und das Eingabefeld halten Abstand zu Notch und Home-Balken */
+@media (max-width: 720px) {
+  textarea, input[type="text"], input[type="search"], input:not([type]), select { font-size: 16px; }
+  .app { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+  .topbar { padding-top: max(16px, env(safe-area-inset-top)); }
+  .composer { padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+}
+@supports (height: 100dvh) {
+  .layout, .app { height: 100dvh; }      /* iOS: die Adressleiste schiebt die Seite sonst ueber den Rand */
+}
 
 /* PC Facts und Performance (Step 2.8) */
 .w-facts { display: flex; flex-direction: column; gap: 4px; }

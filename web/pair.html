@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1d1c1b">
+  <meta name="referrer" content="no-referrer">
+  <title>J.A.R.V.I.S. koppeln</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           background: #1d1c1b; color: #f1eadc; font-family: -apple-system, system-ui, "Segoe UI", sans-serif; }
+    main { max-width: 26rem; padding: 24px; text-align: center; }
+    h1 { font-size: 1.1rem; letter-spacing: 0.22em; color: #168aad; margin: 0 0 1rem; }
+    p { line-height: 1.5; margin: 0.6rem 0; }
+    #message { color: #8f8b84; }
+    #message.error { color: #d9695f; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>J.A.R.V.I.S.</h1>
+    <p id="message">Dieses Gerät ist nicht gekoppelt.</p>
+    <p id="hint">Erzeuge am PC in den Einstellungen unter Remote einen „Koppel-Link“ und öffne ihn auf diesem Gerät.</p>
+  </main>
+  <script>
+    // Der Kopplungscode steht im Teil nach dem #, der nie an einen Server oder in ein Protokoll geschickt wird.
+    (function () {
+      var code = location.hash.replace(/^#/, "");
+      var message = document.getElementById("message");
+      var hint = document.getElementById("hint");
+      if (!code) return;
+      history.replaceState(null, "", location.pathname);   // Code sofort aus der Adresszeile nehmen
+      message.textContent = "Koppeln …";
+      hint.textContent = "";
+      fetch("/api/remote/pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code }),
+        credentials: "same-origin"
+      }).then(function (response) {
+        return response.json().then(function (data) { return { ok: response.ok, data: data }; });
+      }).then(function (result) {
+        if (result.ok) {
+          message.textContent = "Gekoppelt als „" + result.data.name + "“.";
+          setTimeout(function () { location.replace("/"); }, 800);
+        } else {
+          message.className = "error";
+          message.textContent = result.data.error || "Das Koppeln ist fehlgeschlagen.";
+          hint.textContent = "Erzeuge am PC einen neuen Link.";
+        }
+      }).catch(function () {
+        message.className = "error";
+        message.textContent = "Keine Verbindung zu Jarvis. Läuft der PC und ist Tailscale an?";
+        hint.textContent = "";
+      });
+    })();
+  </script>
+</body>
+</html>

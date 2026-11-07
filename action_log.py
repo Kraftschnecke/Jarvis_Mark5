@@ -117,6 +117,46 @@ def _ensure_table(connection):
     _table_ready = True
 
 
+def _insert(row):
+    import db   # erst hier: Wer nur Tasks ausfuehrt, braucht die Datenbank nicht
+
+    with _lock, db.connect() as connection:
+        _ensure_table(connection)
+        cursor = connection.cursor()
+        cursor.execute(
+            """
+            INSERT INTO action_log
+                (task_type, goal, details, risk, decision, status, summary)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            row,
+        )
+        cursor.execute(
+            "DELETE FROM action_log WHERE id <= "
+            "(SELECT COALESCE(MAX(id), 0) FROM action_log) - %s",
+            (KEEP_ROWS,),
+        )
+
+
+def record_remote(device_name, text, outcome):
+    """Eine Nachricht vom Handy (Remote R3): wer, was, und ob sie beantwortet oder abgelehnt wurde. Wirft nie einen Fehler."""
+    if not _enabled:
+        return
+
+    try:
+        _insert((
+            "REMOTE",
+            _clean("Nachricht vom Handy: " + str(device_name), 120),
+            _clean(text),
+            "safe",
+            "remote",
+            _clean(outcome, 60),
+            "",
+        ))
+    except Exception as error:
+        print(f"[aktionslog] Konnte nicht protokollieren: {error}")
+
+
 def record(task, decision, status=None):
     """Haelt eine Aufgabe im Protokoll fest. Wirft nie einen Fehler."""
     if not _enabled:
@@ -134,24 +174,7 @@ def record(task, decision, status=None):
             summarize(task),
         )
 
-        import db   # erst hier: Wer nur Tasks ausfuehrt, braucht die Datenbank nicht
-
-        with _lock, db.connect() as connection:
-            _ensure_table(connection)
-            cursor = connection.cursor()
-            cursor.execute(
-                """
-                INSERT INTO action_log
-                    (task_type, goal, details, risk, decision, status, summary)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """,
-                row,
-            )
-            cursor.execute(
-                "DELETE FROM action_log WHERE id <= "
-                "(SELECT COALESCE(MAX(id), 0) FROM action_log) - %s",
-                (KEEP_ROWS,),
-            )
+        _insert(row)
     except Exception as error:
         print(f"[aktionslog] Konnte nicht protokollieren: {error}")
 

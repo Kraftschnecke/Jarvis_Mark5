@@ -203,4 +203,10 @@ src = open(PROJECT_DIR / "tools" / "lists_tool.py", encoding="utf-8").read().spl
 for forbidden in ("subprocess", "os.system", "requests", "eval(", "exec(", "open("):
     assert forbidden not in src, forbidden
 
+# Der Name einer Liste aendert sich nicht, wenn Eintraege dazukommen: die Zahl der offenen Eintraege steht daneben
+draw_block = app_js.split("function renderLists(section) {")[1].split("function draw() {")[1].split("picker.value = String(selected);")[0]
+assert 'wEl("option", "", l.name)' in draw_block and "open" not in draw_block.split("wEl(\"option\"")[1].split("\n")[0]
+assert 'const count = wEl("span", "w-list-count w-muted");' in app_js and "head.append(picker, count, removeList);" in app_js
+assert 'count.textContent = openCount ? openCount + " offen" : "";' in app_js
+
 print("ALL TESTS PASSED")

@@ -77,6 +77,15 @@ class SettingsManager:
             "weather": False,         # abends das Wetter von morgen
             "weather_hour": 19,       # ab dieser Uhrzeit (Stunde, 15 bis 23)
         },
+        # Zugriff vom Handy (Mark 5, Remote R2, siehe DESIGN_REMOTE.md): standardmaessig aus
+        "remote": {
+            "enabled": False,         # nur wirksam, wenn JARVIS_REMOTE_HOST in der .env steht
+            "info": True,             # Stufe Auskunft
+            "daily": True,            # Stufe Alltag
+            "pc": False,              # Stufe PC-Steuerung (harmlos)
+            "max_messages": 0,        # Nachrichten je Geraet pro 10 Minuten, 0 = unbegrenzt
+            "max_ai_per_day": 0,      # KI-Aufrufe ueber Remote pro Tag, 0 = unbegrenzt
+        },
         # Tageslimits fuer kostenpflichtige OpenAI-Aufrufe (Mark 5, Step 1.4), 0 = kein Limit
         "limits": {
             "ai_calls_per_day": 500,

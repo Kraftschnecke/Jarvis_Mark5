@@ -10,6 +10,9 @@ Was geprueft wird:
   Nachrichten, Hintergrund-Abfragen, Timer, Einstellungen, Widgets, Vorlesen, dazu absichtlich
   kaputte Anfragen (kein JSON, falscher Typ, zu gross, fremder Host, abgebrochene Verbindungen,
   unbekannte Adressen, Pfad-Tricks) und eine Nachricht, bei der die "KI" einen Fehler wirft.
+- Remote (Mark 5, R6): dasselbe vom "Handy" aus. Echte Kopplung, Nachrichten und Lesen mit Gerate-Cookie, dazu
+  falsche und fehlende Token, verbotene Adressen, falscher Origin/Host, zu lange Nachrichten, falsche Kopplungscodes
+  (bis zur Sperre). Nach der Last pruefen eigene Fallgruppen Limits, Sperren, Alle-sperren und Remote-aus.
 - Jede Antwort muss zum Fall passen (gueltig = 200, kaputt = 4xx, Fehler = genau 500).
 - Gemessen werden Antwortzeiten, Threads, offene Handles und Speicher ueber die Zeit.
 - Am Ende muss der Server noch schnell antworten, es darf keine unerwarteten Fehlermeldungen im
@@ -67,6 +70,8 @@ for fn in ("search_projects", "get_conversations", "create_conversation", "load_
     setattr(project_stub, fn, lambda *a, **k: None)
 sys.modules["project"] = project_stub
 
+import remote_auth
+import remote_gate
 import server
 import timer
 import widgets
@@ -130,7 +135,24 @@ def process_message(message):
     return {"status": "response", "content": f"Echo: {message[:50]}"}
 
 
+REMOTE_HOST = "mein-pc.tailabc.ts.net"
+REMOTE_ORIGIN = "https://" + REMOTE_HOST
+remote_processed = [0]
+
+
+def process_remote_message(text, device_name, levels):
+    time.sleep(random.uniform(0.005, 0.04))
+    if text == INJECTED_ERROR_TEXT:
+        with count_lock:
+            injected_errors[0] += 1
+        raise RuntimeError("absichtlicher Fehler der Fake-KI (remote)")
+    with count_lock:
+        remote_processed[0] += 1
+    return {"status": "response", "content": f"Remote-Echo: {text[:50]}"}
+
+
 fake.process_message = process_message
+fake.process_remote_message = process_remote_message
 fake.check_background_results = lambda: []
 fake.apply_settings = lambda: None
 fake.client = types.SimpleNamespace(audio=types.SimpleNamespace(
@@ -143,7 +165,10 @@ class FakeHockey:
 
 
 store = widgets.WidgetStore(work_dir / "widgets.json")
-httpd = server.JarvisServer(("127.0.0.1", 0), fake, widget_store=store, hockey=FakeHockey())
+device_store = remote_auth.DeviceStore(work_dir / "remote_devices.json")
+gate = remote_gate.RemoteGate(REMOTE_HOST, device_store, fake.settings_manager)
+fake.settings_manager.set("remote", "enabled", True)
+httpd = server.JarvisServer(("127.0.0.1", 0), fake, widget_store=store, hockey=FakeHockey(), remote=gate)
 port = httpd.server_address[1]
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
@@ -201,6 +226,59 @@ def raw_request(method, path, body=None, headers=None, host=None, timeout=10):
         conn.close()
 
 
+def full_request(method, path, body=None, headers=None, host=None, timeout=10):
+    """Wie raw_request, gibt aber (Status, Header, Text) zurueck."""
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    try:
+        conn.putrequest(method, path, skip_host=True)
+        conn.putheader("Host", host or f"localhost:{port}")
+        for key, value in (headers or {}).items():
+            conn.putheader(key, value)
+        if body is not None:
+            conn.putheader("Content-Length", str(len(body)))
+        conn.endheaders(body)
+        response = conn.getresponse()
+        raw = response.read()
+        return response.status, dict((k.lower(), v) for k, v in response.getheaders()), raw
+    finally:
+        conn.close()
+
+
+def pair_device(name):
+    """Kopplung wie am echten Handy: Link-Code am PC erzeugen, auf der Remote-Adresse einloesen, Cookie merken."""
+    code = device_store.create_pairing(name)["code"]
+    status, headers, raw = full_request("POST", "/api/remote/pair", json.dumps({"code": code}).encode("utf-8"),
+                                        {"Content-Type": "application/json", "Origin": REMOTE_ORIGIN}, host=REMOTE_HOST)
+    if status != 200:
+        raise SystemExit(f"Kopplung fehlgeschlagen ({status}): {raw[:200]!r}")
+    return headers["set-cookie"].split(";")[0]
+
+
+def remote_headers(cookie, origin=REMOTE_ORIGIN, json_body=False):
+    headers = {}
+    if cookie:
+        headers["Cookie"] = cookie
+    if origin:
+        headers["Origin"] = origin
+    if json_body:
+        headers["Content-Type"] = "application/json"
+    return headers
+
+
+def remote_get(path, cookie, **kw):
+    return raw_request("GET", path, None, remote_headers(cookie), host=kw.pop("host", REMOTE_HOST), **kw)
+
+
+def remote_post(path, payload, cookie, origin=REMOTE_ORIGIN, **kw):
+    body = payload if isinstance(payload, bytes) else json.dumps(payload).encode("utf-8")
+    return raw_request("POST", path, body, remote_headers(cookie, origin, json_body=True), host=kw.pop("host", REMOTE_HOST), **kw)
+
+
+phone_cookie = pair_device("Stabilitaets-iPhone")
+limit_cookies = [pair_device(f"Limit-Gerät {i}") for i in range(3)]       # fuer die Fallgruppen nach der Last
+revoke_cookies = [pair_device(f"Sperr-Gerät {i}") for i in range(2)]
+
+
 def post_json(path, payload, **kw):
     return raw_request("POST", path, json.dumps(payload).encode("utf-8"),
                        {"Content-Type": "application/json"}, **kw)
@@ -236,6 +314,8 @@ def abort_connection():
 
 def one_request(rng, number):
     """Eine zufaellige Anfrage. Gibt (Fall, erlaubte Status, Funktion) zurueck."""
+    if rng.random() < 0.3:
+        return remote_case(rng, number)
     pick = rng.random()
     if pick < 0.28:
         return "message", {200}, lambda: post_json("/api/message", {"message": f"Hallo {number}"})
@@ -307,6 +387,61 @@ def one_request(rng, number):
     return "unicode", {200}, lambda: post_json("/api/message", {"message": "Ünïcödé ✓ 🏒 " + "ß" * rng.randint(1, 200)})
 
 
+def remote_case(rng, number):
+    """Eine zufaellige Anfrage vom "Handy" (ueber den Remote-Namen)."""
+    pick = rng.random()
+    if pick < 0.30:
+        return "remote-nachricht", {200}, lambda: remote_post("/api/message", {"message": f"Hallo vom Handy {number}"}, phone_cookie)
+    if pick < 0.32:
+        return "remote-nachricht-fehler", {500}, lambda: remote_post("/api/message", {"message": INJECTED_ERROR_TEXT}, phone_cookie)
+    if pick < 0.52:
+        path = rng.choice(["/api/timers", "/api/background?after=0", "/api/widgets", "/api/projects", "/api/sync",
+                           "/api/ringing", "/api/focus", "/api/alarms", "/api/settings", "/api/remote/whoami"])
+        return "remote-lesen", {200}, lambda: remote_get(path, phone_cookie)
+    if pick < 0.56:
+        return "remote-statisch", {200}, lambda: remote_get(rng.choice(["/", "/app.js", "/style.css", "/sync.js", "/remote_mode.js"]), phone_cookie)
+    if pick < 0.60:
+        return "remote-kopplungsseite", {200}, lambda: raw_request("GET", rng.choice(["/pair", "/manifest.webmanifest", "/sw.js"]), host=REMOTE_HOST)
+    if pick < 0.66:
+        bad = rng.choice(["jarvis_device=falsch", "jarvis_device=", "jarvis_device=abc.def", "x=1", "jarvis_device=" + phone_cookie.split("=", 1)[1] + "x",
+                          "jarvis_device=" + "a" * 3000])
+        return "remote-falsches-token", {401}, lambda: remote_get("/api/timers", bad)
+    if pick < 0.70:
+        return "remote-ohne-token", {401}, lambda: remote_get(rng.choice(["/api/timers", "/", "/app.js", "/api/settings"]), None)
+    if pick < 0.78:
+        path = rng.choice(["/api/actions", "/api/memories", "/api/folders", "/api/remote/state", "/api/system", "/api/performance", "/api/hockey", "/api/nichts"])
+        return "remote-verboten-lesen", {403}, lambda: remote_get(path, phone_cookie)
+    if pick < 0.84:
+        path = rng.choice(["/api/settings", "/api/confirm", "/api/plan/confirm", "/api/memory/delete_all", "/api/folders/add", "/api/widgets/events",
+                           "/api/project/delete", "/api/conversation/reset", "/api/remote/pair_link", "/api/remote/revoke_all", "/api/briefing/auto"])
+        return "remote-verboten-schreiben", {403}, lambda: remote_post(path, {"category": "remote", "key": "enabled", "value": False, "id": "x", "text": "x"}, phone_cookie)
+    if pick < 0.88:
+        origin = rng.choice([None, "https://evil.example", "http://localhost:%d" % port, "http://" + REMOTE_HOST, REMOTE_ORIGIN + ".evil.example"])
+        return "remote-falscher-origin", {403}, lambda: remote_post("/api/message", {"message": "x"}, phone_cookie, origin=origin)
+    if pick < 0.91:
+        host = rng.choice(["evil.example", REMOTE_HOST + ".evil.example", "x" + REMOTE_HOST, "localhost.evil.example"])
+        return "remote-falscher-host", {403}, lambda: remote_get("/api/timers", phone_cookie, host=host)
+    if pick < 0.94:
+        return "remote-nachricht-ungueltig", {400}, lambda: remote_post("/api/message", rng.choice([
+            {"message": "x" * 1001}, {"message": ""}, {"message": "   "}, {"message": 5}, {"nichts": 1}, b"{kaputt"]), phone_cookie)
+    if pick < 0.955:
+        # Ziele, Listen, gemeinsame Notiz und die eigene Notiz des Handys (Stufe Alltag), gueltig und zu lang
+        kind = rng.choice(["goals", "lists", "notes", "device_note", "notes-lang", "device_note-lang"])
+        bodies = {
+            "goals": ("/api/widgets/goals", {"items": [{"text": f"Ziel {number}", "done": bool(number % 2), "daily": False}]}, {200}),
+            "lists": ("/api/widgets/lists", {"lists": [{"name": "Einkauf", "items": [{"text": f"Eier {number}", "done": False}]}]}, {200}),
+            "notes": ("/api/widgets/notes", {"text": "n" * rng.randint(0, 500)}, {200}),
+            "device_note": ("/api/widgets/device_note", {"text": "h" * rng.randint(0, 500)}, {200}),
+            "notes-lang": ("/api/widgets/notes", {"text": "x" * 5001}, {400}),
+            "device_note-lang": ("/api/widgets/device_note", {"text": "x" * 5001}, {400}),
+        }
+        path, body, expected = bodies[kind]
+        return "remote-widgets-" + kind, expected, lambda: remote_post(path, body, phone_cookie)
+    if pick < 0.97:
+        return "remote-kopplung-falsch", {400, 429}, lambda: remote_post("/api/remote/pair", {"code": f"falsch{number}{rng.randint(0, 10**6)}"}, None)
+    return "remote-nachricht-unicode", {200}, lambda: remote_post("/api/message", {"message": "Ünïcödé ✓ 🏒 " + "ß" * rng.randint(1, 200)}, phone_cookie)
+
+
 def worker(seed):
     rng = random.Random(seed)
     number = 0
@@ -375,6 +510,72 @@ for _ in range(20):
     code = raw_request("GET", "/api/settings")
     health.append((code, time.time() - t0))
 tail_time = time.time() - started_at
+
+# ----------------------------------------------------------------------
+# Remote nach der Last: Limits, Sperren, Schalter (jede Gruppe mit eigenem Geraet)
+# ----------------------------------------------------------------------
+remote_checks = []
+
+
+def check(name, got, expected):
+    remote_checks.append((name, got, expected))
+
+
+def message_status(cookie):
+    return remote_post("/api/message", {"message": "Limit-Test"}, cookie)
+
+
+remote_settings = fake.settings_manager
+# 0) Waehrend der Last wurden falsche Kopplungscodes geschickt: die Sperre gilt jetzt auch fuer einen richtigen Code
+locked_code = device_store.create_pairing("Sollte-gesperrt-sein")["code"]
+check("Kopplung nach vielen Fehlversuchen gesperrt", remote_post("/api/remote/pair", {"code": locked_code}, None), 429)
+check("Gekoppeltes Geraet trotz Kopplungssperre weiter ok", message_status(phone_cookie), 200)
+device_store.guard._locked_until.clear()
+device_store.guard._failures.clear()
+check("Nach Ende der Sperre klappt der richtige Code", remote_post("/api/remote/pair", {"code": locked_code}, None), 200)
+
+# 1) Nachrichtenlimit je Geraet: 3 erlaubt, dann 429; ein anderes Geraet ist nicht betroffen
+remote_settings.set("remote", "max_messages", 3)
+check("Limit: erste drei Nachrichten", [message_status(limit_cookies[0]) for _ in range(3)], [200, 200, 200])
+check("Limit: vierte und fuenfte Nachricht", [message_status(limit_cookies[0]) for _ in range(2)], [429, 429])
+check("Limit: anderes Geraet", message_status(limit_cookies[1]), 200)
+check("Limit: Lesen ist nicht begrenzt", remote_get("/api/timers", limit_cookies[0]), 200)
+remote_settings.set("remote", "max_messages", 0)
+check("Limit 0 = unbegrenzt", [message_status(limit_cookies[0]) for _ in range(5)], [200] * 5)
+
+# 2) KI-Aufrufe pro Tag fuer alle Geraete zusammen
+gate.limits._day = None
+gate.limits._daily = 0
+remote_settings.set("remote", "max_ai_per_day", 2)
+check("Tageslimit: zwei Nachrichten", [message_status(limit_cookies[2]), message_status(limit_cookies[1])], [200, 200])
+check("Tageslimit: dritte, egal von welchem Geraet", [message_status(limit_cookies[2]), message_status(phone_cookie)], [429, 429])
+remote_settings.set("remote", "max_ai_per_day", 0)
+check("Tageslimit 0 = unbegrenzt", message_status(phone_cookie), 200)
+
+# 3) Sperren wirkt sofort, nur fuer dieses Geraet
+sperr_id = revoke_cookies[0].split("=", 1)[1].split(".", 1)[0]
+check("Vor dem Sperren", remote_get("/api/timers", revoke_cookies[0]), 200)
+device_store.revoke(sperr_id)
+check("Gesperrtes Geraet", [remote_get("/api/timers", revoke_cookies[0]), message_status(revoke_cookies[0])], [401, 401])
+check("Anderes Geraet nicht betroffen", remote_get("/api/timers", revoke_cookies[1]), 200)
+
+# 4) Remote aus: auch gekoppelte Geraete kommen nicht rein, der PC schon
+remote_settings.set("remote", "enabled", False)
+check("Remote aus: Handy", [remote_get("/api/timers", phone_cookie), message_status(phone_cookie), raw_request("GET", "/pair", host=REMOTE_HOST)], [403, 403, 403])
+check("Remote aus: PC", raw_request("GET", "/api/timers"), 200)
+remote_settings.set("remote", "enabled", True)
+check("Remote wieder an", remote_get("/api/timers", phone_cookie), 200)
+
+# 5) Alle Geraete sperren
+device_store.revoke_all()
+check("Alle gesperrt", [remote_get("/api/timers", phone_cookie), remote_get("/api/timers", limit_cookies[0]), remote_get("/api/timers", revoke_cookies[1])], [401, 401, 401])
+check("PC nach Alle-sperren", [raw_request("GET", "/api/timers"), raw_request("GET", "/api/settings")], [200, 200])
+
+# 6) Das Geraete-File enthaelt keine Token im Klartext
+saved = (work_dir / "remote_devices.json").read_text(encoding="utf-8")
+for cookie in [phone_cookie] + limit_cookies + revoke_cookies:
+    check("Kein Token im Klartext gespeichert", cookie.split("=", 1)[1].split(".", 1)[1] in saved, False)
+
 sys.stderr = real_stderr
 
 # ----------------------------------------------------------------------
@@ -398,6 +599,7 @@ print(f"Dauer {tail_time:.0f} s, Anfragen {len(lat)}, davon Nachrichten verarbei
       f"absichtliche Fehler {injected_errors[0]}")
 print(f"Antwortzeit: Median {pct(0.5):.0f} ms, 95% {pct(0.95):.0f} ms, 99% {pct(0.99):.0f} ms, laengste {pct(1.0):.0f} ms")
 print("Status:", dict(sorted(((str(k), v) for k, v in statuses.items()))))
+print(f"Remote: Nachrichten verarbeitet {remote_processed[0]}, Pruefungen nach der Last {len(remote_checks)}")
 print(f"Threads: Start {baseline['threads']}, Spitze {peak_threads}, Ende {end['threads']}")
 if end["handles"] is not None:
     print(f"Handles: Start {baseline['handles']}, Spitze {peak_handles}, Ende {end['handles']}")
@@ -409,6 +611,11 @@ failures = []
 unexpected = [p for p in problems]
 if unexpected:
     failures.append(f"{len(unexpected)}+ Antworten passten nicht zum Fall, erste: {unexpected[:5]}")
+for name, got, expected in remote_checks:
+    if got != expected:
+        failures.append(f"Remote-Pruefung \"{name}\": bekommen {got}, erwartet {expected}")
+if remote_processed[0] == 0:
+    failures.append("Remote: keine einzige Nachricht vom Handy wurde verarbeitet")
 if slow:
     failures.append(f"{len(slow)} Anfragen dauerten ueber 5 Sekunden: {slow[:5]}")
 real_tracebacks = stderr.tracebacks()

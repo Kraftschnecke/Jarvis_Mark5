@@ -17,6 +17,7 @@ import briefing
 import hints
 import focus
 import reminders
+import remote_policy
 import ringing
 import timer as timer_module
 import widgets
@@ -84,12 +85,25 @@ PENDING_ACTION_SECONDS = 120
 PENDING_PLAN_SECONDS = 300
 
 
+REMOTE_REFUSAL = "Das geht nur am PC."
+_remote_scope = threading.local()      # die eingeschraenkte Aufgabenliste, solange dieser Thread eine Handy-Nachricht bearbeitet
+
+
 class Jarvis:
     # Klassen-Standard: es gibt nie eine offene Rueckfrage, bevor eine entsteht
     pending_action = None
     pending_plan = None
     _plan_abort = None
     _plan_running = False
+
+    @property
+    def task_registry(self):
+        # Waehrend einer Handy-Nachricht sieht dieser Thread nur die erlaubten Aufgaben, alle anderen Threads alles
+        return getattr(_remote_scope, "registry", None) or self.__dict__.get("_task_registry")
+
+    @task_registry.setter
+    def task_registry(self, value):
+        self.__dict__["_task_registry"] = value
 
     def __init__(self):
         # Tageslimit fuer kostenpflichtige Aufrufe (cost_guard.py); die Limits stehen in den Einstellungen
@@ -389,7 +403,8 @@ class Jarvis:
     def delete_conversation_by_id(self, project_id, conversation_id):
         self.workspace.delete_conversation_by_id(project_id, conversation_id)
 
-    def process_normal_message(self, message):
+    def process_normal_message(self, message, remote=False):
+        # remote=True (Handy): keine Projekt-Pruefung mit Rueckfrage und offene Rueckfragen am PC bleiben, wie sie sind
         # Momentaufnahme VOR den Hintergrund-Jobs: Die Antwort bekommt Memory und
         # Projekt-Kontext im Zustand vor dieser Nachricht (siehe DESIGN_PARALLEL.md).
         memory_context = self.get_memory_context()
@@ -408,7 +423,7 @@ class Jarvis:
         if self.memory_enabled():
             memory_job = Job(self.memory.process, self.client, message)
 
-        if active_project is not None:
+        if active_project is not None and not remote:
             project_job = Job(self.process_project_context, message)
 
         try:
@@ -460,8 +475,9 @@ class Jarvis:
                 # Ebenso die Projekt-Pruefung: Antwort ohne Rueckfrage.
                 print(f"[projekt] Pruefung fehlgeschlagen: {error}")
 
-        # Eine neue Nachricht macht jede alte offene Rueckfrage ungueltig.
-        self.clear_pending()
+        # Eine neue Nachricht macht jede alte offene Rueckfrage ungueltig (nicht die vom Handy: die gehoert zum PC).
+        if not remote:
+            self.clear_pending()
         confirmation_question = None
 
         if (
@@ -698,8 +714,11 @@ class Jarvis:
 
         return None
 
-    def run_task(self, message, route):
-        """Fuehrt eine Aufgabe aus - je nach Risikostufe sofort, nach Rueckfrage oder gar nicht."""
+    def run_task(self, message, route, remote=False):
+        """Fuehrt eine Aufgabe aus - je nach Risikostufe sofort, nach Rueckfrage oder gar nicht.
+
+        remote=True (Handy): alles, was eine Rueckfrage braeuchte, wird nicht ausgefuehrt und nicht vorgemerkt.
+        """
         prepared = prepare_registered_task(
             self.task_registry, route["task_type"], route["parameters"]
         )
@@ -722,6 +741,10 @@ class Jarvis:
                     "Diese Aktion ist bei mir grundsaetzlich gesperrt."
                 )
             }
+
+        if level == risk.CONFIRM and remote:
+            action_log.record(prepared, "refused", "BLOCKED")
+            return {"status": "response", "content": REMOTE_REFUSAL}
 
         if level == risk.CONFIRM:
             goal, details = risk.describe_task(prepared)
@@ -921,19 +944,24 @@ class Jarvis:
         "THINKING..." haengen bleiben, weil der Worker nie fertig meldet.
         Strg+C (KeyboardInterrupt) wird bewusst nicht abgefangen.
         """
+        return self._guarded(message, self._process_message, local=True)
+
+    def _guarded(self, message, handler, local):
+        """Gemeinsamer Rahmen fuer PC und Handy: Messung, Fehler abfangen, letzte Antwort merken (nur am PC)."""
         ai_log.start_message(message)
         answers_a_question = getattr(self, "pending_action", None) is not None     # "ja"/"nein" ist keine Antwort zum Merken
 
         try:
-            result = self._process_message(message)
+            result = handler(message)
 
-            if not answers_a_question and isinstance(result, dict) and result.get("status") == "response":
+            if local and not answers_a_question and isinstance(result, dict) and result.get("status") == "response":
                 self.last_reply = result.get("content")        # fuer "Speichere das als Notiz"
 
             return result
         except cost_guard.LimitReached as error:
             # Erwartbar, kein Fehler im Programm: kein Traceback, feste Meldung
-            self.clear_pending()
+            if local:
+                self.clear_pending()
 
             text = str(error)
 
@@ -945,8 +973,9 @@ class Jarvis:
             else:
                 traceback.print_exc()
 
-            # Eine halb verarbeitete Nachricht darf keine Rueckfrage offen lassen
-            self.clear_pending()
+            # Eine halb verarbeitete Nachricht darf keine Rueckfrage offen lassen (am Handy gibt es keine, die am PC bleiben)
+            if local:
+                self.clear_pending()
 
             return {
                 "status": "response",
@@ -958,6 +987,122 @@ class Jarvis:
             }
         finally:
             ai_log.finish_message()
+
+    # ---------- Handy (Remote R3) ----------
+
+    def remote_registry(self, levels):
+        """Nur die Aufgaben der freigegebenen Stufen (und nur, wenn sie in den Abilities an sind)."""
+        allowed = remote_policy.allowed_tasks(levels)
+        registry = TaskRegistry(
+            is_enabled=lambda task_type: task_type in allowed and abilities.task_enabled(task_type, self.settings_manager)
+        )
+        register_all_tasks(registry)
+        return registry
+
+    def process_remote_message(self, text, device_name, levels):
+        """Nachricht vom Handy: gleiche Unterhaltung, aber nur Aufgaben der freigegebenen Stufen.
+
+        Nie Rueckfragen, Plaene oder Befehle (Projekt wechseln, Beenden ...): Dafuer gibt es nur "Das geht nur am PC.".
+        Eine offene Rueckfrage am PC wird weder beantwortet noch verworfen. Der Aufrufer haelt den message_lock.
+        """
+        outcome = ["CHAT"]
+        conversation = self.conversation
+        before = len(conversation.messages)
+        _remote_scope.registry = self.remote_registry(levels)      # gilt nur fuer diesen Thread, der PC sieht weiter alles
+
+        try:
+            result = self._guarded(text, lambda message: self._process_remote(message, outcome), local=False)
+        finally:
+            _remote_scope.registry = None
+
+        if result.get("status") != "response":
+            result = {"status": "response", "content": REMOTE_REFUSAL}
+            outcome[0] = "REFUSED"
+
+        self._share_remote_exchange(conversation, before, text, result.get("content"))
+        action_log.record_remote(device_name, text, outcome[0])
+        return result
+
+    def _share_remote_exchange(self, conversation, before, text, answer):
+        """Auch Aufgaben und Ablehnungen vom Handy gehoeren in die gemeinsame Unterhaltung, sonst sieht der PC sie nicht.
+
+        Eine normale Plauder-Antwort legt ihre Nachrichten selbst ab. Hier wird nur ergaenzt, was fehlt.
+        """
+        if conversation is not self.conversation or not isinstance(answer, str):
+            return
+
+        messages = conversation.messages
+        missing = []
+
+        if len(messages) == before:
+            missing.append(("user", text))
+        elif not (len(messages) == before + 1 and messages[-1].get("role") == "user"):
+            return
+
+        missing.append(("assistant", answer))
+
+        for role, content in missing:
+            conversation.add_message(role, content)
+
+            if self.project_state.active_conversation is not None:
+                save_message(self.project_state.active_conversation[0], role, content)
+
+    def remote_capabilities(self, registry):
+        """Kurze feste Antwort fuer das Handy: nur, was dort geht. Keine Befehle, die es nur am PC gibt."""
+        labels = [
+            ability.label for ability in abilities.ABILITIES
+            if any(registry.get(task_type) is not None for task_type in ability.tasks)
+        ]
+        shown = ", ".join(labels) if labels else "plaudern"
+
+        return (
+            f"Am Handy kann ich dir helfen mit: {shown}. Außerdem plaudere ich gern mit dir, {get_address()}. "
+            "Alles andere, zum Beispiel Programme, Dateien, Notizen oder Mail, geht nur am PC."
+        )
+
+    def _process_remote(self, message, outcome):
+        registry = self.task_registry
+
+        # "Wecker aus", wenn gerade etwas laeutet (nur mit Stufe Alltag)
+        if registry.get("STOP_RINGING") is not None:
+            quick = ringing.handle_message(message, get_address())
+
+            if quick is not None:
+                outcome[0] = "TASK:STOP_RINGING"
+                return {"status": "response", "content": quick}
+
+        context = self.router_context()
+        route = (
+            route_message(self.client, message, registry, context=context)
+            if context else route_message(self.client, message, registry)
+        )
+
+        if route["kind"] == "COMMAND":
+            if route["command"]["intent"] == "SHOW_CAPABILITIES":
+                outcome[0] = "COMMAND:SHOW_CAPABILITIES"
+                return {"status": "response", "content": self.remote_capabilities(registry)}
+
+            outcome[0] = "REFUSED"
+            return {"status": "response", "content": REMOTE_REFUSAL}
+
+        if route["kind"] == "DISABLED":
+            outcome[0] = "REFUSED"
+            return {"status": "response", "content": REMOTE_REFUSAL}
+
+        if route["kind"] == "PLAN":
+            outcome[0] = "REFUSED"
+            return {"status": "response", "content": REMOTE_REFUSAL}
+
+        if route["kind"] == "TASK":
+            outcome[0] = "TASK:" + str(route["task_type"])
+            result = self.run_task(message, route, remote=True)
+
+            if result.get("content") == REMOTE_REFUSAL:
+                outcome[0] = "REFUSED"
+
+            return result
+
+        return self.process_normal_message(message, remote=True)
 
     def _process_message(self, message):
 
