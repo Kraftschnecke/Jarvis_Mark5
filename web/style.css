@@ -746,3 +746,8 @@ body.tester .row .more, body.tester .project-row { display: none !important; }
 .w-goal-remove { flex: 0 0 auto; }
 .w-series-remove { font-size: 12px; white-space: nowrap; padding: 0 2px; }
 .w-series-remove.armed { color: var(--accent); font-weight: 700; }
+
+/* Chat im Rahmen der Handy-Version (?embed=1, siehe embed.js): Rand-Streifen und Liste behalten ihre Wischbewegung fuer sich */
+#embed-edge { position: fixed; left: 0; top: 0; bottom: 0; width: 24px; z-index: 9; touch-action: pan-y; }
+body.embed .sidebar { touch-action: pan-y; }
+body.embed .logo { cursor: default; }

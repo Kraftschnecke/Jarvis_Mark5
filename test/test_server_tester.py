@@ -138,13 +138,15 @@ httpd = server.JarvisServer(("127.0.0.1", 0), owner, widget_store=widget_store, 
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
 
-def call(method, path, host=REMOTE_HOST, origin=None, cookie=None, body=None):
+def call(method, path, host=REMOTE_HOST, origin=None, cookie=None, body=None, agent=None):
     conn = http.client.HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=10)
     headers = {"Host": host}
     if origin is not None:
         headers["Origin"] = origin
     if cookie is not None:
         headers["Cookie"] = cookie
+    if agent is not None:
+        headers["User-Agent"] = agent
     payload = None
     if method == "POST":
         payload = json.dumps(body if body is not None else {}).encode("utf-8")
@@ -257,9 +259,18 @@ assert status == 200 and b'id="new-project"' in raw and b"J.A.R.V.I.S. Gast" not
 # "/" ist fuer den Besitzer die Willkommensseite; der Gast bekommt sie nicht (404), sein "/" bleibt die Gast-Seite
 status, raw = call("GET", "/", cookie=phone)
 assert status == 200 and b'id="start"' in raw and b'href="index.html"' in raw and b"J.A.R.V.I.S. Gast" not in raw
-for name in ("/welcome.html", "/welcome.css", "/welcome.js", "/welcome_logic.js", "/welcome_panels.js", "/welcome_dialogs.js"):
+for name in ("/welcome.html", "/welcome.css", "/welcome.js", "/welcome_logic.js", "/welcome_panels.js", "/welcome_dialogs.js",
+             "/mobile.html", "/mobile.css", "/mobile.js", "/mobile_logic.js", "/embed.js", "/welcome_app.js"):
     assert call("GET", name, cookie=phone)[0] == 200, name
     assert call("GET", name, cookie=laptop)[0] == 404, name
+# Auf dem iPhone bekommt der Besitzer die Handy-Version, ?pc=1 erzwingt die PC-Ansicht; der Gast bleibt bei seiner Seite
+IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1"
+status, raw = call("GET", "/", cookie=phone, agent=IPHONE)
+assert status == 200 and b'id="mpages"' in raw and b"J.A.R.V.I.S. Gast" not in raw
+assert b'id="start"' in call("GET", "/?pc=1", cookie=phone, agent=IPHONE)[1]
+status, raw = call("GET", "/", cookie=laptop, agent=IPHONE)
+assert status == 200 and b"J.A.R.V.I.S. Gast" in raw and b'id="mpages"' not in raw
+assert b"J.A.R.V.I.S. Gast" in call("GET", "/?handy=1", cookie=laptop, agent=IPHONE)[1]
 assert call("GET", "/remote_admin.js", cookie=phone)[0] == 200 and call("GET", "/app_owner.js", cookie=phone)[0] == 200
 # Ohne Anmeldung bleibt es die Kopplungsseite (401), nie die Gast-Seite
 status, raw = call("GET", "/")

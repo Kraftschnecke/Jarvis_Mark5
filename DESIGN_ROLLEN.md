@@ -89,3 +89,21 @@ Die Auswahl steht im Browser (`localStorage`, Schlüssel `jarvis.welcome.windows
 Neue Termine lassen sich nur am PC eintragen (über Remote gesperrt), Ziele und Listen auch vom Handy.
 
 **Neues Fenster bauen:** Eintrag in `WINDOWS` (Status `built`), Anzeige in `welcome_panels.js`, großes Fenster in `welcome_dialogs.js`, Zeile im `opener` in `welcome.js`. Der Test `test_welcome.py` prüft, dass alle vier da sind. Braucht das Fenster Daten vom Server, kommt die Adresse in `SOURCES` (`welcome.js`) und in `GET_API` (`remote_policy.py`).
+
+
+## Handy-Version (Besitzer)
+
+Eine Adresse, zwei Oberflächen: `/` liefert dem Besitzer auf iPhone und Android-Handy `mobile.html`, am PC `welcome.html` (Entscheidung in `device_page.py`, nach dem User-Agent). Tablets bekommen die PC-Ansicht. Mit `/?pc=1` erzwingt man die PC-Ansicht, mit `/?handy=1` die Handy-Ansicht (zum Ausprobieren am PC; bei beiden gewinnt `pc`). Gäste sind nicht betroffen, sie haben ihre eigene Seite und bekommen keine dieser Dateien (404).
+
+Drei Seiten nebeneinander, das Wischen macht der Browser (`scroll-snap`): **Start** (Kern, Uhr, Datum, Status, Tagesziele und Kalender), **Jarvis** (der Chat) und **Fenster** (alle anderen eingeschalteten Fenster untereinander). Von rechts hineinwischen = nächste Seite, die drei Punkte unten sind antippbar, `#jarvis` in der Adresse springt direkt hin. Die großen Fenster kommen am Handy von unten.
+
+| Datei | Aufgabe |
+|---|---|
+| `device_page.py` | welche Startseite für welches Gerät |
+| `mobile.html`, `mobile.css` | Gerüst, Wischen, Punkte, Aussehen am Handy |
+| `mobile_logic.js` | reine Funktionen (Seiten, Verteilung Start/Fenster), mit Node geprüft |
+| `mobile.js` | Seiten, Punkte, Fenster zeichnen (nutzt dieselben kleinen und großen Fenster wie die PC-Seite) |
+| `welcome_app.js` | gemeinsamer Kern von PC-Seite und Handy-Version: Daten holen, Zustand, große Fenster |
+| `embed.js` | im Chat-Rahmen: Gesprächsliste per Wisch vom linken Rand öffnen, nach links schließen |
+
+Der Chat ist die normale App (`index.html?embed=1`) in einem Rahmen. Er wird erst geladen, wenn man die Seite zum ersten Mal ansieht. Im Rahmen gibt es kein „zurück zur Startseite“ (die Startseite ist die Nachbarseite).

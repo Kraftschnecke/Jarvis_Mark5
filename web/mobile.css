@@ -1,0 +1,65 @@
+/* Handy-Version: drei Seiten nebeneinander mit Wischen (scroll-snap). Farben aus style.css. Klassen beginnen mit "m", damit nichts mit style.css kollidiert. */
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; color: var(--text); }
+
+#mpages {
+  display: flex; height: 100vh; height: 100dvh; width: 100%;
+  overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-width: none;
+}
+#mpages::-webkit-scrollbar { display: none; }
+
+.mpage {
+  flex: 0 0 100%; width: 100%; box-sizing: border-box; scroll-snap-align: start; scroll-snap-stop: always;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: calc(env(safe-area-inset-top) + 18px) 18px calc(env(safe-area-inset-bottom) + 56px);
+}
+.mpage h1 { margin: 0 0 6px; font-size: 1.1rem; font-weight: 500; letter-spacing: 0.04em; }
+.mpage p { color: var(--muted); font-size: 0.92rem; line-height: 1.5; margin: 0 0 12px; }
+.mlink { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+
+/* Punkte unten: wo bin ich, antippbar */
+#mdots {
+  position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 14px);
+  display: flex; justify-content: center; gap: 4px; pointer-events: none; z-index: 5;
+}
+#mdots button {
+  pointer-events: auto; border: 0; background: transparent; padding: 14px 6px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+#mdots button i { display: block; width: 7px; height: 7px; border-radius: 4px; background: var(--line); transition: width 0.2s ease, background 0.2s ease; }
+#mdots button.on i { width: 20px; background: var(--accent); }
+
+/* Schimmer am rechten Rand: dort geht es weiter */
+#mpeek {
+  position: fixed; right: 0; top: 22%; bottom: 22%; width: 12px; pointer-events: none; z-index: 4;
+  background: linear-gradient(90deg, transparent, var(--accent-soft)); border-radius: 12px 0 0 12px; transition: opacity 0.25s ease;
+}
+body.last #mpeek { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) { #mdots button i, #mpeek { transition: none; } }
+
+/* Startseite */
+.mhero { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 4px; }
+.mhero .core { --size: 92px; }
+.mhero .wordmark { margin-top: 0.8rem; font-size: 1.15rem; letter-spacing: 0.45em; }
+.mhero .clock { margin-top: 0.4rem; font-size: 2rem; }
+.mhero .date { font-size: 0.9rem; }
+.mhero .wstatus { margin-top: 0.5rem; }
+.mlist { display: flex; flex-direction: column; gap: 12px; margin: 16px 0; }
+.mlist .panel { flex: none; max-height: none; overflow: visible; }
+.mhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.mhead h1 { margin: 0; }
+.mhead .wstatus { margin-top: 0; }
+.mlist .wempty.big { text-align: center; padding: 24px 0; }
+
+/* Chat: die App der Seite "index.html" in einem Rahmen, unten bleibt Platz fuer die Punkte */
+.mchatpage { padding: env(safe-area-inset-top) 0 0; overflow: hidden; }
+#mchat { display: block; width: 100%; height: calc(100% - 36px - env(safe-area-inset-bottom)); border: 0; background: var(--base); }
+
+/* Grosse Fenster am Handy: von unten, fast volle Hoehe */
+.wl-box, .wl-box.wide {
+  left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; max-height: 92vh; max-height: 92dvh;
+  border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom); animation: msheet-in 0.25s ease both;
+}
+.wl-body { padding: 16px; -webkit-overflow-scrolling: touch; }
+@keyframes msheet-in { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .wl-box, .wl-box.wide { animation: none; } }

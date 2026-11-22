@@ -383,7 +383,8 @@ new MutationObserver(refreshCore).observe(micButton, { attributes: true, attribu
 // Klick auf den Kern oder den Schriftzug: zurueck zur Willkommensseite (nur beim Besitzer; Gast und Gastmodus haben keine).
 // Umschalt+Klick auf den Kern (beim Gast: schon ein Klick) schaltet die Bewegung an/aus. Die Wahl bleibt in diesem Browser gespeichert,
 // ohne Wahl folgt die Seite der Systemeinstellung "Animationen reduzieren".
-function hasStartPage() { return !guestMode && !document.body.classList.contains("tester"); }
+// Im Rahmen der Handy-Version (?embed=1) gibt es kein "zurueck zur Startseite": die Startseite ist dort die Nachbarseite
+function hasStartPage() { return !guestMode && !document.body.classList.contains("tester") && !document.body.classList.contains("embed"); }
 function savedMotion() {
   try { return localStorage.getItem("jarvis.motion"); } catch (error) { return null; }
 }

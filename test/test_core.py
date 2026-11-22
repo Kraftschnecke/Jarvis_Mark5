@@ -83,7 +83,7 @@ assert "refreshCore();" in speaking                             # Sprechen wechs
 assert 'localStorage.setItem("jarvis.motion"' in block and "try {" in block      # Speicher kann fehlen
 assert "innerHTML" not in block
 # Zurueck zur Willkommensseite: Kern und Schriftzug, nur beim Besitzer; Umschalt+Klick behaelt die Bewegung-Umschaltung
-assert 'function hasStartPage() { return !guestMode && !document.body.classList.contains("tester"); }' in block
+assert 'function hasStartPage() { return !guestMode && !document.body.classList.contains("tester") && !document.body.classList.contains("embed"); }' in block
 assert 'if (hasStartPage() && !event.shiftKey) { location.href = "/"; return; }' in block
 assert 'document.querySelector(".logo").addEventListener("click", () => { if (hasStartPage()) location.href = "/"; });' in block
 assert "Umschalt+Klick" in html and 'title="Zur Startseite"' in html

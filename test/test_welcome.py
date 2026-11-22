@@ -12,7 +12,7 @@ import remote_policy
 
 html = (WEB / "welcome.html").read_text(encoding="utf-8")
 css = (WEB / "welcome.css").read_text(encoding="utf-8")
-JS_FILES = ("welcome_logic.js", "welcome_panels.js", "welcome_dialogs.js", "welcome.js")
+JS_FILES = ("welcome_logic.js", "welcome_panels.js", "welcome_dialogs.js", "welcome_app.js", "welcome.js")
 js = {name: (WEB / name).read_text(encoding="utf-8") for name in JS_FILES}
 all_js = "\n".join(js.values())
 
@@ -30,7 +30,7 @@ for tag in ('<link rel="manifest" href="manifest.webmanifest">', '<link rel="sty
 for needle in ('id="col-l"', 'id="col-r"', 'id="layer"', 'id="stage"', 'id="clock"', 'id="greeting"'):
     assert needle in html, needle
 assert re.search(r'<button[^>]*id="date"', html) and re.search(r'<button[^>]*id="status"', html)
-order = [html.index(f'src="{name}"') for name in ("widgets.js", "welcome_logic.js", "welcome_panels.js", "welcome_dialogs.js", "welcome.js")]
+order = [html.index(f'src="{name}"') for name in ("widgets.js", "welcome_logic.js", "welcome_panels.js", "welcome_dialogs.js", "welcome_app.js", "welcome.js")]
 assert order == sorted(order), "Skripte muessen in dieser Reihenfolge geladen werden"
 for forbidden in ("app_base.js", "app_owner.js", "app_state.js", "app_start.js", "remote_admin.js", "core.js"):
     assert forbidden not in html, forbidden
@@ -38,7 +38,7 @@ for forbidden in ("app_base.js", "app_owner.js", "app_state.js", "app_start.js",
 # 4) Anzeige nur als Text: nie als HTML einsetzen (Termine, Ziele, Listen kommen aus Eingaben und aus dem Kalender)
 for forbidden in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function"):
     assert forbidden not in all_js, forbidden
-assert "textContent" in js["welcome.js"]
+assert "textContent" in js["welcome.js"] and "textContent" in js["welcome_app.js"]
 
 # 5) Nur diese Adressen ruft die Seite auf, und der Server kennt sie
 used = set(re.findall(r'"(/api/[a-z_/]+)"', all_js))
@@ -75,15 +75,17 @@ for path in ("/api/news", "/api/briefing", "/api/reminders"):
 
 # 7) Gespeicherte Auswahl: ein Schluessel, immer in try/catch (ohne Speicher laeuft die Seite trotzdem)
 assert 'STORAGE_KEY = "jarvis.welcome.windows"' in logic
-for use in re.finditer(r"localStorage\.(get|set)Item", js["welcome.js"]):
-    before = js["welcome.js"][max(0, use.start() - 200):use.start()]
-    assert "try" in before, "localStorage ohne try"
+for name in ("welcome.js", "welcome_app.js"):
+    for use in re.finditer(r"localStorage\.(get|set)Item", js[name]):
+        before = js[name][max(0, use.start() - 200):use.start()]
+        assert "try" in before, "localStorage ohne try"
 
 # 8) Verhalten: ehrliche Verbindungsanzeige, Link bleibt Notausgang, Bewegung abschaltbar, Fenster schliessen mit Esc
 main = js["welcome.js"]
 assert "Jarvis-Server nicht erreichbar" in main and "Systeme bereit" in main
 assert "preventDefault" in main and "prefers-reduced-motion" in main and "event.ctrlKey" in main
-assert '"Escape"' in main and 'aria-modal' in main and 'role", "dialog"' in main
+core = js["welcome_app.js"]                                                  # der gemeinsame Kern (auch fuer die Handy-Version)
+assert '"Escape"' in core and 'aria-modal' in core and 'role", "dialog"' in core
 assert 'setAttribute("role", "button")' in main and '"Enter"' in main
 
 # 9) Stil: Farben aus den Variablen, feste Farben nur fuer Status (gruen/rot/gelb) und den Schalterknopf
@@ -99,7 +101,7 @@ for name in set(re.findall(r"\.([a-z][a-z-]*)", css)):
         assert not re.search(rf"(?<![\w-])\.{name}(?![\w-])", style), f".{name} gibt es schon in style.css"
 
 # 10) Der Gast bekommt nichts davon (404), und seine Seite kennt die Willkommensseite nicht
-for name in ("welcome.html", "welcome.css", "welcome.js", "welcome_logic.js", "welcome_panels.js", "welcome_dialogs.js"):
+for name in ("welcome.html", "welcome.css", "welcome.js", "welcome_logic.js", "welcome_panels.js", "welcome_dialogs.js", "welcome_app.js"):
     assert remote_policy.guest_file("/" + name) is None, name
     assert ("/" + name) not in remote_policy.GUEST_STATIC, name
 assert "welcome" not in (WEB / "guest.html").read_text(encoding="utf-8")

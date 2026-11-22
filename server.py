@@ -68,6 +68,7 @@ from urllib.parse import parse_qs, urlparse
 import abilities
 import action_log
 import calendar_sync
+import device_page
 import speech
 import tester as tester_module
 import timer
@@ -1390,8 +1391,11 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
     def send_static(self, url_path, status=200):
         if url_path == "/":
-            # Besitzer sieht zuerst die Willkommensseite (Klick auf den Kern fuehrt zu /index.html). Der Gastmodus startet direkt in der App.
-            url_path = "/index.html" if self.server.guest else "/welcome.html"
+            # Besitzer sieht zuerst die Willkommensseite, auf dem Handy die Handy-Version (device_page.py). Klick auf den Kern fuehrt am PC zu /index.html. Der Gastmodus startet direkt in der App.
+            if self.server.guest:
+                url_path = "/index.html"
+            else:
+                url_path = device_page.start_page(urlparse(self.path).query, self.headers.get("User-Agent", ""))
 
         # Nur Dateien innerhalb von web/ ausliefern (kein "../")
         target = (WEB_DIR / url_path.lstrip("/")).resolve()

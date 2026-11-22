@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>J.A.R.V.I.S.</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#1d1c1b">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Jarvis">
+  <script>
+    // Gespeichertes Design sofort setzen, damit die Seite nicht aufblitzt (wie in index.html)
+    try {
+      const t = localStorage.getItem("jarvis.theme");
+      const light = t === "Light" || (t === "System" && matchMedia("(prefers-color-scheme: light)").matches);
+      if (light) document.documentElement.dataset.theme = "light";
+      if (localStorage.getItem("jarvis.accent") === "green") document.documentElement.dataset.accent = "green";
+    } catch (e) { /* ohne Speicher gilt das Standard-Design */ }
+  </script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="welcome.css">
+  <link rel="stylesheet" href="mobile.css">
+  <script>
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  </script>
+</head>
+<body class="welcome">
+  <main id="mpages">
+    <section class="mpage" id="p-start" aria-label="Start">
+      <div class="mhero">
+        <div class="core" id="mcore" role="button" tabindex="0" aria-label="Weiter zu Jarvis">
+          <svg viewBox="0 0 200 200" aria-hidden="true">
+            <circle class="halo" cx="100" cy="100" r="92"/>
+            <g class="ring ring-outer"><circle cx="100" cy="100" r="86"/><circle class="ticks" cx="100" cy="100" r="80"/></g>
+            <g class="ring ring-mid"><circle cx="100" cy="100" r="66"/></g>
+            <circle class="disc" cx="100" cy="100" r="50"/>
+            <path class="mark" d="M112 66v42c0 12-8 18-19 18-8 0-14-3-18-9"/>
+          </svg>
+        </div>
+        <h1 class="wordmark">J.A.R.V.I.S.</h1>
+        <p class="clock" id="clock" aria-live="off"></p>
+        <button class="quiet date" id="date" type="button" aria-label="Kalender öffnen"></button>
+        <button class="quiet wstatus" id="status" type="button" aria-label="Verbindungsstatus und Fenster"><span class="dot"></span><span id="status-text">Verbindung wird geprüft …</span></button>
+      </div>
+      <div class="mlist" id="mstart"></div>
+      <a class="mlink" href="/?pc=1">PC-Ansicht öffnen</a>
+    </section>
+    <section class="mpage mchatpage" id="p-jarvis" aria-label="Jarvis">
+      <!-- Der Chat wird erst geladen, wenn man die Seite zum ersten Mal ansieht (sonst springt sein Eingabefeld-Fokus beim Start auf diese Seite) -->
+      <iframe id="mchat" title="Jarvis" data-src="index.html?embed=1"></iframe>
+    </section>
+    <section class="mpage" id="p-fenster" aria-label="Fenster">
+      <div class="mhead"><h1>Fenster</h1><button class="quiet wstatus" id="status2" type="button" aria-label="Fenster auswählen"><span class="dot"></span><span id="status-text2">Fenster auswählen</span></button></div>
+      <div class="mlist" id="mwindows"></div>
+    </section>
+  </main>
+  <div id="mpeek" aria-hidden="true"></div>
+  <nav id="mdots" aria-label="Seiten">
+    <button type="button" aria-label="Start"><i></i></button>
+    <button type="button" aria-label="Jarvis"><i></i></button>
+    <button type="button" aria-label="Fenster"><i></i></button>
+  </nav>
+  <div id="layer"></div>
+  <script src="widgets.js"></script>
+  <script src="welcome_logic.js"></script>
+  <script src="welcome_panels.js"></script>
+  <script src="welcome_dialogs.js"></script>
+  <script src="welcome_app.js"></script>
+  <script src="mobile_logic.js"></script>
+  <script src="mobile.js"></script>
+</body>
+</html>
