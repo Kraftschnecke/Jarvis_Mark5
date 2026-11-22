@@ -91,7 +91,7 @@ background_tasks.submit_result({"type": "TIMER_FINISHED", "data": {"seconds": 5,
 # 1) Seite und Dateien gibt es
 status, body = request("GET", "/")
 assert status == 200 and b"J.A.R.V.I.S." in body
-assert request("GET", "/app.js")[0] == 200 and request("GET", "/style.css")[0] == 200
+assert request("GET", "/app_base.js")[0] == 200 and request("GET", "/style.css")[0] == 200
 
 # 2) Erlaubt: Einstellungen (Standardwerte, mit Gast-Kennzeichen) und leere Hintergrundliste
 status, body = request("GET", "/api/settings")

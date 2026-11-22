@@ -22,6 +22,7 @@ bis man ihn ausschaltet. Ein verpasster Wecker (Jarvis lief nicht) laeutet NICHT
 Zeiten sind die Ortszeit dieses Rechners.
 """
 
+import contextlib
 import json
 import os
 import re
@@ -494,9 +495,24 @@ class ReminderScheduler:
 
 _default_store = None
 _default_scheduler = None
+_scope = threading.local()      # Bereich (Mark 5, C2): gilt nur fuer den Thread, der gerade fuer einen Gast arbeitet
+
+
+@contextlib.contextmanager
+def use_store(store):
+    """Solange dieser Thread im Block ist, ist `store` der "Standard". Alle anderen Threads sehen weiter reminders.json des Besitzers."""
+    before = getattr(_scope, "store", None)
+    _scope.store = store
+    try:
+        yield store
+    finally:
+        _scope.store = before
 
 
 def default_store():
+    scoped = getattr(_scope, "store", None)
+    if scoped is not None:
+        return scoped
     global _default_store
     if _default_store is None:
         _default_store = ReminderStore()

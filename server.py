@@ -29,7 +29,7 @@ Dinge:
        POST /api/speak {"text": "..."}  ->  audio/mpeg  (Sprachausgabe mit der eingestellten Stimme, Step 6b)
        POST /api/timer/cancel {"id": 3}  ->  {"cancelled": true|false}  (einen Timer abbrechen)
        GET  /api/projects    ->  {"projects": [...], "active": {...}}
-       GET  /api/remote/state ->  Remote-Verwaltung am PC: Schalter, Stufen, Geraete (R4); POST /api/remote/pair_link, /revoke, /restore, /revoke_all, /forget
+       GET  /api/remote/state ->  Remote-Verwaltung am PC: Schalter, Stufen, Geraete (R4); POST /api/remote/pair_link, /revoke, /restore, /revoke_all, /forget, /profile_add, /profile_limits, /profile_delete, /profile_reset, /profile_reset_usage
        GET  /api/sync?known=<v> ->  Live-Abgleich: {"version", "active"} und bei neuem Stand "messages" + "projects" (R2b)
        GET  /api/settings    ->  {"settings": {...}, "about": {...}}
        GET  /api/actions     ->  {"actions": [{"time", "goal", "details", "decision", "status", "summary"}]}  (Aktionsprotokoll, Step 4.3)
@@ -52,6 +52,7 @@ import hashlib
 import json
 import platform
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -64,10 +65,12 @@ import abilities
 import action_log
 import calendar_sync
 import speech
+import tester as tester_module
 import timer
 import reminders
 import focus
 import folders
+import profiles as profile_module
 import remote_policy
 import ringing
 import widgets
@@ -75,6 +78,7 @@ from tools import news_tool, system_status_tool, weather_tool
 from config import REMOTE_HOST, SERVER_HOST, SERVER_PORT, VERSION
 from memory import MAX_VALUE_LENGTH, VALID_TYPES
 from personality import get_address, is_valid_address
+from profiles import OWNER
 from settings_manager import SettingsManager
 from workspace import WorkspaceError
 
@@ -227,12 +231,22 @@ def remote_panel_state(gate, now=None):
 
     if gate is None:
         return {"available": False, "host": "", "enabled": False, "active": False,
-                "levels": dict(remote_policy.DEFAULT_LEVELS), "devices": [], "pending": 0}
+                "levels": dict(remote_policy.DEFAULT_LEVELS), "devices": [], "pending": 0, "profiles": []}
+
+    profiles = gate.profiles.list() if gate.profiles is not None else []
+    names = {p["id"]: p["name"] for p in profiles}
+    all_devices = sorted(gate.store.devices(), key=lambda d: d["created"], reverse=True)
 
     devices = [
         {"id": d["id"], "name": d["name"], "created": d["created"], "last_seen": d["last_seen"],
-         "revoked": bool(d["revoked"]), "expired": d["expires"] <= now}
-        for d in sorted(gate.store.devices(), key=lambda d: d["created"], reverse=True)
+         "revoked": bool(d["revoked"]), "expired": d["expires"] <= now,
+         "profile": d["profile"], "profile_name": names.get(d["profile"], "") if d["profile"] != OWNER else ""}
+        for d in all_devices
+    ]
+    profile_list = [
+        {"id": p["id"], "name": p["name"], "limits": p["limits"],
+         "devices": sum(1 for d in all_devices if d["profile"] == p["id"] and not d["revoked"])}
+        for p in profiles
     ]
 
     return {
@@ -243,6 +257,7 @@ def remote_panel_state(gate, now=None):
         "levels": gate.levels(),
         "devices": devices,
         "pending": gate.store.pending_count(),
+        "profiles": profile_list,
     }
 
 
@@ -263,10 +278,20 @@ def remote_admin_post(gate, path, data):
         if not isinstance(name, str) or not name.strip() or len(name.strip()) > 40:
             return 400, {"error": "Bitte einen Namen für das Gerät angeben (höchstens 40 Zeichen)."}
 
-        pairing = gate.store.create_pairing(name)
+        profile = data.get("profile", OWNER)
+
+        if not isinstance(profile, str) or not profile or len(profile) > 64:
+            return 400, {"error": "Ungültiger Bereich."}
+
+        if profile != OWNER and (gate.profiles is None or gate.profiles.get(profile) is None):
+            return 400, {"error": "Diesen Gast-Bereich gibt es nicht."}
+
+        pairing = gate.store.create_pairing(name, profile)
 
         return 200, {
             "link": f"https://{gate.host}/pair#{pairing['code']}",
+            "code": pairing["code"],
+            "profile": profile,
             "name": pairing["name"],
             "expires_in": max(0, int(pairing["expires"] - gate.store.clock())),
             "state": remote_panel_state(gate),
@@ -275,6 +300,9 @@ def remote_admin_post(gate, path, data):
     if path == "/api/remote/revoke_all":
         count = gate.store.revoke_all()
         return 200, {"revoked": count, "state": remote_panel_state(gate)}
+
+    if path in PROFILE_PATHS:
+        return remote_profile_post(gate, path, data)
 
     device_id = data.get("id")
 
@@ -286,6 +314,49 @@ def remote_admin_post(gate, path, data):
 
     if not done:
         return 404, {"error": "Gerät nicht gefunden."}
+
+    return 200, {"state": remote_panel_state(gate)}
+
+
+PROFILE_PATHS = ("/api/remote/profile_add", "/api/remote/profile_limits", "/api/remote/profile_delete",
+                 "/api/remote/profile_reset", "/api/remote/profile_reset_usage")
+
+
+def remote_profile_post(gate, path, data):
+    """Gast-Bereiche verwalten (C1): anlegen, Limits, zuruecksetzen, loeschen. Nur am PC."""
+    if gate.profiles is None:
+        return 404, {"error": "Gast-Bereiche sind nicht eingerichtet."}
+
+    try:
+        if path == "/api/remote/profile_add":
+            created = gate.profiles.create(data.get("name"))
+            return 200, {"profile": created["id"], "state": remote_panel_state(gate)}
+
+        profile_id = data.get("id")
+
+        if not isinstance(profile_id, str) or not profile_module.is_profile_id(profile_id):
+            return 400, {"error": "Ungültige Anfrage"}
+
+        if path == "/api/remote/profile_limits":
+            limits = {key: data[key] for key in profile_module.DEFAULT_LIMITS if key in data}
+            if not limits:
+                return 400, {"error": "Kein Limit angegeben."}
+            gate.profiles.set_limits(profile_id, **limits)
+        elif path == "/api/remote/profile_reset":
+            if not gate.profiles.reset_data(profile_id):
+                return 404, {"error": "Bereich nicht gefunden."}
+        elif path == "/api/remote/profile_reset_usage":
+            if not gate.profiles.reset_usage(profile_id):
+                return 404, {"error": "Bereich nicht gefunden."}
+        else:
+            if gate.profiles.get(profile_id) is None:
+                return 404, {"error": "Bereich nicht gefunden."}
+            gate.store.remove_profile_devices(profile_id)      # erst die Geraete (kein Zugriff mehr), dann der Bereich mit seinen Daten
+            gate.profiles.delete(profile_id)
+    except profile_module.ProfileError as error:
+        return 400, {"error": str(error)}
+    except KeyError:
+        return 404, {"error": "Bereich nicht gefunden."}
 
     return 200, {"state": remote_panel_state(gate)}
 
@@ -550,6 +621,58 @@ class JarvisServer(ThreadingHTTPServer):
         self.feed = BackgroundFeed()
         # Jarvis ist nicht fuer mehrere gleichzeitige Nachrichten gebaut.
         self.message_lock = threading.Lock()
+        # Gast-Bereiche (Mark 5, C3): pro Bereich ein eigener TesterJarvis, erst beim ersten Zugriff gebaut
+        self._testers = {}
+        self._tester_lock = threading.Lock()
+        self._tester_defaults = None
+
+    def tester_for(self, profile_id):
+        """Der Jarvis dieses Gast-Bereichs, oder None, wenn es den Bereich nicht (mehr) gibt."""
+        gate = self.remote
+        if gate is None or gate.profiles is None or not profile_module.is_profile_id(profile_id) or gate.profiles.get(profile_id) is None:
+            return None
+        with self._tester_lock:
+            found = self._testers.get(profile_id)
+            if found is None:
+                raw = getattr(self.jarvis, "client", None)
+                raw = getattr(raw, "_client", raw)          # der Gast zaehlt nie auf dem Konto des Besitzers
+                found = tester_module.TesterJarvis(profile_id, gate.profiles.path_for(profile_id), gate.profiles, raw)
+                self._testers[profile_id] = found
+            return found
+
+    def tick_testers(self):
+        """Faellige Erinnerungen aller Gast-Bereiche melden (jede nur in der App ihres Gastes). Gibt die Zahl zurueck."""
+        gate = self.remote
+        if gate is None or gate.profiles is None:
+            return 0
+        count = 0
+        for profile in gate.profiles.list():
+            found = self.tester_for(profile["id"])
+            if found is not None:
+                try:
+                    count += found.check_reminders()
+                except Exception:
+                    pass        # ein Gast darf den Takt der anderen nie anhalten
+        return count
+
+    def start_tester_ticker(self, interval=reminders.CHECK_SECONDS):
+        stop = threading.Event()
+
+        def run():
+            while not stop.wait(interval):
+                self.tick_testers()
+
+        threading.Thread(target=run, name="tester-reminders", daemon=True).start()
+        return stop
+
+    def tester_defaults(self):
+        """Standard-Einstellungen fuer Gaeste: eine Wegwerf-Datei, nie die settings.json des Besitzers."""
+        if self._tester_defaults is None:
+            manager = SettingsManager(Path(tempfile.mkdtemp()) / "tester_settings.json")
+            defaults = manager.get_all()
+            defaults["voice"] = dict(defaults["voice"], engine="Browser")       # die Stimme von OpenAI kostet den Besitzer Geld: nur die des Browsers
+            self._tester_defaults = {"settings": defaults, "about": {"version": VERSION, "system": ""}}
+        return self._tester_defaults
 
 
 class JarvisHandler(BaseHTTPRequestHandler):
@@ -662,6 +785,21 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 self.send_static("/pair.html", status=401)     # nicht gekoppelt: die Seite erklaert, was zu tun ist
             return True
 
+        if self.device["profile"] != OWNER:
+            # Gast-Bereich: eigene, kurze Liste. Alles andere unter /api/ ist 403, nie der Weg in den Code des Besitzers.
+            if path.startswith("/api/"):
+                self.tester_get(path)
+                return True
+            if remote_policy.is_public("GET", path):
+                self.send_static("/pair.html")
+                return True
+            target = remote_policy.guest_file(path)       # Gast-Seite und nur ihre Dateien, sonst 404
+            if target is None:
+                self.send_json(404, {"error": "Nicht gefunden"})
+            else:
+                self.send_static(target)
+            return True
+
         if path.startswith("/api/") and not remote_policy.api_allowed("GET", path):
             self.send_json(403, {"error": "Über Remote nicht verfügbar."})
             return True
@@ -686,8 +824,11 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
         if remote_policy.is_public("POST", path):
             code = data.get("code")
+            previous = gate.device_from_cookie(self.headers.get("Cookie"))      # schon gekoppelt? Dann wechselt das Geraet nur
             status, token, device = gate.store.redeem(code if isinstance(code, str) else None, "remote-pairing")
             if status == "ok":
+                if previous is not None and previous["id"] != device["id"]:
+                    gate.store.forget(previous["id"])             # der alte Zugang dieses Geraets verschwindet aus der Liste
                 self.send_json(200, {"ok": True, "name": device["name"]},
                                headers=[("Set-Cookie", gate.set_cookie_header(token))])
             elif status == "locked":
@@ -702,11 +843,116 @@ class JarvisHandler(BaseHTTPRequestHandler):
             self.send_json(401, {"error": "Nicht angemeldet.", "pair": True})
             return True
 
+        if path == "/api/remote/logout":
+            gate.store.forget(self.device["id"])                 # Eintrag weg, das Token ist ungueltig
+            self.send_json(200, {"ok": True}, headers=[("Set-Cookie", gate.clear_cookie_header())])
+            return True
+
+        if self.device["profile"] != OWNER:
+            self.tester_post(path, data)
+            return True
+
         if not remote_policy.api_allowed("POST", path, gate.levels()):
             self.send_json(403, {"error": "Über Remote nicht verfügbar."})
             return True
 
         return False
+
+    # --- Gast-Bereich (Tester) ---------------------------------------------------
+
+    TESTER_DENIED = {"error": "Im Testbereich nicht verfügbar."}
+
+    def tester_widgets_payload(self, tester):
+        data = tester.widget_store.get()
+        mine = tester.widget_store.device_notes(only={self.device["id"]})
+        data["device_note"] = mine[0]["text"] if mine else ""
+        return data
+
+    def tester_get(self, path):
+        """Alle Adressen, die ein Gast lesen darf. Antworten kommen nur aus seinem Bereich oder sind fest und leer."""
+        tester = self.server.tester_for(self.device["profile"])
+
+        if tester is None or not tester.ready():
+            return self.send_json(403, self.TESTER_DENIED)
+
+        gate = self.server.remote
+        profile = gate.profiles.get(self.device["profile"])
+
+        if path == "/api/remote/whoami":
+            return self.send_json(200, {"remote": True, "device": self.device["name"], "levels": dict(gate.TESTER_LEVELS),
+                                        "tester": True, "area": profile["name"]})
+        if path == "/api/settings":
+            return self.send_json(200, gate.settings_for_tester(self.server.tester_defaults(), profile["name"]))
+        if path == "/api/background":
+            after = parse_qs(urlparse(self.path).query).get("after")
+            try:
+                after = int(after[0]) if after is not None else None
+            except ValueError:
+                return self.send_json(400, {"error": "Ungueltige Anfrage"})
+            return self.send_json(200, tester.background(after))
+        if path == "/api/timers":
+            return self.send_json(200, {"timers": []})
+        if path == "/api/ringing":
+            return self.send_json(200, {"ringing": [], "sound": "Computer", "version": 0, "snooze_minutes": 5, "server_sound": False})
+        if path == "/api/alarms":
+            return self.send_json(200, {"alarms": []})
+        if path == "/api/focus":
+            return self.send_json(200, {"active": False})
+        if path == "/api/weather":
+            return self.send_json(200, {"summary": None})
+        if path == "/api/projects":
+            return self.send_json(200, {"projects": [], "active": tester_module.NO_ACTIVE})
+        if path == "/api/widgets":
+            return self.send_json(200, self.tester_widgets_payload(tester))
+        if path == "/api/sync":
+            known = parse_qs(urlparse(self.path).query).get("known", [""])[0]
+            return self.send_json(200, tester.sync_state(known))
+
+        return self.send_json(403, self.TESTER_DENIED)
+
+    def tester_post(self, path, data):
+        """Alle Adressen, die ein Gast schreiben darf, alle auf seinen Bereich. Alles andere: 403."""
+        tester = self.server.tester_for(self.device["profile"])
+
+        if tester is None or not tester.ready():
+            return self.send_json(403, self.TESTER_DENIED)
+
+        if path == "/api/message":
+            text = data.get("message")
+            if not isinstance(text, str) or not text.strip() or len(text.strip()) > remote_policy.MAX_REMOTE_MESSAGE_CHARS:
+                return self.send_json(400, {"error": "Ungültige Anfrage"})
+            response = tester.process_message(text)
+            return self.send_json(200, {"status": "response", "content": response["content"]})
+
+        if path == "/api/conversation/new":
+            tester.clear_conversation()
+            return self.send_json(200, {"projects": [], "active": tester_module.NO_ACTIVE, "messages": []})
+
+        if path in ("/api/widgets/notes", "/api/widgets/goals", "/api/widgets/lists", "/api/widgets/events", "/api/widgets/device_note",
+                    "/api/widgets/events/delete", "/api/widgets/events/delete_series"):
+            store = tester.widget_store
+            try:
+                if path.endswith("device_note"):
+                    mine = {d["id"] for d in self.server.remote.store.devices()
+                            if not d["revoked"] and d["profile"] == self.device["profile"]}
+                    store.set_device_note(self.device["id"], self.device["name"], data.get("text"), keep_ids=mine)
+                elif path.endswith("notes"):
+                    store.set_notes(data.get("text"))
+                elif path.endswith("goals"):
+                    store.set_goals(data.get("items"))
+                elif path.endswith("lists"):
+                    store.set_lists(data.get("lists"))
+                elif path.endswith("delete"):
+                    store.delete_event(data.get("id"))
+                elif path.endswith("delete_series"):
+                    store.delete_series(data.get("series"))
+                else:
+                    store.add_event(data.get("title"), data.get("date"), data.get("time", ""))
+            except ValueError as error:
+                return self.send_json(400, {"error": str(error)})
+            return self.send_json(200, self.tester_widgets_payload(tester))
+
+        return self.send_json(403, self.TESTER_DENIED)
 
     def remote_message(self, data):
         """Nachricht vom Handy: eigene Grenzen, eigener Weg in Jarvis (nur erlaubte Stufen), nie Rueckfragen."""
@@ -1018,7 +1264,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"alarms": store.alarms_overview()})
 
             # Remote-Verwaltung (R4): nur am PC (das Handy hat diese Adressen nicht), lokal, ohne message_lock
-            if path in ("/api/remote/pair_link", "/api/remote/revoke", "/api/remote/restore", "/api/remote/revoke_all", "/api/remote/forget"):
+            if path in ("/api/remote/pair_link", "/api/remote/revoke", "/api/remote/restore", "/api/remote/revoke_all", "/api/remote/forget") \
+                    or path in PROFILE_PATHS:
                 status, body = remote_admin_post(self.server.remote, path, data)
                 return self.send_json(status, body)
 
@@ -1145,10 +1392,14 @@ def main(argv=None, on_ready=None, open_browser=True):
         # Zugriff vom Handy (siehe DESIGN_REMOTE.md): nur vorbereitet, an ist es erst mit dem Schalter in den Einstellungen
         import remote_auth
         import remote_gate
-        remote = remote_gate.RemoteGate(REMOTE_HOST, remote_auth.DeviceStore(), jarvis.settings_manager)
+        import profiles
+        remote = remote_gate.RemoteGate(REMOTE_HOST, remote_auth.DeviceStore(), jarvis.settings_manager, profiles.ProfileStore())
 
     server = JarvisServer((SERVER_HOST, args.port), jarvis, guest=args.guest, remote=remote)
     url = f"http://localhost:{server.server_address[1]}"
+
+    if remote is not None and remote.profiles is not None:
+        server.start_tester_ticker()        # Erinnerungen der Gast-Bereiche (Mark 5, C3b): jede nur in der App ihres Gastes
 
     print(f"J.A.R.V.I.S. {'(GASTMODUS) ' if args.guest else ''}laeuft auf {url}  (beenden mit Strg+C)")
     if remote is not None:

@@ -10,6 +10,7 @@ Alles, was von dort kommt, wird geprueft: Zahlen im sinnvollen Bereich, Texte ge
 Der Ortsname aus dem Netz ist unvertraute Eingabe (untrusted.py) und wird gekuerzt.
 """
 
+import contextlib
 import threading
 import time
 from datetime import date, timedelta
@@ -284,8 +285,24 @@ class WeatherService:
 _default_service = None
 
 
+_scope = threading.local()      # Bereich (Mark 5, C2): ein Gast bekommt nie den Heimatort des Besitzers
+
+
+@contextlib.contextmanager
+def use_service(service):
+    before = getattr(_scope, "service", None)
+    _scope.service = service
+    try:
+        yield service
+    finally:
+        _scope.service = before
+
+
 def default_service():
     """Der eine Wetterdienst (Zwischenspeicher gemeinsam fuer Aufgabe und Startbericht)."""
+    scoped = getattr(_scope, "service", None)
+    if scoped is not None:
+        return scoped
     global _default_service
     if _default_service is None:
         _default_service = WeatherService()

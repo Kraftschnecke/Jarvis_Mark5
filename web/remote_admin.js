@@ -3,7 +3,7 @@
 (function (root) {
   "use strict";
 
-  const LINK_NOTE = "Der Link gilt 5 Minuten und nur einmal. Öffne ihn auf dem Handy (z. B. per AirDrop oder Nachricht an dich selbst).";
+  const LINK_NOTE = "Der Code gilt 5 Minuten und nur einmal. Tippe ihn auf dem neuen Gerät auf der Kopplungsseite ein, oder schicke den Link (z. B. per Nachricht).";
 
   // "gerade eben", "vor 5 Min.", "vor 3 Std.", "vor 2 Tagen", "nie"
   function agoText(seconds, now) {
@@ -27,7 +27,8 @@
       state = "expired";
       label = "abgelaufen";
     }
-    return { state, label, name: String(device.name), seen: "zuletzt " + agoText(device.last_seen, now), canRevoke: state === "active", canRestore: state === "revoked" };
+    const area = device.profile && device.profile !== "owner" ? String(device.profile_name || "Gast") : "";
+    return { state, label, name: String(device.name), area, seen: "zuletzt " + agoText(device.last_seen, now), canRevoke: state === "active", canRestore: state === "revoked" };
   }
 
   // Kopfzeile der Seite: was ist los mit Remote?
@@ -55,10 +56,37 @@
     if (left <= 0) return null;
     const minutes = Math.floor(left / 60);
     const seconds = left % 60;
-    return { link: entry.link, name: entry.name, left: minutes + ":" + (seconds < 10 ? "0" : "") + seconds, note: LINK_NOTE };
+    const hash = String(entry.link).lastIndexOf("#");
+    const code = typeof entry.code === "string" && entry.code ? entry.code : hash >= 0 ? String(entry.link).slice(hash + 1) : "";
+    return { link: entry.link, code, name: entry.name, left: minutes + ":" + (seconds < 10 ? "0" : "") + seconds, note: LINK_NOTE };
   }
 
-  const api = { agoText, deviceView, statusView, canPair, linkView, LINK_NOTE };
+  // Ein Gast-Bereich fuer die Liste: Name, Limits als Text (0 = unbegrenzt), Anzahl aktiver Geraete
+  function limitText(value) {
+    return value === 0 ? "unbegrenzt" : String(value);
+  }
+
+  function profileView(profile) {
+    const count = Number(profile.devices) || 0;
+    return {
+      id: String(profile.id),
+      name: String(profile.name),
+      aiPerDay: profile.limits.ai_per_day,
+      perTenMin: profile.limits.messages_per_10min,
+      summary: "KI-Anfragen/Tag: " + limitText(profile.limits.ai_per_day) + " · Nachrichten/10 Min.: " + limitText(profile.limits.messages_per_10min),
+      devices: count === 1 ? "1 Gerät" : count + " Geräte",
+    };
+  }
+
+  // Limit-Eingabe: ganze Zahl 0..100000, sonst null
+  function parseLimit(text) {
+    const value = String(text).trim();
+    if (!/^\d{1,6}$/.test(value)) return null;
+    const number = Number(value);
+    return number <= 100000 ? number : null;
+  }
+
+  const api = { agoText, deviceView, statusView, canPair, linkView, profileView, parseLimit, LINK_NOTE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.JarvisRemoteAdmin = api;
 })(typeof window !== "undefined" ? window : this);

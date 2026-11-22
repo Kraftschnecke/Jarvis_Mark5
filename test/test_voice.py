@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+import webapp
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -19,8 +20,8 @@ assert voice == {"output": False, "engine": "OpenAI", "voice": "Onyx (male)", "s
 
 # 2) Einbindung in die Seite
 html = (WEB / "index.html").read_text(encoding="utf-8")
-app = (WEB / "app.js").read_text(encoding="utf-8")
-assert html.index('src="voice.js"') < html.index('src="app.js"')
+app = webapp.app_text()
+assert html.index('src="voice.js"') < html.index('src="app_base.js"')
 mic = re.search(r'<button[^>]*id="mic"[^>]*>', html, re.S).group(0)
 assert " hidden" in mic, "Mikrofon-Knopf muss ohne Einstellung versteckt sein"
 assert 'type="button"' in mic, "darf das Formular nicht absenden"

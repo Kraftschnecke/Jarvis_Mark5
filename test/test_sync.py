@@ -1,5 +1,6 @@
 """Live-Abgleich (Mark 5, Step R2b): sync.js mit Node, Einbindung in die Seite, eigene Aktionen, Abgleich nur wenn erlaubt."""
 import sys
+import webapp
 import tempfile
 import types
 from datetime import datetime
@@ -46,11 +47,11 @@ import subprocess
 
 WEB = PROJECT_DIR / "web"
 html = (WEB / "index.html").read_text(encoding="utf-8")
-app = (WEB / "app.js").read_text(encoding="utf-8")
+app = webapp.app_text()
 js = (WEB / "sync.js").read_text(encoding="utf-8")
 
 # 1) Einbindung: sync.js vor app.js, genau einmal
-assert html.count('src="sync.js"') == 1 and html.index('src="sync.js"') < html.index('src="app.js"')
+assert html.count('src="sync.js"') == 1 and html.index('src="sync.js"') < html.index('src="app_base.js"')
 assert "window.JarvisSync.createSync(" in app
 
 # 2) Abgleich laeuft nur, wenn die Seite ihn vertragen kann

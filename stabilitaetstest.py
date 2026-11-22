@@ -332,7 +332,7 @@ def one_request(rng, number):
     if pick < 0.56:
         return "hockey", {200}, lambda: raw_request("GET", "/api/hockey")
     if pick < 0.59:
-        return "statisch", {200}, lambda: raw_request("GET", rng.choice(["/", "/app.js", "/style.css", "/voice.js"]))
+        return "statisch", {200}, lambda: raw_request("GET", rng.choice(["/", "/app_base.js", "/style.css", "/voice.js"]))
     if pick < 0.62:
         return "notiz", {200}, lambda: post_json("/api/widgets/notes", {"text": "n" * rng.randint(0, 3000)})
     if pick < 0.65:
@@ -399,7 +399,7 @@ def remote_case(rng, number):
                            "/api/ringing", "/api/focus", "/api/alarms", "/api/settings", "/api/remote/whoami"])
         return "remote-lesen", {200}, lambda: remote_get(path, phone_cookie)
     if pick < 0.56:
-        return "remote-statisch", {200}, lambda: remote_get(rng.choice(["/", "/app.js", "/style.css", "/sync.js", "/remote_mode.js"]), phone_cookie)
+        return "remote-statisch", {200}, lambda: remote_get(rng.choice(["/", "/app_base.js", "/style.css", "/sync.js", "/remote_mode.js"]), phone_cookie)
     if pick < 0.60:
         return "remote-kopplungsseite", {200}, lambda: raw_request("GET", rng.choice(["/pair", "/manifest.webmanifest", "/sw.js"]), host=REMOTE_HOST)
     if pick < 0.66:
@@ -407,7 +407,7 @@ def remote_case(rng, number):
                           "jarvis_device=" + "a" * 3000])
         return "remote-falsches-token", {401}, lambda: remote_get("/api/timers", bad)
     if pick < 0.70:
-        return "remote-ohne-token", {401}, lambda: remote_get(rng.choice(["/api/timers", "/", "/app.js", "/api/settings"]), None)
+        return "remote-ohne-token", {401}, lambda: remote_get(rng.choice(["/api/timers", "/", "/app_base.js", "/api/settings"]), None)
     if pick < 0.78:
         path = rng.choice(["/api/actions", "/api/memories", "/api/folders", "/api/remote/state", "/api/system", "/api/performance", "/api/hockey", "/api/nichts"])
         return "remote-verboten-lesen", {403}, lambda: remote_get(path, phone_cookie)

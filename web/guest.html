@@ -1,0 +1,145 @@
+<!doctype html>
+<!-- GAST-SEITE (Rollen-Seiten, siehe DESIGN_ROLLEN.md): wird nur an gekoppelte Gast-Geraete geliefert.
+     Abgeleitet von index.html, aber ohne Projekte, Gedaechtnis und Besitzer-Verwaltung. -->
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>J.A.R.V.I.S. Gast</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#1d1c1b">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Jarvis">
+  <script>
+    // Gespeichertes Design sofort setzen, damit die Seite nicht aufblitzt
+    try {
+      const t = localStorage.getItem("jarvis.theme");
+      const light = t === "Light" || (t === "System" && matchMedia("(prefers-color-scheme: light)").matches);
+      if (light) document.documentElement.dataset.theme = "light";
+      if (localStorage.getItem("jarvis.accent") === "green") document.documentElement.dataset.accent = "green";
+      const f = parseInt(localStorage.getItem("jarvis.fontsize"), 10);
+      if (f >= 11 && f <= 20) document.documentElement.style.fontSize = f + "px";
+    } catch (e) { /* ohne Speicher gilt das Standard-Design */ }
+  </script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="core.css">
+  <script>
+    // App-Installation (Step 4B.2): der Service-Worker reicht alles unveraendert durch (siehe sw.js)
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  </script>
+</head>
+<body class="tester remote">
+  <div class="layout" id="layout">
+
+    <aside class="sidebar" id="sidebar">
+      <h2 class="sidebar-title">Conversations</h2>
+
+      <button class="side-button" id="new-conversation" type="button">
+        <span class="plus">＋</span> New Conversation
+      </button>
+
+      <nav class="tree" id="tree" aria-label="Projekte und Konversationen"></nav>
+
+      <button class="side-button settings-button" id="open-phone-prefs" type="button" hidden>
+        <span class="plus">🎨</span> Handy-Einstellungen
+      </button>
+      <button class="side-button settings-button" id="logout-button" type="button" hidden>
+        <span class="plus">⎋</span> Abmelden
+      </button>
+    </aside>
+
+    <main class="app">
+      <header class="topbar">
+        <button class="menu-button" id="menu-button" type="button" aria-label="Seitenleiste">☰</button>
+        <span class="brand">
+          <span id="core-slot" title="Klick: Bewegung an/aus"></span>
+          <span class="logo">J.A.R.V.I.S.</span>
+        </span>
+        <span class="status" id="status" data-state="ready">● READY</span>
+        <span class="wake" id="wake" hidden></span>
+        <button class="widgets-button" id="widgets-button" type="button" hidden
+                aria-label="Widgets ein- oder ausblenden" aria-expanded="false" title="Widgets">🧩</button>
+      </header>
+
+      <div class="remote-banner" id="remote-banner" hidden role="status"></div>
+
+      <section class="chat" id="chat" aria-live="polite"></section>
+
+      <div class="ringing" id="ringing" hidden role="alert">
+        <span class="ringing-title" id="ringing-title"></span>
+        <span class="ringing-detail" id="ringing-detail"></span>
+        <span class="ringing-hint" id="ringing-hint" hidden></span>
+        <button type="button" id="ringing-off" class="ringing-off">Aus</button>
+        <button type="button" id="ringing-snooze" class="secondary">Schlummern</button>
+      </div>
+
+      <div class="timers" id="focus" hidden aria-label="Fokus-Sitzung"></div>
+      <div class="timers" id="timers" hidden aria-label="Laufende Timer"></div>
+
+      <form class="composer" id="composer" autocomplete="off">
+        <textarea id="input" rows="1" placeholder="Schreibe an J.A.R.V.I.S. ..." autofocus></textarea>
+        <button type="button" id="stop" class="secondary stop" hidden
+                title="Vorlesen und laufenden Plan stoppen">■ Stopp</button>
+        <button type="button" id="mic" class="mic" hidden
+                aria-label="Sprechen (gedrückt halten)" title="Gedrückt halten und sprechen">🎤</button>
+        <button type="submit" id="send">Senden</button>
+      </form>
+    </main>
+
+    <aside class="widgets" id="widgets" aria-label="Widgets" hidden>
+      <section class="widget" id="widget-top" hidden></section>
+      <section class="widget" id="widget-middle" hidden></section>
+      <section class="widget" id="widget-bottom" hidden></section>
+      <section class="widget" id="widget-fourth" hidden></section>
+      <section class="widget" id="widget-fifth" hidden></section>
+    </aside>
+  </div>
+
+  <!-- Kontextmenue (wird von app.js befuellt) -->
+  <div class="menu" id="menu" hidden></div>
+
+  <!-- Eingabe- und Bestaetigungsdialog -->
+  <dialog id="dialog">
+    <form method="dialog" id="dialog-form">
+      <h3 id="dialog-title"></h3>
+      <p id="dialog-text"></p>
+      <input type="text" id="dialog-input" maxlength="100">
+      <p class="dialog-error" id="dialog-error" hidden></p>
+      <div class="dialog-buttons">
+        <button type="button" class="secondary" id="dialog-cancel">Abbrechen</button>
+        <button type="submit" id="dialog-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Handy-Einstellungen (nur am Handy, siehe remote_prefs.js) -->
+  <dialog id="phone-prefs">
+    <form method="dialog" id="phone-prefs-form">
+      <h3>Handy-Einstellungen</h3>
+      <p>Gilt nur auf diesem Handy, der PC bleibt wie er ist.</p>
+      <div class="phone-prefs-rows" id="phone-prefs-rows"></div>
+      <p class="dialog-error" id="phone-prefs-error" hidden></p>
+      <div class="dialog-buttons">
+        <button type="button" class="secondary" id="phone-prefs-close">Schließen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="links.js"></script>
+  <script src="core.js"></script>
+  <script src="sync.js"></script>
+  <script src="remote_mode.js"></script>
+  <script src="remote_prefs.js"></script>
+  <script src="status.js"></script>
+  <script src="alarm.js"></script>
+  <script src="voice.js"></script>
+  <script src="wake.js"></script>
+  <script src="widgets.js"></script>
+  <script src="app_base.js"></script>
+  <script src="app_state.js"></script>
+  <script src="app_start.js"></script>
+</body>
+</html>

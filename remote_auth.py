@@ -18,9 +18,13 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 
+from profiles import OWNER, is_profile_id
+
 DEVICES_FILE = Path(__file__).resolve().parent / "remote_devices.json"
 
-PAIRING_TTL = 300                    # Sekunden, die ein Kopplungslink gilt
+PAIRING_TTL = 300                    # Sekunden, die ein Kopplungscode gilt
+CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"    # ohne I, L, O, 0, 1: nichts, was man verwechseln kann
+CODE_LENGTH = 8                                       # 31^8 sind rund 850 Milliarden Moeglichkeiten; dazu die Sperre nach Fehlversuchen
 MAX_PENDING = 5                      # so viele offene Kopplungen gleichzeitig
 TOKEN_LIFETIME = 90 * 24 * 3600      # wird bei Benutzung verlaengert
 LAST_SEEN_WRITE_INTERVAL = 60        # nicht bei jeder Anfrage in die Datei schreiben
@@ -28,6 +32,22 @@ MAX_FAILURES = 5                     # falsche Codes ...
 FAILURE_WINDOW = 900                 # ... innerhalb dieser Sekunden ...
 LOCK_SECONDS = 900                   # ... sperren die Kopplung so lange
 MAX_NAME_LENGTH = 40
+
+
+def make_code():
+    """Neuer Kurzcode, z. B. "K7M2-QX9P". secrets ist die Zufallsquelle fuer Passwoerter."""
+    letters = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
+    return letters[:4] + "-" + letters[4:]
+
+
+def normalize_code(code):
+    """Was getippt wurde, auf die Grundform: Gross, ohne Strich und Leerzeichen. Alles Unpassende ergibt "" (ungueltig)."""
+    if not isinstance(code, str) or len(code) > 64:
+        return ""
+    letters = "".join(char for char in code.upper() if char.isalnum())
+    if len(letters) != CODE_LENGTH or any(char not in CODE_ALPHABET for char in letters):
+        return ""
+    return letters
 
 
 def hash_token(token):
@@ -74,10 +94,11 @@ class PairingGuard:
 
 
 class DeviceStore:
-    def __init__(self, path=DEVICES_FILE, clock=time.time, secret_factory=secrets.token_urlsafe, guard=None):
+    def __init__(self, path=DEVICES_FILE, clock=time.time, secret_factory=secrets.token_urlsafe, guard=None, code_factory=make_code):
         self.path = Path(path)
         self.clock = clock
         self.secret_factory = secret_factory
+        self.code_factory = code_factory
         self.guard = guard or PairingGuard(clock)
         self._lock = threading.Lock()
         self._pending = {}                 # Code-Hash -> {"name", "expires"}
@@ -100,6 +121,8 @@ class DeviceStore:
                     "token_hash": item["token_hash"], "created": _number(item.get("created")),
                     "last_seen": _number(item.get("last_seen")), "expires": _number(item.get("expires")),
                     "revoked": item.get("revoked") is True,
+                    # Aeltere Geraete haben keinen Bereich und gehoeren dem Besitzer; Unsinn in der Datei zaehlt nie als Gast
+                    "profile": item["profile"] if is_profile_id(item.get("profile")) else OWNER,
                 })
         return devices
 
@@ -124,19 +147,23 @@ class DeviceStore:
             raise
 
     # --- Kopplung -------------------------------------------------------
-    def create_pairing(self, name):
-        """Neuer Kopplungscode fuer ein Geraet. Gibt {"code", "expires", "name"} zurueck."""
+    def create_pairing(self, name, profile=OWNER):
+        """Neuer Kopplungscode fuer ein Geraet des Besitzers oder eines Gast-Bereichs. Gibt {"code", "expires", "name", "profile"} zurueck."""
+        if profile != OWNER and not is_profile_id(profile):
+            raise ValueError("Ungültiger Bereich.")
         with self._lock:
             now = self.clock()
             self._pending = {h: p for h, p in self._pending.items() if p["expires"] > now}
             while len(self._pending) >= MAX_PENDING:
                 oldest = min(self._pending, key=lambda h: self._pending[h]["expires"])
                 del self._pending[oldest]
-            code = self.secret_factory(24)
+            code = self.code_factory()
+            while normalize_code(code) == "" or hash_token(normalize_code(code)) in self._pending:
+                code = self.code_factory()       # ungueltig oder schon vergeben: neu wuerfeln
             expires = now + PAIRING_TTL
             device_name = clean_device_name(name)
-            self._pending[hash_token(code)] = {"name": device_name, "expires": expires}
-            return {"code": code, "expires": expires, "name": device_name}
+            self._pending[hash_token(normalize_code(code))] = {"name": device_name, "expires": expires, "profile": profile}
+            return {"code": code, "expires": expires, "name": device_name, "profile": profile}
 
     def redeem(self, code, source=""):
         """Tauscht einen Kopplungscode gegen ein Token. Gibt (status, token, geraet) zurueck.
@@ -147,7 +174,8 @@ class DeviceStore:
             if self.guard.locked(source):
                 return "locked", None, None
             now = self.clock()
-            entry = self._pending.pop(hash_token(code), None) if isinstance(code, str) and code else None
+            canonical = normalize_code(code)
+            entry = self._pending.pop(hash_token(canonical), None) if canonical else None
             if entry is None or entry["expires"] <= now:
                 self.guard.failure(source)
                 return "invalid", None, None
@@ -155,7 +183,7 @@ class DeviceStore:
             device_id = secrets.token_hex(4)
             token = f"{device_id}.{self.secret_factory(32)}"
             device = {"id": device_id, "name": entry["name"], "token_hash": hash_token(token), "created": now,
-                      "last_seen": now, "expires": now + TOKEN_LIFETIME, "revoked": False}
+                      "last_seen": now, "expires": now + TOKEN_LIFETIME, "revoked": False, "profile": entry["profile"]}
             self._devices.append(device)
             try:
                 self._save()
@@ -215,6 +243,19 @@ class DeviceStore:
                     self._save()
                     return True
             return False
+
+    def remove_profile_devices(self, profile):
+        """Alle Geraete eines Gast-Bereichs entfernen (Token weg, Eintrag weg) und seine offenen Kopplungen verwerfen. Gibt die Zahl zurueck."""
+        if profile == OWNER:
+            return 0
+        with self._lock:
+            before = len(self._devices)
+            self._devices = [d for d in self._devices if d["profile"] != profile]
+            self._pending = {h: p for h, p in self._pending.items() if p.get("profile") != profile}
+            removed = before - len(self._devices)
+            if removed:
+                self._save()
+            return removed
 
     def revoke_all(self):
         with self._lock:
@@ -286,4 +327,4 @@ def _number(value):
 
 def _public(device):
     """Ohne Hash: das ist alles, was die Seite je zu sehen bekommt."""
-    return {key: device[key] for key in ("id", "name", "created", "last_seen", "expires", "revoked")}
+    return {key: device[key] for key in ("id", "name", "created", "last_seen", "expires", "revoked", "profile")}

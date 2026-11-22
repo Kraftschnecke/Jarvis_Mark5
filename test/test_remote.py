@@ -49,7 +49,7 @@ from datetime import datetime
 import abilities
 import remote_auth
 import remote_policy
-from remote_auth import DeviceStore, PairingGuard, UsageLimits, clean_device_name, hash_token
+from remote_auth import CODE_ALPHABET, DeviceStore, PairingGuard, UsageLimits, clean_device_name, hash_token, make_code, normalize_code
 from risk import SAFE, task_risk
 from task_registry import TaskRegistry
 from tasks import register_all_tasks
@@ -79,7 +79,7 @@ assert len(clean_device_name("x" * 200)) == 40
 # 2) Kopplung: Code -> Token, Datei ohne Klartext
 pairing = store.create_pairing("iPhone Moritz")
 code = pairing["code"]
-assert len(code) >= 32 and pairing["expires"] == clock.now + 300 and pairing["name"] == "iPhone Moritz"
+assert normalize_code(code) != "" and len(code) == 9 and code[4] == "-" and pairing["expires"] == clock.now + 300 and pairing["name"] == "iPhone Moritz"
 assert store.pending_count() == 1 and store.devices() == []
 status, token, device = store.redeem(code, "ip1")
 assert status == "ok" and token.startswith(device["id"] + ".") and device["name"] == "iPhone Moritz"
@@ -98,6 +98,33 @@ assert store.redeem(second, "ip1")[0] == "invalid"
 for bad in (None, "", 123, "falsch", [], {}):
     assert store.redeem(bad, "ip9")[0] in ("invalid", "locked")
 assert len(store.devices()) == 1
+
+# 3b) Kurzcode (K7M2-QX9P): gut abtippbar, ohne verwechselbare Zeichen, Gross-/Kleinschreibung und Strich egal
+assert set(CODE_ALPHABET).isdisjoint("ILO01") and len(set(CODE_ALPHABET)) == len(CODE_ALPHABET) == 31
+for _ in range(200):
+    made = make_code()
+    assert len(made) == 9 and made[4] == "-" and set(made.replace("-", "")) <= set(CODE_ALPHABET), made
+assert len({make_code() for _ in range(50)}) == 50                                  # wird wirklich gewuerfelt
+assert normalize_code("k7m2-qx9p") == "K7M2QX9P" and normalize_code(" K7M2 QX9P ") == "K7M2QX9P" and normalize_code("K7M2QX9P") == "K7M2QX9P"
+for bad in (None, 5, [], {}, "", "K7M2", "K7M2-QX9", "K7M2-QX9PP", "K7M2-QX9O", "K7M2-QX91", "K7M2-QX9I", "K7M2-QX9L", "K7M2-QX9!", "x" * 100, "K7M2\u00e4QX9", "K7M2QX9P" + " " * 100):
+    assert normalize_code(bad) == "", bad
+
+fixed = iter(["K7M2-QX9P", "k7m2-qx9p", "kaputt", "AAAA-BBBB"])                     # 2. Code ist derselbe wie der 1.; "kaputt" ist ungueltig
+short = DeviceStore(store_path.with_name("kurz.json"), clock=clock, code_factory=lambda: next(fixed))
+first = short.create_pairing("A")
+assert first["code"] == "K7M2-QX9P"
+second_short = short.create_pairing("B")                                            # Doppelter und ungueltiger Code werden uebersprungen
+assert second_short["code"] == "AAAA-BBBB" and short.pending_count() == 2
+assert short.redeem("k7m2 qx9p", "k")[0] == "ok"                                    # so wie ein Mensch es tippt
+assert short.redeem("K7M2-QX9P", "k")[0] == "invalid"                               # nur einmal
+assert short.redeem("AAAA-BBBC", "k")[0] == "invalid" and short.pending_count() == 1  # ein Zeichen daneben
+assert short.redeem("AAAA-BBBB", "k")[0] == "ok"
+assert "K7M2" not in short.path.read_text(encoding="utf-8") and "AAAA" not in short.path.read_text(encoding="utf-8")
+guard_store = DeviceStore(store_path.with_name("kurz2.json"), clock=clock)
+guard_store.create_pairing("G")
+for _ in range(5):
+    assert guard_store.redeem("ZZZZ-ZZZZ", "raten")[0] == "invalid"
+assert guard_store.redeem("ZZZZ-ZZZZ", "raten")[0] == "locked"                      # Raten ist nach 5 Versuchen gesperrt
 
 # 4) Sperre bei Fehlversuchen: je Quelle, loest sich nach der Wartezeit, Erfolg setzt den Zaehler zurueck
 guard_clock = Clock()

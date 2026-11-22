@@ -50,6 +50,7 @@ import focus
 import reminders
 import remote_auth
 import remote_gate
+import profiles
 import remote_policy
 import ringing
 import server
@@ -166,7 +167,7 @@ def state():
 # 1) Zustand am PC: aus, mit Namen aus der .env, ohne Geraete
 first = state()
 assert first == {"available": True, "host": REMOTE_HOST, "enabled": False, "active": False,
-                 "levels": {"info": True, "daily": True, "pc": False}, "devices": [], "pending": 0}
+                 "levels": {"info": True, "daily": True, "pc": False}, "devices": [], "pending": 0, "profiles": []}
 status, headers, _ = call(httpd, "GET", "/api/remote/state", host="localhost:8000")
 assert headers["cache-control"] == "no-store"
 
@@ -182,7 +183,7 @@ settings.set("remote", "enabled", True)
 status, _, raw = post("/api/remote/pair_link", {"name": "  iPhone   Moritz "})
 answer = jbody(raw)
 assert status == 200 and answer["name"] == "iPhone Moritz" and 290 <= answer["expires_in"] <= 300
-assert answer["link"].startswith("https://" + REMOTE_HOST + "/pair#") and len(answer["link"].split("#")[1]) >= 20
+assert answer["link"].startswith("https://" + REMOTE_HOST + "/pair#") and answer["link"].split("#")[1] == answer["code"] and len(answer["code"]) == 9
 assert answer["state"]["pending"] == 1 and answer["state"]["active"] is True
 code = answer["link"].split("#")[1]
 assert "?" not in answer["link"]                                    # der Code steht im Fragment, nicht in der Adresse
@@ -194,7 +195,7 @@ cookie = headers["set-cookie"].split(";")[0]
 listed = state()
 assert listed["pending"] == 0 and [d["name"] for d in listed["devices"]] == ["iPhone Moritz"]
 device = listed["devices"][0]
-assert set(device) == {"id", "name", "created", "last_seen", "revoked", "expired"}
+assert set(device) == {"id", "name", "created", "last_seen", "revoked", "expired", "profile", "profile_name"}
 assert device["revoked"] is False and device["expired"] is False
 assert code not in json.dumps(listed) and cookie.split("=", 1)[1] not in json.dumps(listed)       # nie Code oder Token
 assert "hash" not in json.dumps(listed).lower()
@@ -271,7 +272,8 @@ phone = headers3["set-cookie"].split(";")[0]
 before = json.dumps(state(), sort_keys=True)
 for path in ("/api/remote/state",):
     assert call(httpd, "GET", path, cookie=phone)[0] == 403 and call(httpd, "GET", path)[0] == 401
-for path in ("/api/remote/pair_link", "/api/remote/revoke", "/api/remote/restore", "/api/remote/revoke_all", "/api/remote/forget"):
+for path in ("/api/remote/pair_link", "/api/remote/revoke", "/api/remote/restore", "/api/remote/revoke_all", "/api/remote/forget",
+             "/api/remote/profile_add", "/api/remote/profile_limits", "/api/remote/profile_delete", "/api/remote/profile_reset", "/api/remote/profile_reset_usage"):
     body = {"name": "Boese", "id": "x"}
     assert call(httpd, "POST", path, cookie=phone, origin=ORIGIN, body=body)[0] == 403, path
     assert call(httpd, "POST", path, origin=ORIGIN, body=body)[0] == 401, path
@@ -289,6 +291,62 @@ assert setting("enabled", False) == 200 and state()["active"] is False and state
 assert call(httpd, "GET", "/api/timers", cookie=phone)[0] == 403         # Remote aus: auch ein gekoppeltes Geraet kommt nicht rein
 assert setting("enabled", True) == 200 and call(httpd, "GET", "/api/timers", cookie=phone)[0] == 200
 assert call(httpd, "POST", "/api/settings", cookie=phone, origin=ORIGIN, body={"category": "remote", "key": "pc", "value": True})[0] == 403
+
+# 8b) Gast-Bereiche (C1): anlegen, Limits, Koppel-Link fuer einen Bereich, loeschen. Nur am PC
+assert post("/api/remote/profile_add", {"name": "Bruder"})[0] == 404           # ohne Bereichsverwaltung
+gate.profiles = profiles.ProfileStore(tmp / "profiles.json", tmp / "profiles")
+status, _, raw = post("/api/remote/profile_add", {"name": "  Bruder "})
+answer = jbody(raw)
+assert status == 200 and len(answer["state"]["profiles"]) == 1
+pid = answer["profile"]
+assert profiles.is_profile_id(pid) and answer["state"]["profiles"][0]["name"] == "Bruder"
+assert answer["state"]["profiles"][0]["limits"] == {"ai_per_day": 100, "messages_per_10min": 20}
+assert post("/api/remote/profile_add", {"name": "bruder"})[0] == 400            # Name doppelt
+assert post("/api/remote/profile_add", {"name": "   "})[0] == 400
+assert post("/api/remote/profile_add", {})[0] == 400
+
+assert post("/api/remote/profile_limits", {"id": pid, "ai_per_day": 7, "messages_per_10min": 0})[0] == 200
+assert state()["profiles"][0]["limits"] == {"ai_per_day": 7, "messages_per_10min": 0}
+assert post("/api/remote/profile_limits", {"id": pid, "ai_per_day": -1})[0] == 400
+assert post("/api/remote/profile_limits", {"id": pid, "ai_per_day": "viel"})[0] == 400
+assert post("/api/remote/profile_limits", {"id": pid})[0] == 400
+assert post("/api/remote/profile_limits", {"id": "deadbeef", "ai_per_day": 5})[0] == 404
+assert post("/api/remote/profile_limits", {"id": "../x", "ai_per_day": 5})[0] == 400
+assert state()["profiles"][0]["limits"] == {"ai_per_day": 7, "messages_per_10min": 0}
+
+# Koppel-Link fuer den Bereich: das Geraet gehoert danach dem Bereich
+assert post("/api/remote/pair_link", {"name": "Laptop", "profile": "deadbeef"})[0] == 400
+assert post("/api/remote/pair_link", {"name": "Laptop", "profile": 5})[0] == 400
+status, _, raw = post("/api/remote/pair_link", {"name": "Laptop", "profile": pid})
+link = jbody(raw)
+assert status == 200 and link["profile"] == pid and link["code"] == link["link"].split("#")[1]
+status, headers4, _ = call(httpd, "POST", "/api/remote/pair", origin=ORIGIN, body={"code": link["code"]})
+assert status == 200
+guest_cookie = headers4["set-cookie"].split(";")[0]
+listed = state()
+guest = next(d for d in listed["devices"] if d["name"] == "Laptop")
+assert guest["profile"] == pid and guest["profile_name"] == "Bruder"
+assert next(d for d in listed["devices"] if d["name"] == "Handy")["profile"] == "owner"
+assert listed["profiles"][0]["devices"] == 1
+
+# Zuruecksetzen laesst Bereich und Geraet stehen, Loeschen entfernt beides
+(gate.profiles.path_for(pid)).mkdir(parents=True, exist_ok=True)
+(gate.profiles.path_for(pid) / "x.json").write_text("{}", encoding="utf-8")
+assert post("/api/remote/profile_reset", {"id": pid})[0] == 200
+assert not (gate.profiles.path_for(pid) / "x.json").exists() and len(state()["profiles"]) == 1
+assert post("/api/remote/profile_reset", {"id": "deadbeef"})[0] == 404
+gate.profiles.path_for(pid).mkdir(parents=True, exist_ok=True)
+(gate.profiles.path_for(pid) / "usage.json").write_text("{}", encoding="utf-8")
+epoch = gate.profiles.epoch(pid)
+assert post("/api/remote/profile_reset_usage", {"id": pid})[0] == 200 and not (gate.profiles.path_for(pid) / "usage.json").exists()
+assert gate.profiles.epoch(pid) == epoch + 1
+assert post("/api/remote/profile_reset_usage", {"id": "deadbeef"})[0] == 404 and post("/api/remote/profile_reset_usage", {})[0] == 400
+assert post("/api/remote/profile_delete", {"id": "deadbeef"})[0] == 404
+assert post("/api/remote/profile_delete", {"id": pid})[0] == 200
+after = state()
+assert after["profiles"] == [] and all(d["profile"] != pid for d in after["devices"])
+assert call(httpd, "GET", "/api/timers", cookie=guest_cookie)[0] == 401          # Gast-Geraet ist weg
+assert call(httpd, "GET", "/api/timers", cookie=phone)[0] == 200                 # andere Geraete unberuehrt
 
 # 9) Zustand ohne Schwaetzer: nichts an Jarvis
 assert spy.touched == [], spy.touched

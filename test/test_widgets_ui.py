@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+import webapp
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -13,11 +14,11 @@ from settings_manager import SettingsManager
 
 WEB = PROJECT_DIR / "web"
 html = (WEB / "index.html").read_text(encoding="utf-8")
-app = (WEB / "app.js").read_text(encoding="utf-8")
+app = webapp.app_text()
 css = (WEB / "style.css").read_text(encoding="utf-8")
 
 # 1) Seite: widgets.js vor app.js, Leiste und alle fünf Felder anfangs versteckt
-assert html.index('src="widgets.js"') < html.index('src="app.js"')
+assert html.index('src="widgets.js"') < html.index('src="app_base.js"')
 assert " hidden" in re.search(r'<aside[^>]*id="widgets"[^>]*>', html).group(0)
 for slot in ("top", "middle", "bottom", "fourth", "fifth"):
     assert " hidden" in re.search(r'<section[^>]*id="widget-%s"[^>]*>' % slot, html).group(0), slot

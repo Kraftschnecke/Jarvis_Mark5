@@ -25,9 +25,10 @@ SETTINGS_FOR_REMOTE = ("appearance", "voice", "widgets", "alarm", "focus", "brie
 
 
 class RemoteGate:
-    def __init__(self, host, store, settings_manager):
+    def __init__(self, host, store, settings_manager, profiles=None):
         self.host = (host or "").strip().lower()
         self.store = store
+        self.profiles = profiles          # Gast-Bereiche (profiles.py); ohne: nur der Besitzer
         self.settings = settings_manager
         self.limits = UsageLimits()
 
@@ -88,6 +89,21 @@ class RemoteGate:
     @staticmethod
     def set_cookie_header(token):
         return f"{COOKIE_NAME}={token}; Path=/; Max-Age={TOKEN_LIFETIME}; Secure; HttpOnly; SameSite=Strict"
+
+    @staticmethod
+    def clear_cookie_header():
+        """Loescht das Zugangs-Cookie im Browser (Abmelden)."""
+        return f"{COOKIE_NAME}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Strict"
+
+    # --- Gast (Tester-Bereich) ------------------------------------------------------
+    TESTER_LEVELS = {"info": True, "daily": True, "pc": False}
+
+    def settings_for_tester(self, defaults, area_name):
+        """Die Einstellungen eines Gastes: Standardwerte (nie die des Besitzers), plus Name seines Bereichs."""
+        view = self.settings_for_remote(defaults)
+        view["tester"] = True
+        view["area"] = area_name
+        return view
 
     # --- gefilterte Einstellungen fuers Handy -----------------------------------
     def settings_for_remote(self, state):

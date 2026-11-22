@@ -1,5 +1,6 @@
 """Systemanbindung (Mark 5, Step 4B.4): Hotkey-Text, Hotkey-Lauscher, Fenster nach vorn, Benachrichtigungen fuer Wecker/Timer."""
 import sys
+import webapp
 import tempfile
 import types
 from datetime import datetime
@@ -291,7 +292,7 @@ config_text = (PROJECT_DIR / "config.py").read_text(encoding="utf-8")
 assert 'HOTKEY = os.getenv("JARVIS_HOTKEY", "ctrl+space")' in config_text
 import config
 assert parse_hotkey(config.HOTKEY) is not None
-app_js = (PROJECT_DIR / "web" / "app.js").read_text(encoding="utf-8")
+app_js = webapp.app_text()
 assert 'window.addEventListener("focus", () => {\n  const active = document.activeElement;\n  if (!active || active === document.body) input.focus();\n});' in app_js
 assert "Abnahme 4B.4" in (PROJECT_DIR / "DESIGN_APP.md").read_text(encoding="utf-8")
 

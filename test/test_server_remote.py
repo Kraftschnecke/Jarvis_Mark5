@@ -187,7 +187,7 @@ assert call(httpd, "GET", "/pair", host=REMOTE_HOST + ":443")[0] == 200
 status, headers, raw = call(httpd, "GET", "/pair")
 assert status == 200 and "J.A.R.V.I.S." in raw.decode("utf-8") and "/api/remote/pair" in raw.decode("utf-8")
 assert headers["x-content-type-options"] == "nosniff" and headers["referrer-policy"] == "no-referrer"
-for path in ("/", "/index.html", "/app.js", "/style.css", "/voice.js", "/nirgends"):
+for path in ("/", "/index.html", "/app_base.js", "/style.css", "/voice.js", "/nirgends"):
     status, _, raw = call(httpd, "GET", path)
     assert status == 401 and b"koppeln" in raw.lower() or b"gekoppelt" in raw.lower(), path
     assert b"const input" not in raw                                      # die App selbst wird nicht ausgeliefert
@@ -233,10 +233,10 @@ unlock()
 
 # 7) Angemeldet: Dateien der App kommen, Adressen nur aus der Liste
 cookie, _, _ = pair("iPhone Moritz")
-for path in ("/", "/app.js", "/style.css", "/core.js", "/manifest.webmanifest"):
+for path in ("/", "/app_base.js", "/style.css", "/core.js", "/manifest.webmanifest"):
     status, headers, raw = call(httpd, "GET", path, cookie=cookie)
     assert status == 200 and headers["x-content-type-options"] == "nosniff", path
-assert b"const input" in call(httpd, "GET", "/app.js", cookie=cookie)[2]
+assert b"const input" in call(httpd, "GET", "/app_base.js", cookie=cookie)[2]
 assert call(httpd, "GET", "/pair", cookie=cookie)[0] == 200
 assert call(httpd, "GET", "/../server.py", cookie=cookie)[0] in (403, 404)
 assert call(httpd, "GET", "/%2e%2e/server.py", cookie=cookie)[0] in (403, 404)
@@ -264,7 +264,8 @@ assert jbody(call(httpd, "GET", "/api/settings", host="localhost")[2])["settings
 
 # 8) Alles andere: auch mit gueltigem Cookie verboten, und Jarvis wird nie beruehrt
 spy.touched.clear()
-for path in sorted(routes - remote_policy.GET_API - remote_policy.POST_API - {"/api/remote/pair"}):
+assert call(httpd, "GET", "/api/remote/logout", cookie=cookie)[0] == 403                      # Abmelden ist nur POST (eigene Pruefung in test_server_tester.py)
+for path in sorted(routes - remote_policy.GET_API - remote_policy.POST_API - {"/api/remote/pair", "/api/remote/logout"}):
     assert call(httpd, "GET", path, cookie=cookie)[0] == 403, ("GET", path)
     if path in remote_policy.DAILY_POST_API:
         continue                                                          # mit der Stufe "Alltag" erlaubt, siehe unten

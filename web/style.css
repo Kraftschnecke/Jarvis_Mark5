@@ -445,9 +445,16 @@ input[type="checkbox"].setting-control { min-width: 0; width: 18px; height: 18px
 .remote-status.on { border-color: #3fa66a; }
 .remote-status.off { color: var(--muted); }
 .remote-device-name { flex: 1 1 8em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remote-profiles { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.remote-profile { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--border, rgba(255,255,255,0.12)); }
+.remote-profile .folder-form { flex-wrap: wrap; align-items: center; }
+.remote-limit { flex: 0 0 5.5em; width: 5.5em; }
+.remote-profile .remote-device-name { flex: none; }
+select.folder-input { flex: none; width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--base); color: inherit; font: inherit; }
 .remote-device-state { color: var(--muted); font-size: 0.8rem; }
 .remote-device.revoked .remote-device-name, .remote-device.expired .remote-device-name { color: var(--muted); text-decoration: line-through; }
 .remote-link { display: flex; flex-direction: column; gap: 4px; }
+.remote-code { margin: 4px 0; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 1.8rem; font-weight: 600; letter-spacing: 0.14em; user-select: all; }
 .folder-input { flex: 1; min-width: 0; }
 .memory-list { display: flex; flex-direction: column; gap: 6px; }
 .memory-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 2px 4px; }
@@ -693,6 +700,8 @@ body.remote #new-project,
 body.remote .wake,
 body.remote .row .more { display: none !important; }
 body.remote #open-phone-prefs { display: flex !important; }
+/* Testbereich (Gast, C4): keine Projekte, die Seitenleiste zeigt nur "Neue Unterhaltung" */
+body.tester .row .more, body.tester .project-row { display: none !important; }
 .phone-prefs-rows { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
 .phone-prefs-row { display: flex; flex-direction: column; gap: 4px; }
 .phone-prefs-row label { color: var(--muted); font-size: 0.85rem; }

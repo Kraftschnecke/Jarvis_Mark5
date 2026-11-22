@@ -2,6 +2,7 @@
 
 import json
 import sys
+import webapp
 import tempfile
 import types
 from datetime import datetime
@@ -235,7 +236,7 @@ server_source = open(PROJECT_DIR / "server.py", encoding="utf-8").read()
 assert 'EDITABLE_SETTINGS[("briefing", "auto")]' in server_source and 'EDITABLE_SETTINGS[("briefing", "news")]' in server_source
 post = server_source.split("def do_POST")[1]
 assert post.index("self.server.guest and path") < post.index("/api/briefing/auto") < post.rindex("with self.server.message_lock:")
-app_js = open(PROJECT_DIR / "web" / "app.js", encoding="utf-8").read()
+app_js = webapp.app_text()
 assert '"/api/briefing/auto"' in app_js and 'category: "briefing", key: "auto"' in app_js
 assert "briefing_state.json" in open(PROJECT_DIR / ".gitignore", encoding="utf-8").read()
 import guest

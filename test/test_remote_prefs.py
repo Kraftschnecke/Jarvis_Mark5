@@ -3,6 +3,7 @@ import re
 import shutil
 import subprocess
 import sys
+import webapp
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -10,12 +11,12 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 WEB = PROJECT_DIR / "web"
 html = (WEB / "index.html").read_text(encoding="utf-8")
-app = (WEB / "app.js").read_text(encoding="utf-8")
+app = webapp.app_text()
 css = (WEB / "style.css").read_text(encoding="utf-8")
 js = (WEB / "remote_prefs.js").read_text(encoding="utf-8")
 
 # 1) Einbindung: Skript vor app.js, Knopf nur am Handy sichtbar (anfangs versteckt), eigener Dialog
-assert html.count('src="remote_prefs.js"') == 1 and html.index('src="remote_prefs.js"') < html.index('src="app.js"')
+assert html.count('src="remote_prefs.js"') == 1 and html.index('src="remote_prefs.js"') < html.index('src="app_base.js"')
 assert 'id="open-phone-prefs" type="button" hidden' in html and "Handy-Einstellungen" in html
 assert '<dialog id="phone-prefs">' in html and 'id="phone-prefs-rows"' in html and 'id="phone-prefs-close"' in html
 assert "innerHTML" not in js
@@ -29,7 +30,7 @@ assert "#open-phone-prefs { margin-top: 0; }" in css and "body.remote #open-sett
 
 # 2) Der Knopf folgt dem Modus, den der Server meldet
 block = app.split("function setRemoteMode(value) {")[1].split("document.addEventListener")[0]
-assert 'document.getElementById("open-phone-prefs").hidden = !value;' in block
+assert 'byId("open-phone-prefs").hidden = !value;' in block
 
 # 3) Handy-Werte ueberdecken die Werte des PC nur am Handy, das Original (Server) bleibt erhalten
 assert "serverSettings = data.settings;" in app
@@ -43,7 +44,7 @@ change = app.split("function changePhonePref(change) {")[1].split("\n}\n")[0]
 for part in ("prefs.normalize(", "prefs.save(localStorage", "mergePhonePrefs()", "applyAppearance()", "applyVoice()"):
     assert part in change, part
 assert "api(" not in change and "fetch(" not in change and "/api/settings" not in change
-dialog = app.split("// Handy-Einstellungen: nur Anzeige und Browser-Speicher")[1].split('document.getElementById("open-settings")')[0]
+dialog = app.split("// Handy-Einstellungen: nur Anzeige und Browser-Speicher")[1].split('byId("open-phone-prefs").addEventListener("click"')[0]
 assert "api(" not in dialog and "fetch(" not in dialog and "innerHTML" not in dialog
 assert "prefs.THEMES" in dialog and "prefs.ACCENTS" in dialog and 'changePhonePref({ speech: box.checked })' in dialog
 

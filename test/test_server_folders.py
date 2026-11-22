@@ -3,6 +3,7 @@
 import http.client
 import json
 import sys
+import webapp
 import threading
 import types
 from pathlib import Path
@@ -107,7 +108,7 @@ assert [f["path"] for f in fl.list()] == [str(docs)]
 server_source = open(PROJECT_DIR / "server.py", encoding="utf-8").read()
 post = server_source.split("def do_POST")[1]
 assert post.index("self.server.guest and path") < post.index("/api/folders/add") < post.rindex("with self.server.message_lock:")
-app_js = open(PROJECT_DIR / "web" / "app.js", encoding="utf-8").read()
+app_js = webapp.app_text()
 assert 'type: "folder-list"' in app_js and '"/api/folders/add"' in app_js and '"/api/folders/remove"' in app_js and "function buildFolderList" in app_js
 assert "innerHTML" not in app_js.split("function buildFolderList")[1].split("function buildMemoryList")[0]       # Pfade nie als HTML
 

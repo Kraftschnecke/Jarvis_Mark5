@@ -5,6 +5,7 @@ Spielplaene kommen aus dem Netz, und zwar nur ueber den Server: der Browser ruft
 ins Internet. Ohne Netz zeigt die Seite den letzten bekannten Stand oder eine Meldung.
 """
 
+import contextlib
 import json
 import os
 import re
@@ -571,10 +572,25 @@ def _valid_date(value):
 
 
 _default_store = None
+_scope = threading.local()      # Bereich (Mark 5, C2): gilt nur fuer den Thread, der gerade fuer einen Gast arbeitet
+
+
+@contextlib.contextmanager
+def use_store(store):
+    """Solange dieser Thread im Block ist, ist `store` der "Standard". Alle anderen Threads sehen weiter widgets.json des Besitzers."""
+    before = getattr(_scope, "store", None)
+    _scope.store = store
+    try:
+        yield store
+    finally:
+        _scope.store = before
 
 
 def default_store():
-    """Die eine Datei widgets.json (Seite und Jarvis-Aufgaben teilen sich diese)."""
+    """Die eine Datei widgets.json (Seite und Jarvis-Aufgaben teilen sich diese). Im Bereich eines Gastes: dessen Speicher."""
+    scoped = getattr(_scope, "store", None)
+    if scoped is not None:
+        return scoped
     global _default_store
     if _default_store is None:
         _default_store = WidgetStore()

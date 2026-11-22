@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+import webapp
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -11,12 +12,12 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 WEB = PROJECT_DIR / "web"
 html = (WEB / "index.html").read_text(encoding="utf-8")
-app = (WEB / "app.js").read_text(encoding="utf-8")
+app = webapp.app_text()
 css = (WEB / "style.css").read_text(encoding="utf-8")
 alarm = (WEB / "alarm.js").read_text(encoding="utf-8")
 
 # Einbindung: Skript vor app.js, Banner versteckt, Knoepfe vorhanden
-assert html.index('src="alarm.js"') < html.index('src="app.js"')
+assert html.index('src="alarm.js"') < html.index('src="app_base.js"')
 assert re.search(r'<div[^>]*id="ringing"[^>]*\bhidden\b', html), "Banner muss ohne Läuten versteckt sein"
 for element in ("ringing-title", "ringing-detail", "ringing-hint", "ringing-off", "ringing-snooze"):
     assert f'id="{element}"' in html, element

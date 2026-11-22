@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+import webapp
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -13,7 +14,7 @@ from settings_manager import SettingsManager
 
 WEB = PROJECT_DIR / "web"
 html = (WEB / "index.html").read_text(encoding="utf-8")
-app = (WEB / "app.js").read_text(encoding="utf-8")
+app = webapp.app_text()
 css = (WEB / "style.css").read_text(encoding="utf-8")
 
 # 1) Standard aus, Einstellung wird geprueft (nur Wahr/Falsch)
@@ -21,7 +22,7 @@ assert SettingsManager.DEFAULT_SETTINGS["voice"]["wake_word"] is False
 assert '("voice", "wake_word"): lambda v: isinstance(v, bool)' in (PROJECT_DIR / "server.py").read_text(encoding="utf-8")
 
 # 2) Einbindung: wake.js vor app.js, Anzeige anfangs versteckt
-assert html.index('src="wake.js"') < html.index('src="app.js"')
+assert html.index('src="wake.js"') < html.index('src="app_base.js"')
 badge = re.search(r'<[^>]*id="wake"[^>]*>', html).group(0)
 assert " hidden" in badge
 assert "body.guest .wake" in css, "im Gastmodus darf keine Weckwort-Anzeige erscheinen"

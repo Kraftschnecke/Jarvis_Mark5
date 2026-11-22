@@ -1,5 +1,6 @@
 """Jarvis-Kern (Mark 5, Step 4B.5): core.js mit Node, Einbindung in die Seite, Stile fuer alle Zustaende, Bewegung aus."""
 import sys
+import webapp
 import tempfile
 import types
 from datetime import datetime
@@ -46,13 +47,13 @@ import subprocess
 
 WEB = PROJECT_DIR / "web"
 html = (WEB / "index.html").read_text(encoding="utf-8")
-app = (WEB / "app.js").read_text(encoding="utf-8")
+app = webapp.app_text()
 css = (WEB / "core.css").read_text(encoding="utf-8")
 js = (WEB / "core.js").read_text(encoding="utf-8")
 
 # 1) Einbindung: Stil und Skript, core.js vor app.js, der Platz in der Titelleiste neben dem Schriftzug
 assert '<link rel="stylesheet" href="core.css">' in html
-assert html.index('src="core.js"') < html.index('src="app.js"')
+assert html.index('src="core.js"') < html.index('src="app_base.js"')
 assert html.index('id="core-slot"') < html.index('class="logo"')
 assert html.index('class="topbar"') < html.index('id="core-slot"') < html.index('id="status"')
 
@@ -71,7 +72,7 @@ assert 'html[data-motion="off"] .jarvis-core *,\nhtml[data-motion="off"] .jarvis
 assert re.search(r"@media \(prefers-reduced-motion: reduce\)\s*\{\s*html:not\(\[data-motion=\"on\"\]\)", css)
 
 # 4) app.js: Zustand aus Status, Sprechen und Zuhoeren abgeleitet, Klick speichert die Wahl nur im Browser
-assert "window.JarvisCore.create(document" in app and 'getElementById("core-slot")' in app
+assert "window.JarvisCore.create(document" in app and 'byId("core-slot")' in app
 block = app.split("function refreshCore()")[1].split("// Hotkey der Desktop-App")[0]
 for part in ('statusEl.dataset.state === "error"', "speakingNow", 'micButton.classList.contains("listening")',
              'statusEl.dataset.state === "busy"'):

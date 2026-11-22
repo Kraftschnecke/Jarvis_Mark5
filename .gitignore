@@ -52,3 +52,5 @@ folders.json
 #remote_devicess
 remote_devices.json
 remote_devices.json.defekt
+profiles/
+profiles.json

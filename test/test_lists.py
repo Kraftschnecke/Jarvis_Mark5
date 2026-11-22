@@ -1,5 +1,6 @@
 """Einkaufs- und Packlisten (Mark 5, Step 2.30): Speicher, Chat-Aufgaben, Seite."""
 import sys
+import webapp
 import tempfile
 import types
 from datetime import datetime
@@ -195,7 +196,7 @@ for slot in ("fourth", "fifth"):
     assert "Lists" in SettingsManager.CHOICES[("widgets", slot)]
 server_source = open(PROJECT_DIR / "server.py", encoding="utf-8").read()
 assert '"/api/widgets/lists"' in server_source and "store.set_lists(data.get(\"lists\"))" in server_source
-app_js = open(PROJECT_DIR / "web" / "app.js", encoding="utf-8").read()
+app_js = webapp.app_text()
 assert "Lists: renderLists" in app_js and '"/api/widgets/lists"' in app_js and "function renderLists" in app_js
 assert app_js.count('"Performance", "Lists"]') == 2 and '"Goals", "Lists"]' in app_js
 assert ".w-list-head" in open(PROJECT_DIR / "web" / "style.css", encoding="utf-8").read()

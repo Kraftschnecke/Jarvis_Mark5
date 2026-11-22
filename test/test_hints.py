@@ -1,5 +1,6 @@
 """Proaktive Hinweise (Mark 5, Step 2.29): Termin bald, Wetter morgen; nur Anzeige, einmal pro Hinweis, alles aus."""
 import sys
+import webapp
 import tempfile
 import types
 from datetime import datetime
@@ -199,7 +200,7 @@ for key, rule in (("appointments", "isinstance(v, bool)"), ("appointment_minutes
     assert f'EDITABLE_SETTINGS[("hints", "{key}")] = lambda v: {rule}' in server_source, key
 post = server_source.split("def do_POST")[1]
 assert post.index("self.server.guest and path") < post.index("/api/hints") < post.rindex("with self.server.message_lock:")
-app_js = open(PROJECT_DIR / "web" / "app.js", encoding="utf-8").read()
+app_js = webapp.app_text()
 assert '"/api/hints"' in app_js and "setInterval(checkHints, 60 * 1000)" in app_js and 'category: "hints", key: "appointments"' in app_js
 assert 'category: "hints", key: "weather_hour"' in app_js and 'addMessage("background", hint.text, "HINWEIS")' in app_js
 code = open(PROJECT_DIR / "hints.py", encoding="utf-8").read().split('"""', 2)[2]

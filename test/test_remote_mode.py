@@ -1,5 +1,6 @@
 """Remote R5 (Mark 5): Handy-Ansicht. remote_mode.js mit Node, Banner, nur erlaubte Anfragen, kein Verwalten, Schutz vor iOS-Zoom."""
 import sys
+import webapp
 import tempfile
 import types
 from datetime import datetime
@@ -46,14 +47,14 @@ import subprocess
 
 WEB = PROJECT_DIR / "web"
 html = (WEB / "index.html").read_text(encoding="utf-8")
-app = (WEB / "app.js").read_text(encoding="utf-8")
+app = webapp.app_text()
 css = (WEB / "style.css").read_text(encoding="utf-8")
 js = (WEB / "remote_mode.js").read_text(encoding="utf-8")
 
 import remote_policy
 
 # 1) Einbindung: Skript vor app.js, Streifen unter der Kopfzeile und vor dem Chat, Notch-sicher
-assert html.count('src="remote_mode.js"') == 1 and html.index('src="remote_mode.js"') < html.index('src="app.js"')
+assert html.count('src="remote_mode.js"') == 1 and html.index('src="remote_mode.js"') < html.index('src="app_base.js"')
 assert html.index('class="topbar"') < html.index('id="remote-banner"') < html.index('id="chat"')
 assert 'id="remote-banner" hidden role="status"' in html
 assert "viewport-fit=cover" in html and "innerHTML" not in js

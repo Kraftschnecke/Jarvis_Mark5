@@ -15,45 +15,135 @@
     p { line-height: 1.5; margin: 0.6rem 0; }
     #message { color: #8f8b84; }
     #message.error { color: #d9695f; }
+    form { margin: 1.2rem 0 0.4rem; display: flex; gap: 8px; }
+    form[hidden], #session[hidden] { display: none; }
+    #session { display: flex; gap: 8px; justify-content: center; align-items: center; }
+    #to-app, #logout { padding: 9px 14px; border-radius: 10px; border: 1px solid #3a3835; background: #262422; color: inherit; font: inherit; text-decoration: none; cursor: pointer; }
+    #code { text-transform: uppercase; letter-spacing: 0.12em; }
+    #code::placeholder { text-transform: none; letter-spacing: normal; }
+    input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid #3a3835; background: #262422; color: inherit; font: inherit; }
+    button { padding: 10px 16px; border-radius: 10px; border: 0; background: #168aad; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    details { margin-top: 1.6rem; text-align: left; color: #8f8b84; font-size: 0.9rem; }
+    summary { cursor: pointer; color: #f1eadc; }
+    details h2 { font-size: 0.95rem; margin: 0.9rem 0 0.2rem; color: #f1eadc; }
+    details ol { margin: 0.2rem 0 0; padding-left: 1.2rem; line-height: 1.5; }
   </style>
 </head>
 <body>
   <main>
     <h1>J.A.R.V.I.S.</h1>
     <p id="message">Dieses Gerät ist nicht gekoppelt.</p>
-    <p id="hint">Erzeuge am PC in den Einstellungen unter Remote einen „Koppel-Link“ und öffne ihn auf diesem Gerät.</p>
+    <p id="hint">Gib hier den Code ein, den du bekommen hast (Groß- oder Kleinschreibung ist egal), oder öffne den Koppel-Link. Den Code gibt es am PC unter Einstellungen → Remote.</p>
+    <p id="session" hidden>
+      <a id="to-app" href="/">Zur App</a>
+      <button id="logout" type="button" class="secondary">Abmelden</button>
+    </p>
+    <form id="code-form" autocomplete="off">
+      <input id="code" type="text" inputmode="text" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="300"
+             placeholder="Code, z. B. K7M2-QX9P" aria-label="Koppelcode">
+      <button id="code-button" type="submit">Koppeln</button>
+    </form>
+    <details id="install">
+      <summary>Als App installieren</summary>
+      <h2>Windows, Mac oder Linux (Edge oder Chrome)</h2>
+      <ol>
+        <li>Erst koppeln, dann diese Seite öffnen.</li>
+        <li>Edge: Menü „…“ → „Apps“ → „Diese Website als App installieren“.</li>
+        <li>Chrome: Menü „⋮“ → „Speichern und teilen“ → „Als App installieren“.</li>
+      </ol>
+      <h2>iPhone oder iPad (Safari)</h2>
+      <ol>
+        <li>Erst koppeln, dann die Seite in Safari öffnen.</li>
+        <li>Teilen-Symbol → „Zum Home-Bildschirm“.</li>
+      </ol>
+    </details>
   </main>
   <script>
     // Der Kopplungscode steht im Teil nach dem #, der nie an einen Server oder in ein Protokoll geschickt wird.
     (function () {
-      var code = location.hash.replace(/^#/, "");
       var message = document.getElementById("message");
       var hint = document.getElementById("hint");
-      if (!code) return;
-      history.replaceState(null, "", location.pathname);   // Code sofort aus der Adresszeile nehmen
-      message.textContent = "Koppeln …";
-      hint.textContent = "";
-      fetch("/api/remote/pair", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: code }),
-        credentials: "same-origin"
-      }).then(function (response) {
-        return response.json().then(function (data) { return { ok: response.ok, data: data }; });
-      }).then(function (result) {
-        if (result.ok) {
-          message.textContent = "Gekoppelt als „" + result.data.name + "“.";
-          setTimeout(function () { location.replace("/"); }, 800);
-        } else {
-          message.className = "error";
-          message.textContent = result.data.error || "Das Koppeln ist fehlgeschlagen.";
-          hint.textContent = "Erzeuge am PC einen neuen Link.";
-        }
-      }).catch(function () {
-        message.className = "error";
-        message.textContent = "Keine Verbindung zu Jarvis. Läuft der PC und ist Tailscale an?";
+      var form = document.getElementById("code-form");
+      var input = document.getElementById("code");
+      var button = document.getElementById("code-button");
+
+      // Im App-Fenster (installiert oder mit der Gast-App) ist die Installationsanleitung ueberfluessig
+      var installed = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+      if (installed) document.getElementById("install").hidden = true;
+
+      // Aus einem eingefuegten Link oder Code den reinen Code holen: alles nach dem letzten #, ohne Leerzeichen
+      function extractCode(text) {
+        var value = String(text || "").trim();
+        var hash = value.lastIndexOf("#");
+        if (hash >= 0) value = value.slice(hash + 1);
+        return value.replace(/\s+/g, "");
+      }
+
+      function pair(code) {
+        form.hidden = true;
+        message.className = "";
+        message.textContent = "Koppeln …";
         hint.textContent = "";
+        fetch("/api/remote/pair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: code }),
+          credentials: "same-origin"
+        }).then(function (response) {
+          return response.json().then(function (data) { return { ok: response.ok, data: data }; });
+        }).then(function (result) {
+          if (result.ok) {
+            message.textContent = "Gekoppelt als „" + result.data.name + "“.";
+            setTimeout(function () { location.replace("/"); }, 800);
+          } else {
+            message.className = "error";
+            message.textContent = result.data.error || "Das Koppeln ist fehlgeschlagen.";
+            hint.textContent = "Frag nach einem neuen Code oder Link.";
+            form.hidden = false;
+            input.value = "";
+          }
+        }).catch(function () {
+          message.className = "error";
+          message.textContent = "Keine Verbindung zu Jarvis. Läuft der PC und ist Tailscale an?";
+          hint.textContent = "";
+          form.hidden = false;
+        });
+      }
+
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var code = extractCode(input.value);
+        input.value = "";                      // der Code bleibt nicht im Feld stehen
+        if (!code) return;
+        pair(code);
       });
+
+      // Ist dieses Geraet schon gekoppelt? Dann: Zur App, Abmelden, oder mit neuem Code wechseln
+      function checkSession() {
+        fetch("/api/remote/whoami", { credentials: "same-origin" })
+          .then(function (response) { return response.ok ? response.json() : null; })
+          .then(function (info) {
+            if (!info || info.remote !== true) return;
+            var area = typeof info.area === "string" && info.area ? " (Gast-Bereich " + info.area + ")" : "";
+            message.className = "";
+            message.textContent = "Dieses Gerät ist angemeldet als „" + String(info.device || "Gerät") + "“" + area + ".";
+            hint.textContent = "Du kannst zur App zurück, dich abmelden oder mit einem neuen Code wechseln. Der alte Zugang wird dabei ersetzt.";
+            document.getElementById("session").hidden = false;
+          })
+          .catch(function () { /* nicht angemeldet: die Seite bleibt wie sie ist */ });
+      }
+
+      document.getElementById("logout").addEventListener("click", function () {
+        fetch("/api/remote/logout", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}" })
+          .then(function () { window.location.reload(); })
+          .catch(function () { window.location.reload(); });
+      });
+
+      var code = extractCode(location.hash);
+      if (!code) { checkSession(); return; }
+      history.replaceState(null, "", location.pathname);   // Code sofort aus der Adresszeile nehmen
+      pair(code);
     })();
   </script>
 </body>

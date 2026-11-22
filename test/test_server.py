@@ -129,7 +129,7 @@ assert server.JarvisServer.request_queue_size >= 64
 status, ctype, data = request("GET", "/")
 assert status == 200 and "text/html" in ctype and b"J.A.R.V.I.S." in data
 assert request("GET", "/style.css")[0] == 200
-status, ctype, _ = request("GET", "/app.js")
+status, ctype, _ = request("GET", "/app_base.js")
 assert status == 200 and "javascript" in ctype
 assert request("GET", "/gibtsnicht.html")[0] == 404
 

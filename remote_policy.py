@@ -51,6 +51,22 @@ PUBLIC_STATIC = frozenset({"/manifest.webmanifest", "/sw.js", "/icon-192.png", "
                            "/icon-maskable-512.png", "/apple-touch-icon.png"})
 
 
+# Seiten fuer Gaeste (Rollen-Seiten): "/" und "/index.html" liefern ihnen die Gast-Seite, nie die des Besitzers.
+# Dazu nur die Dateien, die diese Seite wirklich laedt. Alles andere unter web/ ist fuer einen Gast 404.
+GUEST_PAGE = "/guest.html"
+GUEST_STATIC = frozenset({
+    "/style.css", "/core.css", "/core.js", "/links.js", "/sync.js", "/remote_mode.js", "/remote_prefs.js", "/status.js",
+    "/alarm.js", "/voice.js", "/wake.js", "/widgets.js", "/app_base.js", "/app_state.js", "/app_start.js",
+}) | PUBLIC_STATIC
+
+
+def guest_file(path):
+    """Die Datei, die ein Gast fuer diese Adresse bekommt, sonst None (404)."""
+    if path in ("/", "/index.html", GUEST_PAGE):
+        return GUEST_PAGE
+    return path if path in GUEST_STATIC else None
+
+
 def normalize_levels(value):
     """Gueltige Stufen-Einstellung: unbekannte Namen weg, Fehlendes und Unsinn bekommen die Voreinstellung."""
     source = value if isinstance(value, dict) else {}

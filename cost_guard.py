@@ -128,5 +128,17 @@ class GuardedClient:
         return getattr(self._client, name)
 
 
+class AiOnlyClient:
+    """Nur KI-Antworten, gezaehlt und begrenzt. Es gibt hier absichtlich keine Stimme (audio): Ein Gast kann sie nie benutzen."""
+
+    def __init__(self, client, counter):
+        self.counter = counter
+        self.responses = _Guarded(client.responses, counter, "ai")
+
+
+def guard_ai_only(client, counter):
+    return AiOnlyClient(client, counter)
+
+
 def guard(client, counter):
     return GuardedClient(client, counter)

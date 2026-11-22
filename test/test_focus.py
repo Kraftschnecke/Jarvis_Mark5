@@ -2,6 +2,7 @@
 
 import json
 import sys
+import webapp
 import tempfile
 import types
 from datetime import datetime
@@ -318,7 +319,7 @@ post = server_source.split("def do_POST")[1]
 assert post.index("self.server.guest and path") < post.index("/api/focus/stop") < post.rindex("with self.server.message_lock:")
 for key, low, high in (("work_minutes", 1, 120), ("break_minutes", 1, 60), ("long_break_minutes", 1, 60), ("rounds", 1, 12)):
     assert f'EDITABLE_SETTINGS[("focus", "{key}")] = lambda v: _is_int(v, {low}, {high})' in server_source, key
-app_js = open(PROJECT_DIR / "web" / "app.js", encoding="utf-8").read()
+app_js = webapp.app_text()
 assert '"/api/focus/stop"' in app_js and '"/api/focus"' in app_js and "setInterval(refreshFocus, 1000)" in app_js
 for key in ("work_minutes", "break_minutes", "long_break_minutes", "rounds"):
     assert f'category: "focus", key: "{key}"' in app_js, key

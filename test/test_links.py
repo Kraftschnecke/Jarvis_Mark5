@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+import webapp
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -11,12 +12,12 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 WEB = PROJECT_DIR / "web"
 html = (WEB / "index.html").read_text(encoding="utf-8")
-app = (WEB / "app.js").read_text(encoding="utf-8")
+app = webapp.app_text()
 links = (WEB / "links.js").read_text(encoding="utf-8")
 css = (WEB / "style.css").read_text(encoding="utf-8")
 
 # Einbindung: links.js vor app.js, app.js nutzt es
-assert html.index('src="links.js"') < html.index('src="app.js"')
+assert html.index('src="links.js"') < html.index('src="app_base.js"')
 assert "JarvisLinks.splitLinks(text)" in app
 
 # Sichere Darstellung: Anker nur ueber das DOM, mit noopener, Rechnername sichtbar, nie innerHTML

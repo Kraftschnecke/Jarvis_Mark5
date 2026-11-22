@@ -1,5 +1,6 @@
 """Ziele und Gewohnheiten (Mark 5, Step 2.28): Serien, Wochenleiste, Chat-Aufgabe, Abendfrage."""
 import sys
+import webapp
 import tempfile
 import types
 from datetime import datetime
@@ -244,7 +245,7 @@ server_source = open(PROJECT_DIR / "server.py", encoding="utf-8").read()
 assert 'EDITABLE_SETTINGS[("goals", "evening")]' in server_source and 'EDITABLE_SETTINGS[("goals", "evening_hour")] = lambda v: _is_int(v, 17, 23)' in server_source
 post = server_source.split("def do_POST")[1]
 assert post.index("self.server.guest and path") < post.index("/api/goals/evening") < post.rindex("with self.server.message_lock:")
-app_js = open(PROJECT_DIR / "web" / "app.js", encoding="utf-8").read()
+app_js = webapp.app_text()
 assert '"/api/goals/evening"' in app_js and 'category: "goals", key: "evening"' in app_js and 'key: "evening_hour"' in app_js
 assert "w-streak" in app_js and "w-week" in app_js and "setInterval(checkEvening" in app_js and "setTimeout(checkEvening, 4000)" in app_js
 assert ".w-streak" in open(PROJECT_DIR / "web" / "style.css", encoding="utf-8").read()

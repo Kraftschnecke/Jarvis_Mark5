@@ -32,6 +32,7 @@ Regeln:
 - Es werden hoechstens KEEP_ROWS Zeilen aufgehoben, aeltere fallen weg.
 """
 
+import contextlib
 import re
 import threading
 
@@ -44,6 +45,18 @@ MAX_DETAILS = 5
 _enabled = False
 _table_ready = False
 _lock = threading.Lock()
+_quiet = threading.local()      # Gast-Bereiche (Mark 5, C2): ihre Aufgaben stehen nie im Protokoll des Besitzers
+
+
+@contextlib.contextmanager
+def silenced():
+    """Solange dieser Thread im Block ist, schreibt er nichts ins Aktionsprotokoll."""
+    before = getattr(_quiet, "on", False)
+    _quiet.on = True
+    try:
+        yield
+    finally:
+        _quiet.on = before
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f​-‏‪-‮⁦-⁩﻿]")
 
@@ -118,6 +131,9 @@ def _ensure_table(connection):
 
 
 def _insert(row):
+    if getattr(_quiet, "on", False):
+        return      # zweite Sicherung: ein Gast schreibt nie in die Datenbank des Besitzers
+
     import db   # erst hier: Wer nur Tasks ausfuehrt, braucht die Datenbank nicht
 
     with _lock, db.connect() as connection:
@@ -140,7 +156,7 @@ def _insert(row):
 
 def record_remote(device_name, text, outcome):
     """Eine Nachricht vom Handy (Remote R3): wer, was, und ob sie beantwortet oder abgelehnt wurde. Wirft nie einen Fehler."""
-    if not _enabled:
+    if not _enabled or getattr(_quiet, "on", False):
         return
 
     try:
@@ -159,7 +175,7 @@ def record_remote(device_name, text, outcome):
 
 def record(task, decision, status=None):
     """Haelt eine Aufgabe im Protokoll fest. Wirft nie einen Fehler."""
-    if not _enabled:
+    if not _enabled or getattr(_quiet, "on", False):
         return
 
     try:

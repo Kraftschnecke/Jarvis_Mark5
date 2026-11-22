@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+import webapp
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -11,10 +12,10 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 WEB = PROJECT_DIR / "web"
 html = (WEB / "index.html").read_text(encoding="utf-8")
-app = (WEB / "app.js").read_text(encoding="utf-8")
+app = webapp.app_text()
 
 # Einbindung
-assert html.index('src="status.js"') < html.index('src="app.js"')
+assert html.index('src="status.js"') < html.index('src="app_base.js"')
 assert re.search(r'<div[^>]*id="timers"[^>]*\bhidden\b', html), "Timer-Leiste muss ohne Timer versteckt sein"
 assert "loadSettings().finally(() => { showStartupReport(); refreshTree(); refreshTimers(); refreshFocus(); });" in app
 assert "/api/timers" in app and "/api/timer/cancel" in app
