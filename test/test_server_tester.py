@@ -252,8 +252,14 @@ for page in ("/remote_admin.js", "/app_owner.js", "/app.js", "/server.py", "/.en
 status, raw = call("GET", "/pair", cookie=laptop)
 assert status == 200 and b"koppeln" in raw
 # Der Besitzer bekommt weiter seine Seite mit allem
-status, raw = call("GET", "/", cookie=phone)
+status, raw = call("GET", "/index.html", cookie=phone)
 assert status == 200 and b'id="new-project"' in raw and b"J.A.R.V.I.S. Gast" not in raw
+# "/" ist fuer den Besitzer die Willkommensseite; der Gast bekommt sie nicht (404), sein "/" bleibt die Gast-Seite
+status, raw = call("GET", "/", cookie=phone)
+assert status == 200 and b'id="start"' in raw and b'href="index.html"' in raw and b"J.A.R.V.I.S. Gast" not in raw
+for name in ("/welcome.html", "/welcome.css", "/welcome.js", "/welcome_logic.js", "/welcome_panels.js", "/welcome_dialogs.js"):
+    assert call("GET", name, cookie=phone)[0] == 200, name
+    assert call("GET", name, cookie=laptop)[0] == 404, name
 assert call("GET", "/remote_admin.js", cookie=phone)[0] == 200 and call("GET", "/app_owner.js", cookie=phone)[0] == 200
 # Ohne Anmeldung bleibt es die Kopplungsseite (401), nie die Gast-Seite
 status, raw = call("GET", "/")

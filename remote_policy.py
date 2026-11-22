@@ -36,6 +36,7 @@ GET_API = frozenset({
     "/api/projects",          # Liste der Projekte und Unterhaltungen (nur lesen)
     "/api/focus",             # laufende Fokus-Sitzung anzeigen
     "/api/sync", "/api/remote/whoami",
+    "/api/reminders", "/api/news", "/api/briefing",       # Willkommensseite: nur lesen
 })
 POST_API = frozenset({
     "/api/message", "/api/speak", "/api/ringing/stop", "/api/timer/cancel", "/api/focus/stop",

@@ -380,13 +380,17 @@ function refreshCore() {
 new MutationObserver(refreshCore).observe(statusEl, { attributes: true, attributeFilter: ["data-state"] });
 new MutationObserver(refreshCore).observe(micButton, { attributes: true, attributeFilter: ["class"] });
 
-// Klick auf den Kern: Bewegung an/aus. Die Wahl bleibt in diesem Browser gespeichert,
+// Klick auf den Kern oder den Schriftzug: zurueck zur Willkommensseite (nur beim Besitzer; Gast und Gastmodus haben keine).
+// Umschalt+Klick auf den Kern (beim Gast: schon ein Klick) schaltet die Bewegung an/aus. Die Wahl bleibt in diesem Browser gespeichert,
 // ohne Wahl folgt die Seite der Systemeinstellung "Animationen reduzieren".
+function hasStartPage() { return !guestMode && !document.body.classList.contains("tester"); }
 function savedMotion() {
   try { return localStorage.getItem("jarvis.motion"); } catch (error) { return null; }
 }
 if (savedMotion() === "on" || savedMotion() === "off") document.documentElement.dataset.motion = savedMotion();
-core.addEventListener("click", () => {
+document.querySelector(".logo").addEventListener("click", () => { if (hasStartPage()) location.href = "/"; });
+core.addEventListener("click", (event) => {
+  if (hasStartPage() && !event.shiftKey) { location.href = "/"; return; }
   const now = window.JarvisCore.motionOn(savedMotion(), matchMedia("(prefers-reduced-motion: reduce)").matches);
   const next = now ? "off" : "on";
   document.documentElement.dataset.motion = next;

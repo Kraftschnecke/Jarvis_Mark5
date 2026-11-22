@@ -56,6 +56,8 @@ import server
 import timer
 import widgets
 from settings_manager import SettingsManager
+from tools import news_tool
+from tools.tool_result import ToolResult
 
 REMOTE_HOST = "mein-pc.tail1234.ts.net"
 tmp = Path(tempfile.mkdtemp())
@@ -65,6 +67,9 @@ ringing.set_default_ringer(ringing.Ringer(siren=types.SimpleNamespace(playing=Fa
 focus.set_default_manager(focus.FocusManager())
 widget_store = widgets.WidgetStore(tmp / "widgets.json")
 widgets.set_default_store(widget_store)
+# Schlagzeilen fuer GET /api/news ohne Netz
+news_tool.set_default_service(types.SimpleNamespace(get_news=lambda source, topic, count: ToolResult(
+    success=True, data={"items": [{"number": 1, "source": "Test", "title": "Schlagzeile", "summary": "Text", "url": "https://example.org/a", "published": None}], "unavailable_sources": []})))
 
 
 class SpyJarvis:
@@ -80,6 +85,9 @@ class SpyJarvis:
 
     def get_tree(self):
         return []
+
+    def daily_briefing(self):
+        return "Guten Abend, Sir. Testbriefing."
 
     def get_active(self):
         return {"project_id": None, "conversation_id": None}

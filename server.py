@@ -25,6 +25,10 @@ Dinge:
        POST /api/ringing/stop ->  ausschalten oder schlummern, auch waehrend Jarvis antwortet
        GET  /api/system      ->  PC-Fakten fuer das Widget "PC Facts" (Step 2.8, lokal gelesen)
        GET  /api/performance ->  CPU, RAM, Laufwerk, Akku, Netzwerk fuer das Widget "Performance"
+       GET  /api/reminders   ->  {"reminders": [{"id", "text", "due", "repeat"}]}  (naechste Erinnerungen, nur lesen; Willkommensseite)
+       GET  /api/news        ->  {"items": [{"title", "source", "summary", "url", "published"}]}  (Schlagzeilen, nur lesen; Willkommensseite)
+       GET  /api/briefing    ->  {"text": "..."}  (Tagesbriefing zum Lesen, ohne den Tagesmerker zu setzen; Willkommensseite)
+       POST /api/media {"action": "play_pause"|"next"|"previous"}  ->  Medientaste (nur am PC); POST /api/volume {"percent": 0-100}  (nur am PC)
        GET  /api/timers      ->  {"timers": [{"id", "name", "seconds", "remaining"}]}  (laufende Timer, Step 6b)
        POST /api/speak {"text": "..."}  ->  audio/mpeg  (Sprachausgabe mit der eingestellten Stimme, Step 6b)
        POST /api/timer/cancel {"id": 3}  ->  {"cancelled": true|false}  (einen Timer abbrechen)
@@ -74,7 +78,7 @@ import profiles as profile_module
 import remote_policy
 import ringing
 import widgets
-from tools import news_tool, system_status_tool, weather_tool
+from tools import media_tool, news_tool, system_status_tool, volume_tool, weather_tool
 from config import REMOTE_HOST, SERVER_HOST, SERVER_PORT, VERSION
 from memory import MAX_VALUE_LENGTH, VALID_TYPES
 from personality import get_address, is_valid_address
@@ -1093,6 +1097,36 @@ class JarvisHandler(BaseHTTPRequestHandler):
                     summary = None
             return self.send_json(200, {"summary": summary})
 
+        # Willkommensseite: Erinnerungen, Schlagzeilen und Tagesbriefing nur lesen. Ist die Faehigkeit aus, kommt "disabled".
+        if path == "/api/reminders":
+            if not abilities.task_enabled("LIST_REMINDERS", self.server.jarvis.settings_manager):
+                return self.send_json(200, {"reminders": [], "disabled": True})
+            store = reminders.default_store()
+            items = sorted(store.list(), key=lambda r: r["due"])[:10]
+            return self.send_json(200, {"reminders": [
+                {"id": r["id"], "text": r["text"], "due": r["due"], "repeat": store.repeat_info(r).get("repeat")} for r in items]})
+
+        if path == "/api/news":
+            if not abilities.task_enabled("GET_NEWS", self.server.jarvis.settings_manager):
+                return self.send_json(200, {"items": [], "disabled": True})
+            result = news_tool.default_service().get_news("alle", "", 8)
+            if not result.success:
+                return self.send_json(502, {"error": result.error or "Die News sind gerade nicht abrufbar."})
+            return self.send_json(200, {"items": [
+                {"title": i["title"], "source": i["source"], "summary": (i.get("summary") or "")[:300], "url": i["url"], "published": i["published"]}
+                for i in result.data["items"]]})
+
+        if path == "/api/briefing":
+            if not abilities.task_enabled("GET_BRIEFING", self.server.jarvis.settings_manager):
+                return self.send_json(200, {"text": None, "disabled": True})
+            try:
+                return self.send_json(200, {"text": self.server.jarvis.daily_briefing()})
+            except ConnectionError:
+                raise            # Browser hat aufgelegt: kein Fehler von Jarvis
+            except Exception:
+                traceback.print_exc()
+                return self.send_json(502, {"error": "Das Briefing konnte nicht erstellt werden."})
+
         if path == "/api/memories":
             try:
                 return self.send_json(200, memories_state(self.server.jarvis))
@@ -1312,6 +1346,25 @@ class JarvisHandler(BaseHTTPRequestHandler):
                     reply = ringing.stop_message(stopped, address, ringer) if stopped else ""
                 return self.send_json(200, {"stopped": [r["label"] for r in stopped], "reply": reply, "state": ringer.state()})
 
+            # Willkommensseite: Medientaste und Lautstaerke (nur am PC; ueber Remote sind diese Adressen gesperrt)
+            if path == "/api/media":
+                if not abilities.task_enabled("MEDIA_CONTROL", self.server.jarvis.settings_manager):
+                    return self.send_json(403, {"error": "Die Musiksteuerung ist in den Einstellungen aus."})
+                result = media_tool.media_control(data.get("action"))
+                if not result.success:
+                    return self.send_json(400, {"error": result.error})
+                return self.send_json(200, result.data)
+            if path == "/api/volume":
+                if not abilities.task_enabled("SET_VOLUME", self.server.jarvis.settings_manager):
+                    return self.send_json(403, {"error": "Die Lautstärke-Steuerung ist in den Einstellungen aus."})
+                percent = data.get("percent")
+                if isinstance(percent, bool) or not isinstance(percent, int):
+                    return self.send_json(400, {"error": "Die Lautstärke muss eine ganze Zahl sein."})
+                result = volume_tool.set_volume(percent)
+                if not result.success:
+                    return self.send_json(400, {"error": result.error})
+                return self.send_json(200, {"percent": percent})
+
             # Timer abbrechen: harmlos und soll auch gehen, waehrend Jarvis antwortet
             if path == "/api/timer/cancel":
                 timer_id = data.get("id")
@@ -1337,7 +1390,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
     def send_static(self, url_path, status=200):
         if url_path == "/":
-            url_path = "/index.html"
+            # Besitzer sieht zuerst die Willkommensseite (Klick auf den Kern fuehrt zu /index.html). Der Gastmodus startet direkt in der App.
+            url_path = "/index.html" if self.server.guest else "/welcome.html"
 
         # Nur Dateien innerhalb von web/ ausliefern (kein "../")
         target = (WEB_DIR / url_path.lstrip("/")).resolve()

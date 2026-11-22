@@ -128,6 +128,11 @@ assert server.JarvisServer.request_queue_size >= 64
 # 1) Statische Dateien
 status, ctype, data = request("GET", "/")
 assert status == 200 and "text/html" in ctype and b"J.A.R.V.I.S." in data
+assert b'id="start"' in data and b'href="index.html"' in data          # "/" ist die Willkommensseite ...
+status, ctype, data = request("GET", "/index.html")
+assert status == 200 and b'id="new-conversation"' in data               # ... und die App liegt unter /index.html
+for name in ("/welcome.css", "/welcome.js", "/welcome_logic.js", "/welcome_panels.js", "/welcome_dialogs.js"):
+    assert request("GET", name)[0] == 200, name
 assert request("GET", "/style.css")[0] == 200
 status, ctype, _ = request("GET", "/app_base.js")
 assert status == 200 and "javascript" in ctype
