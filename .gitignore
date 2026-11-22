@@ -54,3 +54,14 @@ remote_devices.json
 remote_devices.json.defekt
 profiles/
 profiles.json
+
+# Installer-Ausgabe (Mark 5)
+installer/output/
+hints_state.json
+
+# Lokaler Hinweis-Zustand
+hints_state.json
+
+# Alte lokale Projektdaten
+projects_alt/
+
