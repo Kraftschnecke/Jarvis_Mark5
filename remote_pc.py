@@ -6,7 +6,7 @@ automatischen PC-Warnungen fragen dann den PC. Der Agent liefert nur Messwerte; 
 ``device_hub.DeviceOffline`` ("Der PC ist gerade nicht erreichbar.").
 """
 from tools import pc_health
-from tools import system_status_tool
+from tools import media_tool, system_status_tool, volume_tool
 
 
 class RemoteMonitor:
@@ -52,6 +52,8 @@ def install(server):
     system_status_tool.set_remote(pc)
     system_status_tool.set_default_monitor(pc.monitor)
     pc_health.set_default_health(pc.health)
+    volume_tool.set_remote(server.hub)
+    media_tool.set_remote(server.hub)
     server.monitor = pc.monitor
     server.health = pc.health
     return pc

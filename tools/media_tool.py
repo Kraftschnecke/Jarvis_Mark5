@@ -55,6 +55,15 @@ def _press(virtual_key):
     user32.keybd_event(virtual_key, 0, KEYEVENTF_KEYUP, 0)
 
 
+_remote = None
+
+
+def set_remote(hub):
+    """Server-Betrieb (S6): die Medientaste wird am PC-Agent gedrueckt (Auftrag "media.key"); None = dieser Rechner."""
+    global _remote
+    _remote = hub
+
+
 def media_control(command):
     name = normalize_command(command)
 
@@ -64,15 +73,21 @@ def media_control(command):
             error="Das verstehe ich nicht als Musikbefehl. Möglich sind: abspielen/pausieren, nächster Titel, vorheriger Titel."
         )
 
-    if not sys.platform.startswith("win"):
-        return ToolResult(success=False, error="Die Musiksteuerung funktioniert nur unter Windows.")
-
     key, description = COMMANDS[name]
 
-    try:
-        _press(key)
-    except Exception as error:
-        return ToolResult(success=False, error=f"Die Medientaste ließ sich nicht senden: {error}")
+    if _remote is not None:
+        import device_hub
+        try:
+            _remote.request("media.key", {"action": name})
+        except device_hub.DeviceError as error:
+            return ToolResult(success=False, error=str(error))
+    else:
+        if not sys.platform.startswith("win"):
+            return ToolResult(success=False, error="Die Musiksteuerung funktioniert nur unter Windows.")
+        try:
+            _press(key)
+        except Exception as error:
+            return ToolResult(success=False, error=f"Die Medientaste ließ sich nicht senden: {error}")
 
     data = {"command": name, "done": description}
     if name == "play_pause":

@@ -77,7 +77,23 @@ def default_handlers():
             state.update(sst=system_status_tool, monitor=monitor, health=pc_health.PcHealth(monitor=monitor))
         return state
 
+    def volume_set(args):
+        from tools import volume_tool
+        result = volume_tool.set_volume(args["percent"])
+        if not result.success:
+            raise RuntimeError("volume")                 # Text bleibt auf dem PC: der Server nimmt keinen Fehlertext vom Agenten an
+        return {"percent": args["percent"]}
+
+    def media_key(args):
+        from tools import media_tool
+        result = media_tool.media_control(args["action"])
+        if not result.success:
+            raise RuntimeError("media")
+        return {"command": args["action"]}
+
     return {
+        "volume.set": volume_set,
+        "media.key": media_key,
         "ping": handle_ping,
         "pc.facts": lambda args: tools()["sst"].facts(),
         "pc.performance": lambda args: tools()["monitor"].sample(fresh_cpu=args["fresh"]),

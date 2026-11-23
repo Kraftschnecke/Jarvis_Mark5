@@ -115,6 +115,40 @@ def _performance_args(args):
     return {"fresh": args["fresh"]}
 
 
+MEDIA_ACTIONS = ("play_pause", "next", "previous")
+
+
+def _volume_args(args):
+    """{"percent": 0-100} (ganze Zahl)."""
+    if not isinstance(args, dict) or set(args) != {"percent"}:
+        raise CommandError("Falsche Parameter.")
+    percent = args["percent"]
+    if isinstance(percent, bool) or not isinstance(percent, int) or not 0 <= percent <= 100:
+        raise CommandError("Die Lautstärke muss eine ganze Zahl von 0 bis 100 sein.")
+    return {"percent": percent}
+
+
+def _media_args(args):
+    """{"action": "play_pause" | "next" | "previous"} - genau diese drei, keine Taste sonst."""
+    if not isinstance(args, dict) or set(args) != {"action"} or args["action"] not in MEDIA_ACTIONS:
+        raise CommandError("Falsche Parameter.")
+    return {"action": args["action"]}
+
+
+def _percent(value):
+    value = INT(value)
+    if not 0 <= value <= 100:
+        raise CommandError(BAD)
+    return value
+
+
+def _media_result(data):
+    data = DICT(command=STR(20))(data)
+    if data["command"] not in MEDIA_ACTIONS:
+        raise CommandError(BAD)
+    return data
+
+
 # Auftrag -> (Parameter pruefen, Ergebnis pruefen). Neue Auftraege kommen als neue Zeilen, auf beiden Seiten.
 COMMANDS = {
     "ping": (_no_args, _ping_result),
@@ -122,6 +156,8 @@ COMMANDS = {
     "pc.performance": (_performance_args, NOW),
     "pc.top": (_no_args, TOP),
     "pc.snapshot": (_no_args, SNAPSHOT),
+    "volume.set": (_volume_args, DICT(percent=_percent)),
+    "media.key": (_media_args, _media_result),
 }
 
 # Wie lange der Server auf ein Ergebnis wartet (Sekunden); der Rest nimmt DEFAULT_TIMEOUT. Die PC-Lage misst Programme und Laufwerke und braucht laenger.

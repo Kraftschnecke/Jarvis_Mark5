@@ -1,6 +1,15 @@
 from tools.tool_result import ToolResult
 
 
+_remote = None
+
+
+def set_remote(hub):
+    """Server-Betrieb (S6): die Lautstaerke wird am PC-Agent gesetzt (Auftrag "volume.set"); None = dieser Rechner."""
+    global _remote
+    _remote = hub
+
+
 def set_volume(percentage):
     try:
         value = float(percentage)
@@ -10,11 +19,19 @@ def set_volume(percentage):
             error="Die Lautstaerke muss eine Zahl sein."
         )
 
-    if not 0 <= value <= 100:
+    if not 0 <= value <= 100:      # auch nan faellt hier durch
         return ToolResult(
             success=False,
             error="Die Lautstaerke muss zwischen 0 und 100 Prozent liegen."
         )
+
+    if _remote is not None:
+        import device_hub
+        try:
+            _remote.request("volume.set", {"percent": int(round(value))})
+        except device_hub.DeviceError as error:
+            return ToolResult(success=False, error=str(error))
+        return ToolResult(success=True, data=percentage)
 
     com_started = False
     try:
