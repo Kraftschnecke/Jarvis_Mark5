@@ -268,7 +268,7 @@ def remote_panel_state(gate, now=None):
     }
 
 
-def remote_admin_post(gate, path, data):
+def remote_admin_post(gate, path, data, own_id=None):
     """Remote-Verwaltung am PC: Koppel-Link erzeugen, Geraete sperren oder entfernen. Gibt (Status, Antwort) zurueck."""
     if gate is None:
         return 404, {"error": "Remote ist nicht eingerichtet."}
@@ -305,7 +305,7 @@ def remote_admin_post(gate, path, data):
         }
 
     if path == "/api/remote/revoke_all":
-        count = gate.store.revoke_all()
+        count = gate.store.revoke_all(keep=own_id)          # das Geraet, an dem du sitzt, bleibt (sonst sperrst du dich aus)
         return 200, {"revoked": count, "state": remote_panel_state(gate)}
 
     if path in PROFILE_PATHS:
@@ -315,6 +315,9 @@ def remote_admin_post(gate, path, data):
 
     if not isinstance(device_id, str) or not device_id or len(device_id) > 64:
         return 400, {"error": "Ungültige Anfrage"}
+
+    if own_id is not None and device_id == own_id and path in ("/api/remote/revoke", "/api/remote/forget"):
+        return 400, {"error": "Das ist dieses Gerät. Sperrst oder entfernst du es, bist du ausgesperrt."}
 
     actions = {"/api/remote/revoke": gate.store.revoke, "/api/remote/restore": gate.store.restore, "/api/remote/forget": gate.store.forget}
     done = actions[path](device_id)
@@ -886,6 +889,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
         Cookie, Origin und Remote-Name sind vorher schon geprueft. Die Antwort traegt weiter die Schutz-Kopfzeilen des Remote-Namens."""
         self.kind = "local"
         self.via_remote = True
+        self.own_device_id = self.device["id"]     # dieses Geraet darf sich nicht selbst sperren (remote_admin_post)
         self.device = None                  # kein "Handy": Nachrichten, Notizen usw. laufen wie am PC
         return False
 
@@ -1037,6 +1041,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
         self.kind = self.request_kind()
         self.device = None
         self.via_remote = False
+        self.own_device_id = None
 
         if self.kind is None:
             return self.send_json(403, {"error": "Host nicht erlaubt"})
@@ -1235,6 +1240,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
         self.kind = self.request_kind()
         self.device = None
         self.via_remote = False
+        self.own_device_id = None
 
         if self.kind is None or not self.origin_allowed():
             return self.send_json(403, {"error": "Nicht erlaubt"})
@@ -1351,7 +1357,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
             # Remote-Verwaltung (R4): nur am PC (das Handy hat diese Adressen nicht), lokal, ohne message_lock
             if path in ("/api/remote/pair_link", "/api/remote/revoke", "/api/remote/restore", "/api/remote/revoke_all", "/api/remote/forget") \
                     or path in PROFILE_PATHS:
-                status, body = remote_admin_post(self.server.remote, path, data)
+                status, body = remote_admin_post(self.server.remote, path, data, own_id=getattr(self, "own_device_id", None))
                 return self.send_json(status, body)
 
             # Freigegebene Ordner pflegen (Step 2.14): nur hier, nie per Chat; lokal, ohne message_lock

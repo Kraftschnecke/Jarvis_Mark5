@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# SQLite databases
+*.db
+
+# Environment / secrets
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local data of this machine (never commit)
+settings.json
+programs.json
+projects/
+.jarvis_app_profile/
+
+widgets.json
+widgets.tmp
+
+widgets.json
+widgets.tmp
+
+# Tageszaehler fuer Aufrufe (Step 1.4)
+usage.json
+usage_guest.json
+usage.tmp
+usage_guest.tmp
+
+# Erinnerungen (Mark 5, Step 2.9)
+reminders.json
+
+# Tag des letzten Start-Briefings (Mark 5, Step 2.12)
+briefing_state.json
+
+# Freigegebene Ordner (Mark 5, Step 2.14)
+folders.json
+
+#remote_devicess
+remote_devices.json
+remote_devices.json.defekt
+remote_pending_full.json
+profiles/
+profiles.json
+# Merkzettel der Warnungen (aendert sich laufend, gehoert nicht in git)
+hints_state.json

@@ -333,11 +333,12 @@ class DeviceStore:
                 self._save()
             return removed
 
-    def revoke_all(self):
+    def revoke_all(self, keep=None):
+        """Sperrt alle Geraete; das mit der Id `keep` (das Geraet, an dem der Besitzer gerade sitzt) bleibt."""
         with self._lock:
             count = 0
             for device in self._devices:
-                if not device["revoked"]:
+                if not device["revoked"] and device["id"] != keep:
                     device["revoked"] = True
                     count += 1
             self._pending.clear()
