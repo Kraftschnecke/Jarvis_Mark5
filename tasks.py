@@ -260,7 +260,7 @@ def create_search_history_task():
 def create_goal_overview_task():
     task = Task(
         "GOAL_OVERVIEW",
-        "Die Tagesziele und Gewohnheiten des Nutzers ansehen: was ist heute offen oder erledigt, wie lang ist die Serie eines täglichen Ziels (Wie lange gehe ich schon ins Fitnessstudio? Wie laufen meine Ziele? Wie war meine Woche?). Nur ansehen; Ziele anlegen oder abhaken macht der Nutzer in der Seitenleiste"
+        "Die Tagesziele und Gewohnheiten des Nutzers ansehen: wie weit sind die Ziele, wie lang ist die Serie eines täglichen Ziels (Wie lange gehe ich schon ins Fitnessstudio? Wie laufen meine Ziele? Wie war meine Woche?). Nur wenn ausdrücklich nach Zielen, Gewohnheiten oder Serien gefragt wird, nicht bei der allgemeinen Frage nach dem Tag. Nur ansehen; Ziele anlegen oder abhaken macht der Nutzer in der Seitenleiste"
     )
     task.add_action(Action("goal_overview", {}))
     return task
@@ -881,7 +881,7 @@ def create_set_alarm_task():
 def create_get_briefing_task():
     task = Task(
         "GET_BRIEFING",
-        "Das Tagesbriefing geben: Datum, Termine, Erinnerungen, Wetter, Ziele, offene Timer und Schlagzeilen (Briefing, Guten-Morgen-Überblick, Was steht heute an?)"
+        "Das Tagesbriefing geben: Datum, Termine, Erinnerungen, Wetter, Ziele, offene Timer und Schlagzeilen (Briefing, Guten-Morgen-Überblick, Was steht heute an? Was steht bei mir an? Was habe ich heute vor? Was liegt heute an?). Das ist die richtige Wahl, wenn der Nutzer allgemein nach seinem Tag fragt und nicht gezielt nach Zielen, Terminen oder Erinnerungen"
     )
     task.add_action(Action("get_briefing"))
     return task

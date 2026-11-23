@@ -195,6 +195,7 @@ class Jarvis:
             now, get_address(),
             events=(lambda: widgets.default_store().events_on(today)) if on("LIST_CALENDAR_EVENTS") else None,
             reminder_items=(lambda: reminders.default_store().list()) if on("LIST_REMINDERS") else None,
+            alarm_items=(lambda: reminders.default_store().list("alarm")) if on("LIST_ALARMS") else None,
             weather=(lambda: weather_tool.default_service().summary()) if on("GET_WEATHER") else None,
             goals=lambda: widgets.default_store().get()["goals"],
             timers=(lambda: timer_module.list_timers()) if on("LIST_TIMERS") else None,

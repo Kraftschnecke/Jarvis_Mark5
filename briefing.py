@@ -68,6 +68,17 @@ def reminders_sentence(items, today):
     return "Erinnerungen für heute: " + ", ".join(parts) + _more(len(parts), len(todays)) + "."
 
 
+def alarms_sentence(items, today):
+    """Wecker, die heute noch klingeln: [{"text", "due"}] (``due`` ist das naechste Klingeln)."""
+    todays = sorted((r for r in items if r["due"][:10] == today), key=lambda r: r["due"])
+    if not todays:
+        return None
+    parts = [f"um {r['due'][11:16]}" + ("" if _short(r["text"]) in ("", "Wecker") else f" {_short(r['text'])}")
+             for r in todays[:MAX_ITEMS]]
+    head = "Ein Wecker klingelt heute: " if len(todays) == 1 else "Wecker für heute: "
+    return head + ", ".join(parts) + _more(len(parts), len(todays)) + "."
+
+
 def goals_sentence(goals):
     """Ziele von heute: [{"text", "done"}]. Ohne Ziele kein Satz."""
     goals = [g for g in goals if isinstance(g, dict) and str(g.get("text", "")).strip()]
@@ -136,13 +147,14 @@ def news_sentence(items):
     return "Schlagzeilen: " + "; ".join(lines) + "."
 
 
-def build_briefing(now, address, events=None, reminder_items=None, weather=None, goals=None, timers=None, news=None):
+def build_briefing(now, address, events=None, reminder_items=None, weather=None, goals=None, timers=None, news=None, alarm_items=None):
     """Der gesprochene Text. Alle Quellen sind Funktionen (oder None = auslassen)."""
     today = now.strftime("%Y-%m-%d")
     parts = [f"{greeting(now.hour)}, {address}. Es ist {now.strftime('%H:%M')} Uhr, "
              f"{WEEKDAYS[now.weekday()]}, der {now.day}. {MONTHS[now.month - 1]}."]
     sources = ((events, lambda data: events_sentence(data)),
                (reminder_items, lambda data: reminders_sentence(data, today)),
+               (alarm_items, lambda data: alarms_sentence(data, today)),
                (weather, lambda data: data),
                (goals, goals_sentence),
                (timers, timers_sentence),
