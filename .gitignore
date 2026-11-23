@@ -57,3 +57,6 @@ profiles/
 profiles.json
 # Merkzettel der Warnungen (aendert sich laufend, gehoert nicht in git)
 hints_state.json
+
+# PC-Agent: Adresse und Token (nie committen)
+agent_config.json

@@ -93,6 +93,14 @@ assert "console.log" not in panel
 for cls in ("remote-panel", "remote-status", "remote-device-name", "remote-link", "remote-profiles", "remote-profile", "remote-limit"):
     assert "." + cls in css, cls
 
+# 3b) PC-Agent (S6): Status und Verbindungstest nutzen echte Adressen des Servers, nur textContent, Test-Knopf nur bei verbundenem Agent
+assert '"/api/agent/status"' in panel and '"/api/agent/ping"' in panel
+server_text = (PROJECT_DIR / "server.py").read_text(encoding="utf-8")
+assert '"/api/agent/status"' in server_text and '"/api/agent/ping"' in server_text
+assert "if (info.active) box.appendChild(buildAgentLine());" in panel
+assert "if (state.online === true) {\n        line.appendChild(smallButton(\"Verbindung testen\"" in panel
+assert "admin.agentView(state)" in panel and "(PC-Agent)" in panel
+
 # 4) remote_admin.js im Test mit Node
 node = shutil.which("node")
 if node:

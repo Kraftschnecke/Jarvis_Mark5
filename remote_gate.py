@@ -83,7 +83,15 @@ class RemoteGate:
         except CookieError:
             return None
         morsel = jar.get(COOKIE_NAME)
-        return self.store.authenticate(morsel.value) if morsel else None
+        device = self.store.authenticate(morsel.value) if morsel else None
+        return None if device is not None and device.get("agent") else device      # das Token eines Agents ist nie ein Browser-Zugang
+
+    def agent_from_header(self, authorization):
+        """Das Agent-Geraet zu "Authorization: Bearer <Token>", sonst None (kein Agent, gesperrt, falsches Token)."""
+        if not isinstance(authorization, str) or not authorization.startswith("Bearer ") or len(authorization) > 300:
+            return None
+        device = self.store.authenticate(authorization[7:].strip())
+        return device if device is not None and device.get("agent") else None
 
     # --- Cookie -------------------------------------------------------------
     @staticmethod

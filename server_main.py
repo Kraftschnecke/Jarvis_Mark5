@@ -9,6 +9,9 @@ Aufruf:  python server_main.py [--port 8000]
          python server_main.py --pair-owner "PC Moritz"
                                                Kopplungslink fuer ein Geraet mit Vollzugriff (wie am PC). Nur hier im Server-Terminal
                                                moeglich, nie ueber die Weboberflaeche. 5 Minuten gueltig, einmal benutzbar.
+         python server_main.py --pair-agent "PC Moritz"
+                                               Code fuer den PC-Agent (DESIGN_GERAET.md): Der Agent auf dem PC loest ihn mit
+                                               ``python pc_agent.py --pair CODE --server https://...`` ein. 5 Minuten, einmal benutzbar.
 """
 import sys
 
@@ -52,6 +55,29 @@ def pair_owner(argv, store=None, host=None):
     return 0
 
 
+def pair_agent(argv, store=None, host=None):
+    """Kopplungscode fuer den PC-Agent. 0 = Code ausgegeben, 1 = nicht moeglich."""
+    import config
+    host = config.REMOTE_HOST if host is None else host
+    if not host:
+        print("JARVIS_REMOTE_HOST fehlt in der .env (der Tailscale-Name dieses Servers, z. B. jarvis.tailabc.ts.net).")
+        return 1
+    index = argv.index("--pair-agent")
+    name = argv[index + 1] if index + 1 < len(argv) and not argv[index + 1].startswith("--") else "PC"
+    if store is None:
+        import remote_auth
+        store = remote_auth.DeviceStore()
+    try:
+        pairing = store.create_pairing(name, agent=True)
+    except OSError as error:
+        print(f"Der Code konnte nicht gespeichert werden ({type(error).__name__}).")
+        return 1
+    print(f"Kopplung fuer den PC-Agent \"{pairing['name']}\" (5 Minuten gueltig, nur einmal benutzbar). Auf dem PC im Jarvis-Ordner eingeben:")
+    print(f"  py pc_agent.py --pair {pairing['code']} --server https://{host}")
+    print("Der Server muss dafuer laufen, Tailscale auf dem PC auch.")
+    return 0
+
+
 def enable_remote(httpd):
     """Im Server-Betrieb ist Remote (Zugang ueber Tailscale) der einzige Weg zur Oberflaeche: einschalten, wenn der Name eingetragen ist."""
     gate = httpd.remote
@@ -68,6 +94,8 @@ def run(argv=None, notifier=None):
         return test_push(notifier)
     if "--pair-owner" in argv:
         return pair_owner(argv)
+    if "--pair-agent" in argv:
+        return pair_agent(argv)
     holder = {}
 
     def on_ready(httpd):

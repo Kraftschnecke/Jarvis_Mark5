@@ -69,6 +69,8 @@ from urllib.parse import parse_qs, urlparse
 import abilities
 import action_log
 import calendar_sync
+import device_commands
+import device_hub
 import device_page
 import speech
 import tester as tester_module
@@ -232,6 +234,23 @@ def sidebar_state(jarvis, **extra):
     return state
 
 
+def agent_status(srv):
+    """Ist der PC-Agent verbunden (S6)? {"online", "name"}; ohne Remote gibt es keinen Agent."""
+    gate = srv.remote
+    device_id = srv.hub.online_device() if gate is not None else None
+    name = next((d["name"] for d in gate.store.devices() if d["id"] == device_id), "") if device_id else ""
+    return {"online": device_id is not None, "name": name}
+
+
+def agent_ping(srv):
+    """Verbindungstest: ein "ping" an den PC-Agent. Immer 200; bei Fehlern steht der Grund in "error"."""
+    try:
+        result = srv.hub.request("ping")
+    except (device_hub.DeviceOffline, device_hub.DeviceTimeout, device_hub.DeviceFailed) as error:
+        return {"ok": False, "error": str(error)}
+    return {"ok": True, "result": result}
+
+
 def remote_panel_state(gate, now=None):
     """Die Remote-Verwaltung am PC (R4): was die Einstellungsseite zeigt. Nie Hashes oder Codes."""
     now = time.time() if now is None else now
@@ -247,7 +266,8 @@ def remote_panel_state(gate, now=None):
     devices = [
         {"id": d["id"], "name": d["name"], "created": d["created"], "last_seen": d["last_seen"],
          "revoked": bool(d["revoked"]), "expired": d["expires"] <= now,
-         "profile": d["profile"], "profile_name": names.get(d["profile"], "") if d["profile"] != OWNER else ""}
+         "profile": d["profile"], "profile_name": names.get(d["profile"], "") if d["profile"] != OWNER else "",
+         "agent": bool(d.get("agent"))}
         for d in all_devices
     ]
     profile_list = [
@@ -626,8 +646,9 @@ class JarvisServer(ThreadingHTTPServer):
     # kurz hintereinander: auf Windows kann sonst eine Verbindung ins Leere laufen.
     request_queue_size = 128
 
-    def __init__(self, address, jarvis, guest=False, widget_store=None, hockey=None, weather=None, monitor=None, remote=None, health=None):
+    def __init__(self, address, jarvis, guest=False, widget_store=None, hockey=None, weather=None, monitor=None, remote=None, health=None, hub=None):
         super().__init__(address, JarvisHandler)
+        self.hub = hub or device_hub.DeviceHub()      # Warteschlange zum PC-Agent (S6)
         self.jarvis = jarvis
         self.guest = guest
         self.remote = remote          # Pforte fuer Zugriff vom Handy (remote_gate.py), None = Remote gibt es nicht
@@ -1037,6 +1058,58 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
     # --- Anfragen -------------------------------------------------------
 
+    def agent_post(self, path, raw, length):
+        """Adressen des PC-Agents (S6): /agent/pair (Kopplung), /agent/next (Auftrag holen), /agent/result (Ergebnis abgeben).
+
+        Nie aus einem Browser: Ein Origin-Kopf ist verboten (Browser senden ihn bei fremden Seiten immer), das Token steht im Authorization-Kopf
+        und nie in einem Cookie. Ein Agent-Token oeffnet nichts anderes als diese drei Adressen."""
+        if self.headers.get("Origin") is not None:
+            return self.send_json(403, {"error": "Nicht erlaubt"})
+
+        gate = self.server.remote
+
+        if gate is None or path not in ("/agent/pair", "/agent/next", "/agent/result"):
+            return self.send_json(404, {"error": "Unbekannte Adresse"})
+
+        if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+            return self.send_json(415, {"error": "Nur application/json"})
+
+        if length <= 0 or length > MAX_BODY_BYTES:
+            return self.send_json(400, {"error": "Ungueltige Laenge"})
+
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except ValueError:
+            return self.send_json(400, {"error": "Ungueltige Anfrage"})
+
+        if not isinstance(data, dict):
+            return self.send_json(400, {"error": "Ungueltige Anfrage"})
+
+        if path == "/agent/pair":
+            code = data.get("code")
+            status, token, device = gate.store.redeem(code if isinstance(code, str) else None, "remote-pairing", kind="agent")
+            if status == "ok":
+                return self.send_json(200, {"token": token, "name": device["name"]})
+            if status == "locked":
+                return self.send_json(429, {"error": "Zu viele Versuche. Bitte später noch einmal."})
+            return self.send_json(400, {"error": "Der Code ist ungültig, abgelaufen oder schon benutzt."})
+
+        agent = gate.agent_from_header(self.headers.get("Authorization"))
+
+        if agent is None:
+            return self.send_json(401, {"error": "Nicht angemeldet."})
+
+        hub = self.server.hub
+
+        if path == "/agent/next":
+            wait = data.get("wait", 25)
+            if not isinstance(wait, (int, float)) or isinstance(wait, bool):
+                return self.send_json(400, {"error": "Ungueltige Anfrage"})
+            return self.send_json(200, {"job": hub.next_job(agent["id"], wait)})
+
+        accepted = hub.submit(agent["id"], data.get("id"), data.get("ok"), data.get("data"))
+        return self.send_json(200 if accepted else 404, {"ok": accepted})
+
     def do_GET(self):
         self.kind = self.request_kind()
         self.device = None
@@ -1048,6 +1121,9 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
         path = urlparse(self.path).path
 
+        if path.startswith("/agent/"):
+            return self.send_json(405, {"error": "Nur POST"})
+
         if self.kind == "remote" and self.remote_get(path):
             return
 
@@ -1056,6 +1132,9 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
         if path == "/api/timers":
             return self.send_json(200, {"timers": timer.list_timers()})
+
+        if path == "/api/agent/status":
+            return self.send_json(200, agent_status(self.server))
 
         if path == "/api/ringing":
             return self.send_json(200, ringing.default_ringer().state())
@@ -1242,10 +1321,13 @@ class JarvisHandler(BaseHTTPRequestHandler):
         self.via_remote = False
         self.own_device_id = None
 
+        path = urlparse(self.path).path
+
+        if self.kind is not None and path.startswith("/agent/"):
+            return self.agent_post(path, raw, length)          # PC-Agent: Token statt Cookie, kein Browser (S6)
+
         if self.kind is None or not self.origin_allowed():
             return self.send_json(403, {"error": "Nicht erlaubt"})
-
-        path = urlparse(self.path).path
 
         if not path.startswith("/api/"):
             return self.send_json(404, {"error": "Unbekannte Adresse"})
@@ -1413,6 +1495,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 if not result.success:
                     return self.send_json(400, {"error": result.error})
                 return self.send_json(200, result.data)
+            if path == "/api/agent/ping":
+                return self.send_json(200, agent_ping(self.server))
             if path == "/api/volume":
                 if not abilities.task_enabled("SET_VOLUME", self.server.jarvis.settings_manager):
                     return self.send_json(403, {"error": "Die Lautstärke-Steuerung ist in den Einstellungen aus."})

@@ -28,7 +28,15 @@
       label = "abgelaufen";
     }
     const area = device.profile && device.profile !== "owner" ? String(device.profile_name || "Gast") : "";
-    return { state, label, name: String(device.name), area, seen: "zuletzt " + agoText(device.last_seen, now), canRevoke: state === "active", canRestore: state === "revoked" };
+    return { state, label, name: String(device.name), area, seen: "zuletzt " + agoText(device.last_seen, now), canRevoke: state === "active", canRestore: state === "revoked", agent: device.agent === true };
+  }
+
+  // Der PC-Agent (S6): verbunden oder nicht, mit Hinweis zum Koppeln
+  function agentView(state) {
+    if (state && state.online === true) {
+      return { state: "active", text: "PC-Agent verbunden" + (state.name ? ": " + String(state.name) : "") };
+    }
+    return { state: "expired", text: "PC-Agent nicht verbunden. Koppeln im Server-Terminal: server_main.py --pair-agent \"PC Moritz\"" };
   }
 
   // Kopfzeile der Seite: was ist los mit Remote?
@@ -86,7 +94,7 @@
     return number <= 100000 ? number : null;
   }
 
-  const api = { agoText, deviceView, statusView, canPair, linkView, profileView, parseLimit, LINK_NOTE };
+  const api = { agoText, deviceView, agentView, statusView, canPair, linkView, profileView, parseLimit, LINK_NOTE };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.JarvisRemoteAdmin = api;
 })(typeof window !== "undefined" ? window : this);

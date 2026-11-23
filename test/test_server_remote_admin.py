@@ -195,7 +195,7 @@ cookie = headers["set-cookie"].split(";")[0]
 listed = state()
 assert listed["pending"] == 0 and [d["name"] for d in listed["devices"]] == ["iPhone Moritz"]
 device = listed["devices"][0]
-assert set(device) == {"id", "name", "created", "last_seen", "revoked", "expired", "profile", "profile_name"}
+assert set(device) == {"id", "name", "created", "last_seen", "revoked", "expired", "profile", "profile_name", "agent"}
 assert device["revoked"] is False and device["expired"] is False
 assert code not in json.dumps(listed) and cookie.split("=", 1)[1] not in json.dumps(listed)       # nie Code oder Token
 assert "hash" not in json.dumps(listed).lower()

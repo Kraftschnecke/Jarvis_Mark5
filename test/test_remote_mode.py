@@ -90,7 +90,7 @@ for path in ("/api/widgets", "/api/weather", "/api/timers", "/api/focus", "/api/
 # Alles, was die Seite im festen Takt oder beim Start fragt, ist entweder erlaubt oder in Remote abgeschaltet
 polled = set(re.findall(r'api\("GET", "(/api/[a-z_/]+)"', app))
 needs_switch_off = polled - remote_policy.GET_API
-assert needs_switch_off == {"/api/actions", "/api/folders", "/api/hockey", "/api/memories", "/api/performance", "/api/remote/state", "/api/system"}, needs_switch_off
+assert needs_switch_off == {"/api/actions", "/api/agent/status", "/api/folders", "/api/hockey", "/api/memories", "/api/performance", "/api/remote/state", "/api/system"}, needs_switch_off
 
 # 3b) Notizen am Handy: allgemein (alle Geraete) oder nur dieses Geraet; der PC zeigt die Handy-Notizen nur an
 notes_block = app.split("function renderNotes(section) {")[1].split("function renderGoals(section) {")[0]

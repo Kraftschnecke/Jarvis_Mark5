@@ -562,6 +562,25 @@ function buildRemotePanel() {
     return section;
   }
 
+  // Der PC-Agent (S6): verbunden oder nicht, dazu ein Verbindungstest
+  function buildAgentLine() {
+    const line = el("div", "folder-item remote-device");
+    const text = el("span", "remote-device-name", "PC-Agent: wird geprüft …");
+    line.appendChild(text);
+    api("GET", "/api/agent/status").then((state) => {
+      const view = admin.agentView(state);
+      text.textContent = view.text;
+      line.classList.add(view.state);
+      if (state.online === true) {
+        line.appendChild(smallButton("Verbindung testen", "secondary", async () => {
+          const data = await send("/api/agent/ping", {});
+          if (data) text.textContent = data.ok ? "PC-Agent antwortet: " + String(data.result.name) : "Test fehlgeschlagen: " + String(data.error);
+        }));
+      }
+    }).catch(() => { text.textContent = "PC-Agent: Status nicht lesbar."; });
+    return line;
+  }
+
   function render(info) {
     stopTimer();
     box.replaceChildren();
@@ -569,6 +588,7 @@ function buildRemotePanel() {
 
     const status = admin.statusView(info);
     box.appendChild(el("p", "remote-status " + status.tone, status.text));
+    if (info.active) box.appendChild(buildAgentLine());
 
     if (info.devices.length === 0) {
       box.appendChild(el("p", "memory-empty", "Noch kein Gerät gekoppelt."));
@@ -577,7 +597,7 @@ function buildRemotePanel() {
     info.devices.forEach((device) => {
       const view = admin.deviceView(device, now);
       const item = el("div", "folder-item remote-device " + view.state);
-      item.appendChild(el("span", "remote-device-name", view.area ? view.name + " (Gast: " + view.area + ")" : view.name));
+      item.appendChild(el("span", "remote-device-name", view.area ? view.name + " (Gast: " + view.area + ")" : view.agent ? view.name + " (PC-Agent)" : view.name));
       item.appendChild(el("span", "remote-device-state", view.label + " · " + view.seen));
       if (view.canRevoke) {
         item.appendChild(smallButton("Sperren", "secondary danger-text", async () => {

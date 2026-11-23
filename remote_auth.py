@@ -130,6 +130,8 @@ class DeviceStore:
                 })
                 # Vollzugriff nur fuer Geraete des Besitzers; Unsinn oder ein Gast-Geraet mit "full" in der Datei zaehlt nie
                 devices[-1]["full"] = item.get("full") is True and devices[-1]["profile"] == OWNER
+                # Agent (PC-Agent, DESIGN_GERAET.md): nur Besitzer, nie zugleich Vollzugriff; Unsinn in der Datei zaehlt nie
+                devices[-1]["agent"] = item.get("agent") is True and devices[-1]["profile"] == OWNER and not devices[-1]["full"]
         return devices
 
     def _set_aside_broken_file(self):
@@ -153,7 +155,7 @@ class DeviceStore:
             raise
 
     # --- Kopplung -------------------------------------------------------
-    def create_pairing(self, name, profile=OWNER, full=False):
+    def create_pairing(self, name, profile=OWNER, full=False, agent=False):
         """Neuer Kopplungscode fuer ein Geraet des Besitzers oder eines Gast-Bereichs. Gibt {"code", "expires", "name", "profile", "full"} zurueck.
 
         ``full=True`` (Vollzugriff wie am PC) gibt es nur fuer den Besitzer und wird nur vom Server-Terminal aus verlangt."""
@@ -161,6 +163,8 @@ class DeviceStore:
             raise ValueError("Ungültiger Bereich.")
         if full and profile != OWNER:
             raise ValueError("Vollzugriff gibt es nur für den Besitzer.")
+        if agent and (profile != OWNER or full):
+            raise ValueError("Ein Agent gehört dem Besitzer und hat keinen Vollzugriff.")
         with self._lock:
             now = self.clock()
             self._pending = {h: p for h, p in self._pending.items() if p["expires"] > now}
@@ -173,10 +177,10 @@ class DeviceStore:
             expires = now + PAIRING_TTL
             device_name = clean_device_name(name)
             code_hash = hash_token(normalize_code(code))
-            self._pending[code_hash] = {"name": device_name, "expires": expires, "profile": profile, "full": full}
-            if full:
-                self._write_full_pending(code_hash, {"name": device_name, "expires": expires})
-            return {"code": code, "expires": expires, "name": device_name, "profile": profile, "full": full}
+            self._pending[code_hash] = {"name": device_name, "expires": expires, "profile": profile, "full": full, "agent": agent}
+            if full or agent:
+                self._write_full_pending(code_hash, {"name": device_name, "expires": expires, "agent": agent})
+            return {"code": code, "expires": expires, "name": device_name, "profile": profile, "full": full, "agent": agent}
 
     # --- offene Kopplungen mit Vollzugriff in einer Datei (das Server-Terminal ist ein eigener Prozess) ---------
     def _full_pending_path(self):
@@ -192,7 +196,8 @@ class DeviceStore:
         for code_hash, entry in (data.items() if isinstance(data, dict) else []):
             if (isinstance(code_hash, str) and isinstance(entry, dict) and isinstance(entry.get("name"), str)
                     and isinstance(entry.get("expires"), (int, float)) and not isinstance(entry["expires"], bool) and entry["expires"] > now):
-                result[code_hash] = {"name": clean_device_name(entry["name"]), "expires": float(entry["expires"])}
+                result[code_hash] = {"name": clean_device_name(entry["name"]), "expires": float(entry["expires"]),
+                                     "agent": entry.get("agent") is True}
         return result
 
     def _store_full_pending(self, entries):
@@ -234,10 +239,11 @@ class DeviceStore:
             self._store_full_pending(entries)
         return entry
 
-    def redeem(self, code, source=""):
+    def redeem(self, code, source="", kind="browser"):
         """Tauscht einen Kopplungscode gegen ein Token. Gibt (status, token, geraet) zurueck.
 
         status: "ok", "invalid" (falsch, abgelaufen oder schon benutzt) oder "locked" (zu viele Fehlversuche).
+        ``kind``: "browser" (Handy/PC-Browser) oder "agent" (PC-Agent). Ein Code der anderen Art gilt als ungueltig (und ist dann verbraucht).
         """
         with self._lock:
             if self.guard.locked(source):
@@ -247,10 +253,12 @@ class DeviceStore:
             entry = self._pending.pop(hash_token(canonical), None) if canonical else None
             if entry is None and canonical:
                 found = self._take_full_pending(hash_token(canonical))         # im Server-Terminal erzeugt
-                entry = dict(found, profile=OWNER, full=True) if found is not None else None
-            elif entry is not None and entry.get("full"):
+                entry = (dict(found, profile=OWNER, full=found.get("agent") is not True) if found is not None else None)
+            elif entry is not None and (entry.get("full") or entry.get("agent")):
                 if self._take_full_pending(hash_token(canonical)) is None:     # die Datei-Kopie ist die Wahrheit: schon anderswo benutzt
                     entry = None
+            if entry is not None and (entry.get("agent") is True) != (kind == "agent"):
+                entry = None
             if entry is None or entry["expires"] <= now:
                 self.guard.failure(source)
                 return "invalid", None, None
@@ -259,7 +267,7 @@ class DeviceStore:
             token = f"{device_id}.{self.secret_factory(32)}"
             device = {"id": device_id, "name": entry["name"], "token_hash": hash_token(token), "created": now,
                       "last_seen": now, "expires": now + TOKEN_LIFETIME, "revoked": False, "profile": entry["profile"],
-                      "full": entry.get("full") is True}
+                      "full": entry.get("full") is True, "agent": entry.get("agent") is True}
             self._devices.append(device)
             try:
                 self._save()
@@ -404,4 +412,4 @@ def _number(value):
 
 def _public(device):
     """Ohne Hash: das ist alles, was die Seite je zu sehen bekommt."""
-    return {key: device[key] for key in ("id", "name", "created", "last_seen", "expires", "revoked", "profile", "full")}
+    return {key: device[key] for key in ("id", "name", "created", "last_seen", "expires", "revoked", "profile", "full", "agent")}
