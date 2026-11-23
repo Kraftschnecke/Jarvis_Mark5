@@ -122,7 +122,7 @@ weather_tool.set_default_service(FakeWeather())
 j = object.__new__(jarvis_module.Jarvis)
 j.settings_manager = SettingsManager(folder / "j.json")
 m = j.settings_manager
-assert m.get_all()["hints"] == {"appointments": False, "appointment_minutes": 30, "weather": False, "weather_hour": 19}
+assert m.get_all()["hints"] == {"appointments": False, "appointment_minutes": 30, "weather": False, "weather_hour": 19, "pc": False}
 assert j.proactive_hints() == [] and FakeWeather.calls == 0, "alles aus per Voreinstellung"
 
 m.set("hints", "appointments", True)
@@ -194,15 +194,124 @@ cal.get = lambda: (_ for _ in ()).throw(RuntimeError("kaputt"))
 clock[0] = datetime(2026, 11, 11, 19, 30)
 assert [h["kind"] for h in j.proactive_hints()] == ["weather"], "kaputter Kalender: Wetter kommt trotzdem"
 
+
+# 4b) Kritische PC-Probleme (reine Funktion pc_hints): nur "bad", bei Dauer erst nach der Wartezeit, Luecken starten neu
+from datetime import timedelta
+from tools import pc_health
+
+
+def bad(fid, sustained=False, text="Text", tip="Tipp", level="bad"):
+    return {"id": fid, "level": level, "sustained": sustained, "short": "kurz", "text": text, "tip": tip}
+
+
+t0 = datetime(2026, 11, 20, 12, 0)
+state = {}
+assessment = {"level": "bad", "findings": [bad("health:D", text="Das Laufwerk D: meldet „Warning“.", tip="Mach ein Backup."), bad("ram", True), bad("cpu", True),
+                                          bad("battery", level="warn"), bad("uptime", level="tip")]}
+res = hints.pc_hints(assessment, state, t0)
+assert res == [{"id": "pc:health:D", "kind": "pc", "text": "PC-Warnung: Das Laufwerk D: meldet „Warning“. Mach ein Backup."}], res
+assert hints.pc_hints(assessment, state, t0 + timedelta(minutes=1)) == [res[0]], "ohne HintLog kommt es jedes Mal: das 'nur einmal' merkt sich das HintLog"
+for minute in (2, 3, 4):                                                                          # alle 1-2 Minuten geprueft (kleiner als die Luecke)
+    now = t0 + timedelta(minutes=minute)
+    assert [h["id"] for h in hints.pc_hints(assessment, state, now)] == ["pc:health:D"], minute
+now = t0 + timedelta(minutes=5)
+assert [h["id"] for h in hints.pc_hints(assessment, state, now)] == ["pc:health:D", "pc:ram"], "RAM nach 5 Minuten"
+for minute in (6, 7, 8, 9):
+    assert "pc:cpu" not in [h["id"] for h in hints.pc_hints(assessment, state, t0 + timedelta(minutes=minute))], minute
+assert [h["id"] for h in hints.pc_hints(assessment, state, t0 + timedelta(minutes=10))] == ["pc:health:D", "pc:ram", "pc:cpu"], "CPU nach 10 Minuten"
+# verschwindet das Problem, beginnt die Zeit neu
+calm = {"level": "ok", "findings": []}
+assert hints.pc_hints(calm, state, t0 + timedelta(minutes=11)) == [] and state["since"] == {}
+assert [h["id"] for h in hints.pc_hints(assessment, state, t0 + timedelta(minutes=12))] == ["pc:health:D"], "RAM beginnt wieder bei null"
+# Luecke groesser als drei Minuten (Seite war zu): auch ein altes Dauerproblem beginnt neu
+state2 = {}
+ram_only = {"findings": [bad("ram", True)]}
+assert hints.pc_hints(ram_only, state2, t0) == []
+assert hints.pc_hints(ram_only, state2, t0 + timedelta(minutes=2)) == []
+assert [h["id"] for h in hints.pc_hints(ram_only, state2, t0 + timedelta(minutes=5))] == ["pc:ram"], "genau drei Minuten Luecke ist noch erlaubt"
+state2b = {}
+assert hints.pc_hints(ram_only, state2b, t0) == [] and hints.pc_hints(ram_only, state2b, t0 + timedelta(minutes=2)) == []
+assert hints.pc_hints(ram_only, state2b, t0 + timedelta(minutes=5, seconds=1)) == [], "drei Minuten und eine Sekunde Luecke: neu beginnen"
+state3 = {}
+assert hints.pc_hints({"findings": [bad("ram", True)]}, state3, t0) == []
+assert hints.pc_hints({"findings": [bad("ram", True)]}, state3, t0 + timedelta(hours=3)) == [], "nach langer Pause nicht sofort melden"
+assert [h["id"] for h in hints.pc_hints({"findings": [bad("ram", True)]}, state3, t0 + timedelta(hours=3, minutes=2))] == []
+assert [h["id"] for h in hints.pc_hints({"findings": [bad("ram", True)]}, state3, t0 + timedelta(hours=3, minutes=5))] == ["pc:ram"]
+# unbekannte Dauerprobleme warten fuenf Minuten; Unsinn stoert nicht; Text wird bereinigt und gekuerzt
+state4 = {}
+assert hints.pc_hints({"findings": [bad("busy:D", True)]}, state4, t0) == []
+assert [h["id"] for h in hints.pc_hints({"findings": [bad("busy:D", True)]}, state4, t0 + timedelta(minutes=2))] == []
+assert [h["id"] for h in hints.pc_hints({"findings": [bad("busy:D", True)]}, state4, t0 + timedelta(minutes=4))] == []
+assert [h["id"] for h in hints.pc_hints({"findings": [bad("busy:D", True)]}, state4, t0 + timedelta(minutes=5))] == ["pc:busy:D"]
+for junk in (None, [], "x", {}, {"findings": None}, {"findings": [None, 5, "x", {"level": "bad"}, {"level": "bad", "id": 5}, {"level": "bad", "id": "x", "text": "", "tip": ""}]}):
+    assert hints.pc_hints(junk, {}, t0) == [], junk
+long_one = hints.pc_hints({"findings": [bad("health:C", text="A" * 500 + "\x00\x1b", tip="B")]}, {}, t0)[0]["text"]
+assert len(long_one) < 400 and "\x00" not in long_one and "\x1b" not in long_one
+
+# 4c) Jarvis.proactive_hints mit PC-Warnungen: aus per Voreinstellung, einmal pro Tag und Art, Fehler stoert nichts
+class FakeHealth:
+    findings = [bad("full:C", text="C: ist fast voll.", tip="Aufraeumen."), bad("ram", True, text="RAM voll.", tip="Programm schliessen.")]
+    calls = 0
+    fail = False
+
+    def report(self):
+        FakeHealth.calls += 1
+        if FakeHealth.fail:
+            raise RuntimeError("kaputt")
+        return {"assessment": {"level": "bad", "findings": FakeHealth.findings}}
+
+
+del cal.get                                                                                   # der Kalender aus dem Fehlertest oben ist wieder heil
+pc_health.set_default_health(FakeHealth())
+clock[0] = datetime(2026, 12, 1, 10, 0)
+assert j.proactive_hints() == [] and FakeHealth.calls == 0, "PC-Warnungen sind per Voreinstellung aus"
+m.set("hints", "pc", True)
+res = j.proactive_hints()
+assert res == [{"kind": "pc", "text": "PC-Warnung: C: ist fast voll. Aufraeumen."}], res
+clock[0] = datetime(2026, 12, 1, 10, 1)
+assert j.proactive_hints() == [], "einmal pro Tag"
+for minute in (2, 3, 4):                                                                       # die Seite fragt jede Minute
+    clock[0] = datetime(2026, 12, 1, 10, minute)
+    assert j.proactive_hints() == [], minute
+clock[0] = datetime(2026, 12, 1, 10, 5)
+res = j.proactive_hints()
+assert res == [{"kind": "pc", "text": "PC-Warnung: RAM voll. Programm schliessen."}], "RAM nach fuenf Minuten Dauer"
+clock[0] = datetime(2026, 12, 1, 10, 6)
+assert j.proactive_hints() == []
+clock[0] = datetime(2026, 12, 2, 10, 0)                                                        # naechster Tag: die Laufwerks-Warnung kommt wieder, RAM erst nach der Wartezeit
+assert [h["text"] for h in j.proactive_hints()] == ["PC-Warnung: C: ist fast voll. Aufraeumen."]
+FakeHealth.fail = True
+clock[0] = datetime(2026, 12, 3, 10, 0)
+cal.add_event("Mit kaputtem PC-Check", "2026-12-03", "10:20")
+assert [h["kind"] for h in j.proactive_hints()] == ["appointment"], "kaputte PC-Pruefung stoert den Termin nicht"
+FakeHealth.fail = False
+import abilities
+real_enabled = abilities.task_enabled                                                         # GET_SYSTEM_INFO ist eine Kernaufgabe: nur so laesst sich "aus" nachstellen
+abilities.task_enabled = lambda task, manager: False if task == "GET_SYSTEM_INFO" else real_enabled(task, manager)
+FakeHealth.calls = 0
+clock[0] = datetime(2026, 12, 4, 10, 0)
+assert j.proactive_hints() == [] and FakeHealth.calls == 0, "Faehigkeit aus: keine Pruefung"
+abilities.task_enabled = real_enabled
+j.guest = True
+calls_before = FakeHealth.calls
+clock[0] = datetime(2026, 12, 5, 10, 0)
+assert j.proactive_hints() == [] and FakeHealth.calls == calls_before, "Gast: nie"
+del j.guest
+m.set("hints", "pc", False)
+calls_before = FakeHealth.calls
+clock[0] = datetime(2026, 12, 6, 10, 0)
+assert j.proactive_hints() == [] and FakeHealth.calls == calls_before
+pc_health.set_default_health(None)
+
 # 5) Einstellungen, Server, Oberflaeche, Quelltext
 server_source = open(PROJECT_DIR / "server.py", encoding="utf-8").read()
-for key, rule in (("appointments", "isinstance(v, bool)"), ("appointment_minutes", "_is_int(v, 5, 120)"), ("weather", "isinstance(v, bool)"), ("weather_hour", "_is_int(v, 15, 23)")):
+for key, rule in (("appointments", "isinstance(v, bool)"), ("appointment_minutes", "_is_int(v, 5, 120)"), ("weather", "isinstance(v, bool)"), ("weather_hour", "_is_int(v, 15, 23)"), ("pc", "isinstance(v, bool)")):
     assert f'EDITABLE_SETTINGS[("hints", "{key}")] = lambda v: {rule}' in server_source, key
 post = server_source.split("def do_POST")[1]
 assert post.index("self.server.guest and path") < post.index("/api/hints") < post.rindex("with self.server.message_lock:")
 app_js = webapp.app_text()
 assert '"/api/hints"' in app_js and "setInterval(checkHints, 60 * 1000)" in app_js and 'category: "hints", key: "appointments"' in app_js
-assert 'category: "hints", key: "weather_hour"' in app_js and 'addMessage("background", hint.text, "HINWEIS")' in app_js
+assert 'category: "hints", key: "weather_hour"' in app_js and 'category: "hints", key: "pc"' in app_js and 'addMessage("background", hint.text, "HINWEIS")' in app_js
 code = open(PROJECT_DIR / "hints.py", encoding="utf-8").read().split('"""', 2)[2]
 for forbidden in ("subprocess", "os.system", "eval(", "exec(", "webbrowser", "requests", "execute_task", "run_task"):
     assert forbidden not in code, forbidden

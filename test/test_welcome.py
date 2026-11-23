@@ -42,7 +42,7 @@ assert "textContent" in js["welcome.js"] and "textContent" in js["welcome_app.js
 
 # 5) Nur diese Adressen ruft die Seite auf, und der Server kennt sie
 used = set(re.findall(r'"(/api/[a-z_/]+)"', all_js))
-assert used == {"/api/widgets", "/api/settings", "/api/timers", "/api/focus", "/api/weather", "/api/widgets/events", "/api/widgets/goals",
+assert used == {"/api/widgets", "/api/settings", "/api/timers", "/api/focus", "/api/forecast", "/api/pc_lage", "/api/widgets/events", "/api/widgets/goals",
                 "/api/widgets/lists", "/api/focus/stop", "/api/timer/cancel", "/api/widgets/notes", "/api/news", "/api/briefing",
                 "/api/reminders", "/api/performance", "/api/system", "/api/media", "/api/volume"}, used
 server_text = (PROJECT_DIR / "server.py").read_text(encoding="utf-8")
@@ -56,7 +56,7 @@ for path in ("/api/widgets/goals", "/api/widgets/lists"):
 # 6) Jedes gebaute Fenster hat Anzeige, grosses Fenster und Eintrag in der Seite
 logic = js["welcome_logic.js"]
 built = re.findall(r'\{ id: "(\w+)", title: "[^"]+", desc: "[^"]+", state: "built" \}', logic)
-assert built == ["goals", "focus", "lists", "calendar", "weather", "notes", "news", "briefing", "worldtime", "music", "system", "reminders"], built
+assert built == ["goals", "focus", "lists", "calendar", "weather", "notes", "news", "briefing", "worldtime", "music", "system", "pclage", "drives", "reminders"], built
 assert "DEFAULT_ENABLED = [\"goals\", \"focus\", \"lists\", \"calendar\", \"weather\"]" in js["welcome_logic.js"]   # neue Fenster sind erst mal aus
 for window in built:
     assert re.search(rf"\b{window}\b", js["welcome_panels.js"].split("return {")[-1]), f"Anzeige fehlt: {window}"

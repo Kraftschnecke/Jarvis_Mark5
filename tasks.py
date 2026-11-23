@@ -68,7 +68,7 @@ def create_calculate_task():
 def create_get_system_info_task():
     task = Task(
         "GET_SYSTEM_INFO",
-        "Informationen über den eigenen Computer ermitteln: Prozessor, Arbeitsspeicher, Festplatten, aktuelle Auslastung (CPU, RAM), Akku, Laufzeit und die größten laufenden Programme"
+        "Informationen über den eigenen Computer ermitteln: Prozessor, Arbeitsspeicher, Festplatten (SSD/HDD, Platz, Gesundheit, Auslastung), aktuelle Auslastung (CPU, RAM), Akku, Laufzeit, die größten laufenden Programme und eine Bewertung der PC-Lage mit Verbesserungstipps (zum Beispiel Ist mein PC in Ordnung, Warum ist er langsam, Was frisst den Speicher)"
     )
 
     task.add_action(
@@ -601,7 +601,7 @@ def create_get_weather_task():
                     "type": "string"
                 },
                 "day": {
-                    "description": "Der Tag: heute, morgen, uebermorgen oder ein Datum als YYYY-MM-DD (hoechstens 7 Tage voraus, anhand des heutigen Datums ausrechnen). Nennt der Nutzer keinen Tag, schreibe heute",
+                    "description": "Der Tag: heute, morgen, uebermorgen oder ein Datum als YYYY-MM-DD (hoechstens 7 Tage voraus, anhand des heutigen Datums ausrechnen). Fragt der Nutzer nach der ganzen Woche, dem Wochenende oder mehreren Tagen, schreibe woche (dann kommen alle Tage auf einmal). Nennt der Nutzer keinen Tag, schreibe heute",
                     "type": "string"
                 }
             }

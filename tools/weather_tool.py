@@ -58,6 +58,32 @@ GERMAN_NAMES = {
     "damaskus": "Damascus", "algier": "Algiers", "tunis": "Tunis", "neuseeland": "New Zealand",
 }
 
+# Symbol-Schluessel fuer die Oberflaeche (die Symbole zeichnet die Seite selbst)
+ICON_KEYS = ("clear", "partly", "cloudy", "fog", "rain", "snow", "thunder")
+
+
+def icon_key(code):
+    """WMO-Wettercode -> Symbol-Schluessel oder None."""
+    if not isinstance(code, int) or isinstance(code, bool):
+        return None
+    if code in (0, 1):
+        return "clear"
+    if code == 2:
+        return "partly"
+    if code == 3:
+        return "cloudy"
+    if code in (45, 48):
+        return "fog"
+    if 51 <= code <= 67 or 80 <= code <= 82:
+        return "rain"
+    if 71 <= code <= 77 or code in (85, 86):
+        return "snow"
+    if 95 <= code <= 99:
+        return "thunder"
+    return None
+
+
+_WEEK_WORDS = ("woche", "week", "7 tage", "sieben tage", "wochenvorschau", "wochenvorhersage", "naechste tage", "nächste tage")
 _TODAY_WORDS = ("", "heute", "today", "jetzt", "now", "aktuell")
 _TOMORROW_WORDS = ("morgen", "tomorrow")
 _DAY_AFTER_WORDS = ("übermorgen", "uebermorgen", "day after tomorrow")
@@ -191,7 +217,7 @@ class WeatherService:
     # ---- Auswertung
 
     @staticmethod
-    def _day_block(forecast, day):
+    def _day_block(forecast, day, icons=False):
         daily = forecast.get("daily") if isinstance(forecast.get("daily"), dict) else {}
         times = daily.get("time")
         if not isinstance(times, list) or day.isoformat() not in times:
@@ -204,26 +230,32 @@ class WeatherService:
 
         code = daily.get("weather_code")
         code = code[i] if isinstance(code, list) and i < len(code) else None
-        return {
+        block = {
             "condition": _condition(code),
             "high": _round(at("temperature_2m_max", -90, 70)),
             "low": _round(at("temperature_2m_min", -90, 70)),
             "rain_chance_percent": _round(at("precipitation_probability_max", 0, 100)),
             "rain_mm": at("precipitation_sum", 0, 2000),
         }
+        if icons:
+            block["icon"] = icon_key(code)
+        return block
 
     @staticmethod
-    def _now_block(forecast):
+    def _now_block(forecast, icons=False):
         current = forecast.get("current")
         if not isinstance(current, dict):
             return None
-        return {
+        block = {
             "condition": _condition(current.get("weather_code")),
             "temperature": _round(_num(current.get("temperature_2m"), -90, 70)),
             "feels_like": _round(_num(current.get("apparent_temperature"), -120, 80)),
             "humidity_percent": _round(_num(current.get("relative_humidity_2m"), 0, 100)),
             "wind_kmh": _round(_num(current.get("wind_speed_10m"), 0, 500)),
         }
+        if icons:
+            block["icon"] = icon_key(current.get("weather_code"))
+        return block
 
     def _place_from_text(self, text):
         """Ortsname aus der Frage, bei 'heimat' (oder keinem Ort) der Heimatort aus den Einstellungen."""
@@ -238,6 +270,8 @@ class WeatherService:
 
     def get_weather(self, place, day="heute"):
         """Wetter fuer einen Ort und Tag als ToolResult (Daten: nur Zahlen und feste Woerter)."""
+        if isinstance(day, str) and day.strip().lower() in _WEEK_WORDS:
+            return self.week_forecast(place)
         name, problem = self._place_from_text(place)
         if problem:
             return ToolResult(success=False, error=problem)
@@ -259,6 +293,37 @@ class WeatherService:
         if target == self.today():
             data["now"] = self._now_block(forecast)
         return ToolResult(success=True, data=data)
+
+    def week_forecast(self, place="heimat", icons=False):
+        """Jetzt-Wetter und alle Vorhersage-Tage (bis zu 7) fuer einen Ort als ToolResult.
+
+        icons=True fuegt die Symbol-Schluessel fuer die Seite hinzu (der Chat braucht sie nicht).
+        """
+        name, problem = self._place_from_text(place)
+        if problem:
+            return ToolResult(success=False, error=problem)
+        try:
+            found = self._find_place(name)
+            if found is None:
+                return ToolResult(success=False, error=f"Den Ort „{name}“ habe ich nicht gefunden.")
+            forecast = self._forecast(found)
+        except NetError as error:
+            return ToolResult(success=False, error=f"Das Wetter ist gerade nicht abrufbar: {error}")
+
+        daily = forecast.get("daily") if isinstance(forecast.get("daily"), dict) else {}
+        times = daily.get("time") if isinstance(daily.get("time"), list) else []
+        days = []
+        for text in times[:FORECAST_DAYS]:
+            try:
+                day = date.fromisoformat(text)
+            except (TypeError, ValueError):
+                continue
+            block = self._day_block(forecast, day, icons=icons)
+            if block is not None:
+                days.append({"date": day.isoformat(), "weekday": WEEKDAYS[day.weekday()], **block})
+        if not days:
+            return ToolResult(success=False, error="Für diesen Ort liegt keine Vorhersage vor.")
+        return ToolResult(success=True, data={"place": found["label"], "now": self._now_block(forecast, icons=icons), "days": days})
 
     def summary(self):
         """Ein kurzer Satz fuer den Startbericht (Heimatort, heute) oder None, wenn es nicht geht."""

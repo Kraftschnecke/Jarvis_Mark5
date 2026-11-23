@@ -88,12 +88,39 @@
       },
     };
 
-    // ---- Wetter: der Satz vom Server (Heimatort)
+    // ---- Wetter: jetzt, heute (hoechstens/mindestens) und die naechsten drei Tage fuer den Heimatort
     const weather = {
       title: "Wetter",
-      extra: () => "",
+      extra() {
+        const e = app.extra.forecast;
+        return e && e.status === "ok" && e.data ? L.shortPlace(e.data.place) : "";
+      },
       draw(body) {
-        body.append(app.weather ? el("div", "temp", app.weather) : empty("Kein Wetter verfügbar."));
+        if (!loaded("forecast", body)) return;
+        const f = app.extra.forecast.data;
+        const days = Array.isArray(f && f.days) ? f.days : [];
+        if (!days.length) return body.append(empty("Keine Vorhersage verfügbar."));
+        const now = (f.now && typeof f.now === "object") ? f.now : null;
+        const today = days[0];
+        const head = el("div", "wxnow");
+        head.append(app.icon(now && now.icon ? now.icon : today.icon, app.compact ? 22 : 28),
+          el("span", "wxtemp", L.celsius(now ? now.temperature : today.high)));
+        if (app.compact) {
+          head.append(el("span", "muted small", L.tempRange(today)));
+          return body.append(head);
+        }
+        head.append(el("span", "muted small", (now && now.condition) || today.condition || ""));
+        body.append(head);
+        const rain = today.rain_chance_percent >= 30 ? " · Regen " + L.rainText(today.rain_chance_percent) : "";
+        body.append(el("div", "muted small wxline", "heute " + L.tempRange(today) + rain));
+        const strip = el("div", "wxstrip");
+        const clock = new Date();
+        days.slice(1, 4).forEach((d) => {
+          const cell = el("div", "wxday");
+          cell.append(el("span", "muted small", L.forecastDay(d.date, clock).label), app.icon(d.icon, 20), el("span", "", L.degrees(d.high)));
+          strip.append(cell);
+        });
+        body.append(strip);
       },
     };
 
@@ -202,6 +229,50 @@
       },
     };
 
+    // ---- PC-Lage: Ampel und der wichtigste Hinweis (nur am PC; die Bewertung rechnet der Server)
+    const pclage = {
+      title: "PC-Lage",
+      extra: () => "",
+      draw(body) {
+        if (!app.local) return body.append(empty("Nur am PC."));
+        if (!loaded("pclage", body)) return;
+        const report = app.extra.pclage.data;
+        const a = report && report.assessment;
+        if (!a) return body.append(empty("Keine Auswertung verfügbar."));
+        const head = el("div", "wlightrow");
+        head.append(el("span", "wlight " + L.lightLevel(a.level)), el("span", "clamp", a.headline || ""));
+        body.append(head);
+        if (app.compact) return;
+        const list = Array.isArray(a.findings) ? a.findings : [];
+        const first = list.find((f) => f && f.level !== "tip") || list[0];
+        if (first && first.tip) body.append(el("div", "muted small clamp", "Tipp: " + first.tip));
+      },
+    };
+
+    // ---- Laufwerke: SSD und HDD mit Belegung (nur am PC)
+    const drives = {
+      title: "Laufwerke",
+      extra: () => "",
+      draw(body) {
+        if (!app.local) return body.append(empty("Nur am PC."));
+        if (!loaded("pclage", body)) return;
+        const list = (app.extra.pclage.data && app.extra.pclage.data.drives) || [];
+        if (!list.length) return body.append(empty("Keine Laufwerke gefunden."));
+        rows(body, list, lines(4, 2), (d) => {
+          const wrap = el("div", "wdrive");
+          const bar = el("div", "bar " + app.W.loadLevel(d.used_percent));
+          const fill = el("i");
+          fill.style.width = Math.min(100, Math.max(0, Number(d.used_percent) || 0)) + "%";
+          bar.append(fill);
+          const busy = Number(d.busy_percent) >= 50 ? " · aktiv " + Math.round(d.busy_percent) + " %" : "";
+          const bad = d.health_state === "warning" || d.health_state === "bad" ? " · " + L.healthText(d.health_state) : "";
+          wrap.append(el("span", "muted small", String(d.letter || "") + ": " + L.mediaLabel(d.media)), bar,
+            el("span", "small", app.W.formatNumber(d.free_gb, 0) + " GB frei" + busy + bad));
+          return wrap;
+        });
+      },
+    };
+
     // ---- Erinnerungen: die naechsten drei
     const reminders = {
       title: "Erinnerungen",
@@ -215,7 +286,7 @@
       },
     };
 
-    return { goals, focus, lists, calendar, weather, notes, news, briefing, worldtime, music, system, reminders };
+    return { goals, focus, lists, calendar, weather, notes, news, briefing, worldtime, music, system, pclage, drives, reminders };
   }
 
   const api = { create };

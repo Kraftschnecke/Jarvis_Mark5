@@ -371,7 +371,8 @@ button.danger-fill { background: #b84a40; }
 
 .settings-button { margin-top: auto; }
 .side-button[hidden] { display: none; }               /* "hidden" gilt auch fuer Knoepfe, die sonst display: flex haben */
-#open-phone-prefs { margin-top: 0; }                  /* der Platz nach oben gehoert dem Settings-Knopf; am Handy steht dieser Knopf direkt darunter */
+#open-phone-prefs { margin-top: 0; }
+#logout-button { margin-top: 0; }                      /* sonst teilen sich Einstellungen und Abmelden den freien Platz und die Einstellungen sitzen mitten in der Leiste */                  /* der Platz nach oben gehoert dem Settings-Knopf; am Handy steht dieser Knopf direkt darunter */
 body.remote #open-settings + #open-phone-prefs { margin-top: auto; }
 
 dialog.settings { width: min(800px, 94vw); height: min(560px, 90vh); padding: 0; overflow: hidden; }
@@ -703,12 +704,48 @@ body.remote .row .more { display: none !important; }
 body.remote #open-phone-prefs { display: flex !important; }
 /* Testbereich (Gast, C4): keine Projekte, die Seitenleiste zeigt nur "Neue Unterhaltung" */
 body.tester .row .more, body.tester .project-row { display: none !important; }
-.phone-prefs-rows { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
-.phone-prefs-row { display: flex; flex-direction: column; gap: 4px; }
-.phone-prefs-row label { color: var(--muted); font-size: 0.85rem; }
-.phone-prefs-row select { width: 100%; }
-.phone-prefs-switch { flex-direction: row; align-items: center; justify-content: space-between; }
-.phone-prefs-switch label { color: inherit; font-size: 1rem; flex: 1; }
+/* Handy-Einstellungen: Seite von unten, Gruppen in Karten (Skizze "prefs") */
+#phone-prefs {
+  width: 100%; max-width: 560px; max-height: 92vh; max-height: 92dvh; margin: auto auto 0; padding: 0;
+  border-radius: 22px 22px 0 0; border-bottom: 0; overflow: hidden; animation: phone-sheet 0.25s ease both;
+}
+#phone-prefs[open] { display: flex; }
+#phone-prefs-form { display: flex; flex-direction: column; width: 100%; min-height: 0; padding: 10px 16px calc(env(safe-area-inset-bottom) + 16px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.phone-grab { width: 40px; height: 4px; border-radius: 2px; background: var(--line); margin: 0 auto 12px; flex: none; }
+.phone-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.phone-head h3 { margin: 0; font-size: 1.15rem; }
+.phone-done { background: transparent; color: var(--accent); padding: 6px 4px; font-size: 1rem; }
+.phone-sub { color: var(--muted); font-size: 0.85rem; margin: 2px 0 6px; }
+.phone-prefs-rows { display: flex; flex-direction: column; }
+.phone-group { margin: 16px 0 6px; font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+.phone-card { background: var(--base); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.phone-line { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 48px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.phone-line:last-child { border-bottom: 0; }
+.phone-line-label { flex: none; }
+.phone-seg { display: flex; gap: 2px; padding: 2px; background: var(--window); border: 1px solid var(--line); border-radius: 10px; }
+.phone-seg button { background: transparent; color: var(--muted); padding: 6px 11px; border-radius: 8px; font-size: 0.85rem; }
+.phone-seg button.on { background: var(--accent); color: #fff; }
+.phone-swatches { display: flex; gap: 12px; }
+.phone-swatch { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 2px solid transparent; background: #168aad; }
+.phone-swatch[data-accent="green"] { background: #28895f; }
+.phone-swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--base) inset; }
+.phone-step { display: flex; align-items: center; gap: 14px; }
+.phone-step button { width: 34px; height: 34px; padding: 0; border-radius: 50%; background: transparent; border: 1px solid var(--line); color: var(--accent); font-size: 1.1rem; }
+.phone-step button:disabled { opacity: 0.35; }
+.phone-step b { min-width: 1.6em; text-align: center; }
+.phone-switch { position: relative; width: 48px; height: 28px; padding: 0; border-radius: 14px; background: var(--line); transition: background 0.2s ease; }
+.phone-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #ddd; transition: transform 0.2s ease; }
+.phone-switch.on { background: var(--accent); }
+.phone-switch.on::after { transform: translateX(20px); }
+.phone-picker { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+.phone-picker::after { content: "›"; color: var(--accent); }
+.phone-picker select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; }   /* 16 px: sonst zoomt Safari beim Antippen */
+.phone-hint { margin: 8px 0 0; color: var(--muted); font-size: 0.8rem; }
+.phone-reset { align-self: center; background: transparent; color: var(--muted); margin-top: 14px; padding: 8px 12px; font-size: 0.9rem; }
+.phone-close { margin-top: 12px; padding: 14px; border-radius: 14px; background: var(--accent); color: #fff; font-weight: 600; font-size: 1rem; }
+.phone-seg button:focus-visible, .phone-swatch:focus-visible, .phone-step button:focus-visible, .phone-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@keyframes phone-sheet { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #phone-prefs { animation: none; } .phone-switch, .phone-switch::after { transition: none; } }
 .remote-banner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 6px 12px; margin-top: 8px;
   background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--radius); font-size: 0.85rem; }
 .remote-banner[hidden] { display: none; }

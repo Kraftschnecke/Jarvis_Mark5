@@ -118,13 +118,15 @@
   <!-- Handy-Einstellungen (nur am Handy, siehe remote_prefs.js) -->
   <dialog id="phone-prefs">
     <form method="dialog" id="phone-prefs-form">
-      <h3>Handy-Einstellungen</h3>
-      <p>Gilt nur auf diesem Handy, der PC bleibt wie er ist.</p>
+      <div class="phone-grab" aria-hidden="true"></div>
+      <header class="phone-head">
+        <h3>Handy-Einstellungen</h3>
+        <button type="button" class="phone-done" id="phone-prefs-done">Fertig</button>
+      </header>
+      <p class="phone-sub">Gilt nur auf diesem Handy. Der PC bleibt, wie er ist.</p>
       <div class="phone-prefs-rows" id="phone-prefs-rows"></div>
       <p class="dialog-error" id="phone-prefs-error" hidden></p>
-      <div class="dialog-buttons">
-        <button type="button" class="secondary" id="phone-prefs-close">Schließen</button>
-      </div>
+      <button type="button" class="phone-close" id="phone-prefs-close">Fertig</button>
     </form>
   </dialog>
 

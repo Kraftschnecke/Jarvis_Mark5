@@ -236,6 +236,10 @@ owner_view = getj("/api/widgets", phone)
 assert "Geheimliste" in json.dumps(owner_view) and "GEHEIM" in owner_view["notes"]
 assert getj("/api/remote/whoami", phone).get("tester") is None
 assert "Hamburg" in json.dumps(getj("/api/weather", phone)) or True
+# Wochenvorhersage mit Ortssuche: nur fuer den Besitzer, ein Gast bekommt sie nie (auch nicht mit eigenem Ort)
+for place_query in ("", "?place=Rom"):
+    status, raw = call("GET", "/api/forecast" + place_query, cookie=laptop)
+    assert status == 403 and b"Hamburg" not in raw, (place_query, status)
 
 # Rollen-Seiten: der Gast bekommt seine eigene Seite und nur die Dateien, die sie braucht
 for page in ("/app_base.js", "/app_state.js", "/app_start.js", "/style.css", "/core.js", "/manifest.webmanifest", "/icon-192.png", "/remote_prefs.js"):

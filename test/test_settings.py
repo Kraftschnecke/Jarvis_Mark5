@@ -27,7 +27,7 @@ assert sm.get_all() == {
     "focus": {"work_minutes": 25, "break_minutes": 5, "long_break_minutes": 15, "rounds": 4},
     "briefing": {"auto": False, "news": True},
     "goals": {"evening": False, "evening_hour": 20},
-    "hints": {"appointments": False, "appointment_minutes": 30, "weather": False, "weather_hour": 19},
+    "hints": {"appointments": False, "appointment_minutes": 30, "weather": False, "weather_hour": 19, "pc": False},
     "remote": {"enabled": False, "info": True, "daily": True, "pc": False, "max_messages": 0, "max_ai_per_day": 0},
     "limits": {"ai_calls_per_day": 500, "speech_calls_per_day": 200},
 }
@@ -57,7 +57,7 @@ assert sm.get_all() == {
     "focus": {"work_minutes": 25, "break_minutes": 5, "long_break_minutes": 15, "rounds": 4},
     "briefing": {"auto": False, "news": True},
     "goals": {"evening": False, "evening_hour": 20},
-    "hints": {"appointments": False, "appointment_minutes": 30, "weather": False, "weather_hour": 19},
+    "hints": {"appointments": False, "appointment_minutes": 30, "weather": False, "weather_hour": 19, "pc": False},
     "remote": {"enabled": False, "info": True, "daily": True, "pc": False, "max_messages": 0, "max_ai_per_day": 0},
     "limits": {"ai_calls_per_day": 500, "speech_calls_per_day": 200},
 }, sm.get_all()

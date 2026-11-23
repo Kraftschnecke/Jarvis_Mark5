@@ -18,6 +18,8 @@
     { id: "worldtime", title: "Weltuhr", desc: "Zeit in Städten", state: "built" },
     { id: "music", title: "Musik", desc: "Play/Pause, Lautstärke", state: "built" },
     { id: "system", title: "PC-Status", desc: "CPU, RAM, Akku", state: "built" },
+    { id: "pclage", title: "PC-Lage", desc: "Ampel, Hinweise, größte Verbraucher", state: "built" },
+    { id: "drives", title: "Laufwerke", desc: "SSD und HDD: Platz, Gesundheit, Last", state: "built" },
     { id: "reminders", title: "Erinnerungen", desc: "die nächsten drei", state: "built" },
     { id: "history", title: "Befehls-Verlauf", desc: "letzte Befehle", state: "none" },
     { id: "cost", title: "Kosten heute", desc: "API-Verbrauch", state: "none" },
@@ -178,7 +180,79 @@
     return time ? label + " " + time : label;
   }
 
-  const api = { WINDOWS, STORAGE_KEY, CITIES_KEY, DEFAULT_ENABLED, CITIES, DEFAULT_CITIES, MAX_CITIES, normalizeCities, toggleCity, cityOf, cityTime, cityDayLabel, describeDue, COMPACT_FROM, CARD_TEXT, builtIds, normalizeEnabled, toggleWindow, splitColumns, isCompact, cardState,
+  // ---- Wetter: Symbole (Linien-Zeichnungen auf 24x24, die Seite baut daraus ein SVG), Tage, Temperaturbalken
+  const CLOUD = "M7 15a3.6 3.6 0 0 1-.4-7.18A5 5 0 0 1 16.3 6.9 3.8 3.8 0 0 1 16.5 15H7z";
+  const WEATHER_ICONS = {
+    clear: [["circle", { cx: 12, cy: 12, r: 4 }], ["path", { d: "M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" }]],
+    partly: [["circle", { cx: 8, cy: 8, r: 2.8 }], ["path", { d: "M8 2.5v1.2M2.5 8h1.2M4.1 4.1l.9.9M11.9 4.1l-.9.9M4.1 11.9l.9-.9" }],
+             ["path", { d: "M9 19.5a3.4 3.4 0 0 1-.3-6.8 4.6 4.6 0 0 1 8.9 1A3.4 3.4 0 0 1 17.5 19.5H9z" }]],
+    cloudy: [["path", { d: "M7 18a4 4 0 0 1-.5-7.97A5.5 5.5 0 0 1 17.2 9.6 4.2 4.2 0 0 1 17 18H7z" }]],
+    fog: [["path", { d: "M4 8h16M6 12h12M4 16h16M8 20h8" }]],
+    rain: [["path", { d: CLOUD }], ["path", { d: "M8 18l-1 3M12 18l-1 3M16 18l-1 3" }]],
+    snow: [["path", { d: CLOUD }], ["path", { d: "M8 18v3M6.5 19.5h3M16 18v3M14.5 19.5h3M12 20.2h.01" }]],
+    thunder: [["path", { d: CLOUD }], ["path", { d: "M12.5 15.5l-2.5 3.5h3.5l-2 3" }]],
+  };
+  const isWeatherIcon = (key) => typeof key === "string" && Object.prototype.hasOwnProperty.call(WEATHER_ICONS, key);
+
+  const num = (value) => (typeof value === "number" && isFinite(value) ? value : null);
+  const degrees = (value) => (num(value) === null ? "–" : Math.round(value) + "°");
+  const celsius = (value) => (num(value) === null ? "–" : Math.round(value) + " °C");
+  // "2° bis 6°", mit nur einem Wert der eine, ohne beide ein Strich
+  function tempRange(day) {
+    const d = day || {};
+    if (num(d.low) === null && num(d.high) === null) return "–";
+    if (num(d.low) === null || num(d.high) === null) return degrees(num(d.high) === null ? d.low : d.high);
+    return degrees(d.low) + " bis " + degrees(d.high);
+  }
+  // "Växjö, Kronoberg, Schweden" -> "Växjö"
+  const shortPlace = (label) => String(label || "").split(",")[0].trim();
+  const rainText = (percent) => (num(percent) === null ? "" : Math.round(percent) + " %");
+
+  // "2026-11-22" -> { label: "Heute" | "Morgen" | "Mo", date: "22.11." } im Vergleich zum Datum hier
+  function forecastDay(dateText, now) {
+    const text = String(dateText || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return { label: text, date: "" };
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const target = new Date(Number(text.slice(0, 4)), Number(text.slice(5, 7)) - 1, Number(text.slice(8, 10)));
+    const diff = Math.round((target - start) / 86400000);
+    const names = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+    return { label: diff === 0 ? "Heute" : diff === 1 ? "Morgen" : names[target.getDay()], date: text.slice(8, 10) + "." + text.slice(5, 7) + "." };
+  }
+
+  // Lage des Temperaturbalkens eines Tages in der Woche: { left, width } in Prozent (mindestens 8 % breit)
+  function barSpan(days, day) {
+    const list = Array.isArray(days) ? days : [];
+    const lows = list.map((d) => num(d && d.low)).filter((v) => v !== null);
+    const highs = list.map((d) => num(d && d.high)).filter((v) => v !== null);
+    const low = num(day && day.low);
+    const high = num(day && day.high);
+    if (!lows.length || !highs.length || low === null || high === null) return { left: 0, width: 0 };
+    const min = Math.min.apply(null, lows);
+    const max = Math.max.apply(null, highs);
+    if (max <= min) return { left: 0, width: 100 };
+    const width = Math.max(8, ((high - low) / (max - min)) * 100);
+    const left = Math.min(100 - width, ((low - min) / (max - min)) * 100);
+    return { left: Math.round(left * 10) / 10, width: Math.round(width * 10) / 10 };
+  }
+
+  // ---- PC-Lage: Ampel, Gesundheit, Programme (die Bewertung selbst rechnet der Server)
+  // Farbstufe aus dem Wort des Servers; Unbekanntes gilt vorsichtshalber als "warn"
+  const lightLevel = (level) => (["ok", "warn", "bad", "tip"].includes(level) ? level : "warn");
+  const HEALTH_TEXT = { ok: "Gesund", warning: "Warnung", bad: "Defekt gemeldet", unknown: "Zustand unbekannt" };
+  const healthText = (state) => (Object.prototype.hasOwnProperty.call(HEALTH_TEXT, state) ? HEALTH_TEXT[state] : HEALTH_TEXT.unknown);
+  const healthLevel = (state) => (state === "ok" ? "ok" : state === "warning" ? "warn" : state === "bad" ? "bad" : "tip");
+  const mediaLabel = (media) => (media === "SSD" || media === "HDD" ? media : "Laufwerk");
+  // fmt = Zahl mit Dezimalkomma (widgets.js formatNumber)
+  function programText(kind, p, fmt) {
+    if (!p || typeof p.name !== "string") return "";
+    const many = p.count > 1 ? " (" + p.count + "×)" : "";
+    if (kind === "ram") return p.name + many + " · " + (p.mb >= 1024 ? fmt(p.mb / 1024, 1) + " GB" : Math.round(p.mb) + " MB");
+    if (kind === "cpu") return p.name + many + " · " + Math.round(p.percent) + " %";
+    if (kind === "disk") return p.name + many + " · " + fmt(p.mb_s, 1) + " MB/s";
+    return "";
+  }
+
+  const api = { lightLevel, healthText, healthLevel, mediaLabel, programText, WEATHER_ICONS, isWeatherIcon, degrees, celsius, tempRange, shortPlace, rainText, forecastDay, barSpan, WINDOWS, STORAGE_KEY, CITIES_KEY, DEFAULT_ENABLED, CITIES, DEFAULT_CITIES, MAX_CITIES, normalizeCities, toggleCity, cityOf, cityTime, cityDayLabel, describeDue, COMPACT_FROM, CARD_TEXT, builtIds, normalizeEnabled, toggleWindow, splitColumns, isCompact, cardState,
                 greetingWord, formatRemaining, dayKey, addDays, eventsOn, goalProgress, bestStreak, isLocalHost };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.WelcomeLogic = api;

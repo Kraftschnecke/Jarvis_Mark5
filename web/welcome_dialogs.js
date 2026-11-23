@@ -306,17 +306,202 @@
       });
     }
 
-    // ---- Wetter
+    // ---- Wetter: Heimatort oder ein gesuchter Ort, jeweils jetzt und die Woche
     function weather() {
-      app.openWindow({ title: "Wetter" }, (body, win) => {
-        const text = el("div", "temp");
-        text.style.fontSize = "1.15rem";
-        const note = el("div", "note", "Für deinen Heimatort aus den Einstellungen.");
-        const refresh = button("Aktualisieren", "", async () => { note.textContent = "Lade …"; await app.loadWeather(); note.textContent = "Für deinen Heimatort aus den Einstellungen."; });
-        const tools = el("div", "form");
-        tools.append(refresh);
-        body.append(text, tools, note);
-        const draw = () => { text.textContent = app.weather || "Kein Wetter verfügbar."; };
+      app.openWindow({ title: "Wetter", wide: true }, (body, win) => {
+        let search = null;                          // gesuchter Ort: { name, status: loading|ok|error, data, error } oder null = Heimatort
+
+        const input = field("Ort suchen, zum Beispiel Lissabon", "grow");
+        input.setAttribute("aria-label", "Ort suchen");
+        const go = button("Suchen", "primary", () => runSearch(input.value));
+        const back = button("Zurück zum Heimatort", "", () => { search = null; input.value = ""; draw(); });
+        const reload = button("Aktualisieren", "", () => { if (search) runSearch(search.name); else app.loadExtra("forecast", true); });
+        const tools = el("div", "form wxsearch");
+        tools.append(input, go, back, reload);
+        const result = el("div", "wxresult");
+        body.append(tools, result);
+        input.addEventListener("keydown", (event) => { if (event.key === "Enter") runSearch(input.value); });
+
+        async function runSearch(text) {
+          const name = String(text || "").trim();
+          if (!name) return;
+          const mine = { name, status: "loading" };
+          search = mine;
+          draw();
+          try {
+            const data = await app.searchForecast(name);
+            if (search === mine) search = { name, status: "ok", data };
+          } catch (error) {
+            if (search === mine) search = { name, status: "error", error: error.message };
+          }
+          draw();
+        }
+
+        const fact = (label, value) => {
+          const box = el("div", "wxfact");
+          box.append(el("span", "muted small", label), el("span", "", value));
+          return box;
+        };
+
+        function drawNow(now) {
+          const box = el("div", "wxbignow");
+          box.append(app.icon(now.icon, 52));
+          const main = el("div");
+          main.append(el("div", "wxbigtemp", L.celsius(now.temperature)), el("div", "muted", now.condition || ""));
+          box.append(main);
+          const facts = el("div", "wxfacts");
+          facts.append(fact("gefühlt", L.celsius(now.feels_like)), fact("Luftfeuchte", now.humidity_percent === null || now.humidity_percent === undefined ? "–" : Math.round(now.humidity_percent) + " %"),
+            fact("Wind", now.wind_kmh === null || now.wind_kmh === undefined ? "–" : Math.round(now.wind_kmh) + " km/h"));
+          box.append(facts);
+          return box;
+        }
+
+        function drawWeek(days) {
+          const list = el("div", "wxweek");
+          const clock = new Date();
+          days.forEach((d, i) => {
+            const day = L.forecastDay(d.date, clock);
+            const line = el("div", "wxrow" + (i === 0 ? " today" : ""));
+            const name = el("span", "wxname");
+            name.append(el("b", "", day.label), el("span", "muted small", day.date));
+            const track = el("span", "wxtrack");
+            const fill = el("i");
+            const span = L.barSpan(days, d);
+            fill.style.left = span.left + "%";
+            fill.style.width = span.width + "%";
+            track.append(fill);
+            line.append(name, app.icon(d.icon, 24), el("span", "wxcond muted", d.condition || ""), track,
+              el("span", "wxtemps", L.degrees(d.low) + " / " + L.degrees(d.high)), el("span", "wxrain muted", L.rainText(d.rain_chance_percent)));
+            list.append(line);
+          });
+          return list;
+        }
+
+        function draw() {
+          result.replaceChildren();
+          back.hidden = !search;
+          let state;
+          if (search) state = search.status === "ok" ? { status: "ok", data: search.data } : search;
+          else state = app.extra.forecast || { status: "loading" };
+          if (state.status === "loading") return result.append(el("div", "wempty", "Lade …"));
+          if (state.status === "disabled") return result.append(el("div", "wempty", "In den Einstellungen ausgeschaltet."));
+          if (state.status === "error") return result.append(el("div", "wempty", state.error || "Gerade nicht verfügbar."));
+          const f = state.data;
+          const days = Array.isArray(f && f.days) ? f.days : [];
+          const title = el("div", "wxplace");
+          title.append(el("b", "", (f && f.place) || ""));
+          if (search) title.append(el("span", "muted small", " · nicht dein Heimatort"));
+          result.append(title);
+          if (!days.length) return result.append(el("div", "wempty", "Keine Vorhersage verfügbar."));
+          if (f.now && typeof f.now === "object") result.append(drawNow(f.now));
+          result.append(drawWeek(days), el("div", "note", "Daten von Open-Meteo."));
+        }
+
+        app.loadExtra("forecast");
+        draw();
+        win.onData(draw);
+      });
+    }
+
+    // ---- PC-Lage und Laufwerke: beide lesen /api/pc_lage (app.extra.pclage), nur am PC
+    function pcReport(body) {
+      if (!app.local) { body.append(el("div", "wempty", "Das siehst du nur am PC.")); return null; }
+      return true;
+    }
+    function pcState() {
+      const e = app.extra.pclage;
+      if (!e || e.status === "loading") return { text: "Lade …" };
+      if (e.status === "disabled") return { text: "In den Einstellungen ausgeschaltet." };
+      if (e.status === "error") return { text: e.error || "Gerade nicht verfügbar." };
+      return e.data ? { data: e.data } : { text: "Keine Auswertung verfügbar." };
+    }
+
+    function pclage() {
+      app.openWindow({ title: "PC-Lage" }, (body, win) => {
+        if (!pcReport(body)) return;
+        const tools = el("div", "form wxsearch");
+        tools.append(button("Aktualisieren", "", () => app.loadExtra("pclage", true)));
+        const view = el("div");
+        body.append(tools, view);
+
+        const section = (title) => el("div", "section-title", title);
+        function draw() {
+          view.replaceChildren();
+          const state = pcState();
+          if (!state.data) return view.append(el("div", "wempty", state.text));
+          const a = state.data.assessment || {};
+          const head = el("div", "wlightrow big");
+          head.append(el("span", "wlight " + L.lightLevel(a.level)), el("span", "", a.headline || ""));
+          view.append(head, section("Hinweise"));
+          const findings = Array.isArray(a.findings) ? a.findings : [];
+          if (!findings.length) view.append(el("div", "wempty", "Keine Hinweise, alles ruhig."));
+          findings.forEach((f) => {
+            const item = el("div", "wfinding");
+            item.append(el("span", "wlight " + L.lightLevel(f.level)));
+            const text = el("div");
+            text.append(el("div", "", f.text || ""), el("div", "muted small", "Tipp: " + (f.tip || "")));
+            item.append(text);
+            view.append(item);
+          });
+          view.append(section("Größte Verbraucher"));
+          const programs = state.data.programs || {};
+          const cols = el("div", "wcols3");
+          [["ram", "Arbeitsspeicher"], ["cpu", "Prozessor"], ["disk", "Festplatte"]].forEach(([kind, title]) => {
+            const col = el("div");
+            col.append(el("div", "muted small", title));
+            const list = Array.isArray(programs[kind]) ? programs[kind] : [];
+            if (!list.length) col.append(el("div", "wempty small", "nichts Auffälliges"));
+            list.forEach((p) => col.append(el("div", "wprog", L.programText(kind, p, W.formatNumber))));
+            cols.append(col);
+          });
+          view.append(cols);
+          const names = Array.isArray(state.data.autostart) ? state.data.autostart : [];
+          view.append(section("Autostart"));
+          view.append(el("div", "muted small pre", names.length ? names.length + " Einträge: " + names.join(", ") : "Keine Einträge gefunden."));
+        }
+        draw();
+        win.onData(draw);
+      });
+    }
+
+    function drives() {
+      app.openWindow({ title: "Laufwerke", wide: true }, (body, win) => {
+        if (!pcReport(body)) return;
+        const tools = el("div", "form wxsearch");
+        tools.append(button("Aktualisieren", "", () => app.loadExtra("pclage", true)));
+        const view = el("div", "wdrives");
+        body.append(tools, view);
+
+        const meter = (label, percent, text) => {
+          const row = el("div", "wmeter big");
+          const bar = el("div", "bar " + W.loadLevel(percent));
+          const fill = el("i");
+          fill.style.width = Math.min(100, Math.max(0, Number(percent) || 0)) + "%";
+          bar.append(fill);
+          row.append(el("span", "muted", label), bar, el("span", "", text));
+          return row;
+        };
+        function draw() {
+          view.replaceChildren();
+          const state = pcState();
+          if (!state.data) return view.append(el("div", "wempty", state.text));
+          const list = Array.isArray(state.data.drives) ? state.data.drives : [];
+          if (!list.length) return view.append(el("div", "wempty", "Keine Laufwerke gefunden."));
+          list.forEach((d) => {
+            const card = el("div", "wdrivecard");
+            const head = el("div", "wdrivehead");
+            head.append(el("b", "", String(d.letter || "") + ": " + L.mediaLabel(d.media) + (d.system ? " · Windows" : "")),
+              el("span", "wbadge " + L.healthLevel(d.health_state), L.healthText(d.health_state)));
+            card.append(head);
+            if (d.model) card.append(el("div", "muted small", d.model));
+            card.append(meter("Belegt", d.used_percent, Math.round(Number(d.used_percent) || 0) + " %"));
+            const busy = d.busy_percent;
+            card.append(meter("Auslastung", busy, busy === null || busy === undefined ? "–" : Math.round(busy) + " %"));
+            const rate = (v) => (v === null || v === undefined ? "–" : W.formatNumber(v, 1) + " MB/s");
+            card.append(el("div", "muted small", W.formatGb(d.free_gb) + " frei von " + W.formatGb(d.total_gb) + " · Lesen " + rate(d.read_mb_s) + " · Schreiben " + rate(d.write_mb_s)));
+            view.append(card);
+          });
+        }
         draw();
         win.onData(draw);
       });
@@ -629,7 +814,7 @@
       });
     }
 
-    return { calendar, goals, lists, weather, focus, notes, news, briefing, worldtime, music, system, reminders, manage };
+    return { calendar, goals, lists, weather, focus, notes, news, briefing, worldtime, music, system, pclage, drives, reminders, manage };
   }
 
   const api = { create };

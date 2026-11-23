@@ -28,6 +28,7 @@ Dinge:
        GET  /api/reminders   ->  {"reminders": [{"id", "text", "due", "repeat"}]}  (naechste Erinnerungen, nur lesen; Willkommensseite)
        GET  /api/news        ->  {"items": [{"title", "source", "summary", "url", "published"}]}  (Schlagzeilen, nur lesen; Willkommensseite)
        GET  /api/briefing    ->  {"text": "..."}  (Tagesbriefing zum Lesen, ohne den Tagesmerker zu setzen; Willkommensseite)
+       GET  /api/pc_lage     ->  {"pc_lage": {"now", "drives", "programs", "autostart", "assessment"}}  (SSD/HDD, Last, Verbraucher, Ampel mit Tipps; nur am PC; Willkommensseite)
        POST /api/media {"action": "play_pause"|"next"|"previous"}  ->  Medientaste (nur am PC); POST /api/volume {"percent": 0-100}  (nur am PC)
        GET  /api/timers      ->  {"timers": [{"id", "name", "seconds", "remaining"}]}  (laufende Timer, Step 6b)
        POST /api/speak {"text": "..."}  ->  audio/mpeg  (Sprachausgabe mit der eingestellten Stimme, Step 6b)
@@ -79,7 +80,7 @@ import profiles as profile_module
 import remote_policy
 import ringing
 import widgets
-from tools import media_tool, news_tool, system_status_tool, volume_tool, weather_tool
+from tools import media_tool, news_tool, pc_health, system_status_tool, volume_tool, weather_tool
 from config import REMOTE_HOST, SERVER_HOST, SERVER_PORT, VERSION
 from memory import MAX_VALUE_LENGTH, VALID_TYPES
 from personality import get_address, is_valid_address
@@ -148,6 +149,7 @@ EDITABLE_SETTINGS[("hints", "appointments")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("hints", "appointment_minutes")] = lambda v: _is_int(v, 5, 120)
 EDITABLE_SETTINGS[("hints", "weather")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("hints", "weather_hour")] = lambda v: _is_int(v, 15, 23)
+EDITABLE_SETTINGS[("hints", "pc")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("goals", "evening")] = lambda v: isinstance(v, bool)
 EDITABLE_SETTINGS[("goals", "evening_hour")] = lambda v: _is_int(v, 17, 23)
 # Zugriff vom Handy (Remote): nur am PC aenderbar, das Handy hat keinen Zugriff auf /api/settings (remote_policy.py)
@@ -587,6 +589,13 @@ class BackgroundFeed:
         self.items = []   # [(id, text)]
         self.last = 0
 
+    def add(self, text):
+        """Eine fertige Meldung (z. B. ein Hinweis) hinzufuegen; alle Seiten holen sie mit ab."""
+        with self.lock:
+            self.last += 1
+            self.items.append((self.last, text))
+            del self.items[:-self.MAX_KEPT]
+
     def collect(self, jarvis):
         with self.lock:
             for text in jarvis.check_background_results():
@@ -614,7 +623,7 @@ class JarvisServer(ThreadingHTTPServer):
     # kurz hintereinander: auf Windows kann sonst eine Verbindung ins Leere laufen.
     request_queue_size = 128
 
-    def __init__(self, address, jarvis, guest=False, widget_store=None, hockey=None, weather=None, monitor=None, remote=None):
+    def __init__(self, address, jarvis, guest=False, widget_store=None, hockey=None, weather=None, monitor=None, remote=None, health=None):
         super().__init__(address, JarvisHandler)
         self.jarvis = jarvis
         self.guest = guest
@@ -623,7 +632,9 @@ class JarvisServer(ThreadingHTTPServer):
         self.hockey = hockey or widgets.HockeyFeed()
         self.weather = weather or weather_tool.default_service()
         self.monitor = monitor or system_status_tool.PerformanceMonitor()
+        self.health = health or pc_health.default_health()
         self.feed = BackgroundFeed()
+        self.hints_by_loop = False    # Server-Betrieb (server_loop.py): der Takt holt die Hinweise ab, nicht die Seite
         # Jarvis ist nicht fuer mehrere gleichzeitige Nachrichten gebaut.
         self.message_lock = threading.Lock()
         # Gast-Bereiche (Mark 5, C3): pro Bereich ein eigener TesterJarvis, erst beim ersten Zugriff gebaut
@@ -698,7 +709,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
     def end_headers(self):
         # Antworten ueber den Remote-Namen: Browser soll nichts raten und keine Adresse weitergeben
-        if getattr(self, "kind", None) == "remote":
+        if getattr(self, "kind", None) == "remote" or getattr(self, "via_remote", False):
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
         super().end_headers()
@@ -805,6 +816,9 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 self.send_static(target)
             return True
 
+        if self.device.get("full") is True:
+            return self.become_owner()                    # Vollzugriff (Server-Betrieb): ab hier wie am PC
+
         if path.startswith("/api/") and not remote_policy.api_allowed("GET", path):
             self.send_json(403, {"error": "Über Remote nicht verfügbar."})
             return True
@@ -857,10 +871,22 @@ class JarvisHandler(BaseHTTPRequestHandler):
             self.tester_post(path, data)
             return True
 
+        if self.device.get("full") is True:
+            return self.become_owner()                    # Vollzugriff (Server-Betrieb): ab hier wie am PC
+
         if not remote_policy.api_allowed("POST", path, gate.levels()):
             self.send_json(403, {"error": "Über Remote nicht verfügbar."})
             return True
 
+        return False
+
+    def become_owner(self):
+        """Gekoppeltes Geraet mit Vollzugriff (nur im Server-Terminal vergeben, DESIGN_SERVER.md): der Rest der Anfrage laeuft wie am PC.
+
+        Cookie, Origin und Remote-Name sind vorher schon geprueft. Die Antwort traegt weiter die Schutz-Kopfzeilen des Remote-Namens."""
+        self.kind = "local"
+        self.via_remote = True
+        self.device = None                  # kein "Handy": Nachrichten, Notizen usw. laufen wie am PC
         return False
 
     # --- Gast-Bereich (Tester) ---------------------------------------------------
@@ -1010,6 +1036,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.kind = self.request_kind()
         self.device = None
+        self.via_remote = False
 
         if self.kind is None:
             return self.send_json(403, {"error": "Host nicht erlaubt"})
@@ -1088,6 +1115,15 @@ class JarvisHandler(BaseHTTPRequestHandler):
             except Exception:
                 return self.send_json(502, {"error": "Die Leistungsdaten konnten nicht gelesen werden."})
 
+        # PC-Lage fuer die Fenster "PC-Lage" und "Laufwerke": nur am PC (ueber Remote und fuer Gaeste nicht freigegeben)
+        if path == "/api/pc_lage":
+            if not abilities.task_enabled("GET_SYSTEM_INFO", self.server.jarvis.settings_manager):
+                return self.send_json(200, {"disabled": True})
+            try:
+                return self.send_json(200, {"pc_lage": self.server.health.report()})
+            except Exception:
+                return self.send_json(502, {"error": "Die PC-Lage konnte nicht gelesen werden."})
+
         if path == "/api/weather":
             # Kurzer Satz fuer den Startbericht. Nie ein Fehler: ohne Wetter faellt der Satz einfach weg.
             summary = None
@@ -1097,6 +1133,19 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 except Exception:
                     summary = None
             return self.send_json(200, {"summary": summary})
+
+        # Willkommensseite: Wochenvorhersage fuer den Heimatort oder (?place=...) fuer einen gesuchten Ort. Ist die Faehigkeit aus, kommt "disabled".
+        if path == "/api/forecast":
+            if not abilities.task_enabled("GET_WEATHER", self.server.jarvis.settings_manager):
+                return self.send_json(200, {"disabled": True})
+            asked = parse_qs(urlparse(self.path).query).get("place", [""])[0]
+            try:
+                result = self.server.weather.week_forecast(asked or "heimat", icons=True)
+            except Exception:
+                return self.send_json(502, {"error": "Das Wetter ist gerade nicht abrufbar."})
+            if not result.success:
+                return self.send_json(502, {"error": result.error})
+            return self.send_json(200, {"forecast": result.data})
 
         # Willkommensseite: Erinnerungen, Schlagzeilen und Tagesbriefing nur lesen. Ist die Faehigkeit aus, kommt "disabled".
         if path == "/api/reminders":
@@ -1185,6 +1234,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
         self.kind = self.request_kind()
         self.device = None
+        self.via_remote = False
 
         if self.kind is None or not self.origin_allowed():
             return self.send_json(403, {"error": "Nicht erlaubt"})
@@ -1326,6 +1376,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
             # Briefing beim ersten Start des Tages (Step 2.12): hoechstens einmal pro Tag, sonst text = null
             if path == "/api/hints":
+                if self.server.hints_by_loop:
+                    return self.send_json(200, {"hints": []})        # kommen als Meldung im Verlauf und per Push
                 return self.send_json(200, {"hints": self.server.jarvis.proactive_hints()})
             if path == "/api/goals/evening":
                 return self.send_json(200, {"text": self.server.jarvis.evening_goals()})

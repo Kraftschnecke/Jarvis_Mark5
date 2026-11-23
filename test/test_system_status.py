@@ -157,6 +157,24 @@ result = st.get_system_info()
 assert not result.success and "Systemdaten" in result.error
 st.set_default_monitor(None)
 
+# 9b) Chat-Ergebnis mit PC-Lage: Laufwerke mit SSD/HDD, Programme, Bewertung; geht die Lage schief, bleibt die Antwort wie sie war
+from tools import pc_health
+st.set_default_monitor(monitor)
+fake_drives = [{"name": "C:\\", "letter": "C", "media": "SSD", "total_gb": 238.0, "free_gb": 60.0}, {"name": "D:\\", "letter": "D", "media": "HDD", "total_gb": 931.0, "free_gb": 500.0}]
+fake_report = {"now": {}, "drives": fake_drives, "programs": {"ram": [{"name": "x.exe", "mb": 5, "count": 1}], "cpu": [], "disk": []}, "autostart": ["a", "b", "c"],
+               "assessment": {"level": "ok", "headline": "Alles ruhig.", "findings": []}}
+pc_health.set_default_health(types.SimpleNamespace(report=lambda: fake_report))
+result = st.get_system_info()
+assert result.success and result.data["drives"] == fake_drives and result.data["pc_lage"]["headline"] == "Alles ruhig."
+assert result.data["programs"]["ram"][0]["name"] == "x.exe" and result.data["autostart_count"] == 3 and "top_programs" in result.data
+json.dumps(result.data)
+pc_health.set_default_health(types.SimpleNamespace(report=lambda: (_ for _ in ()).throw(RuntimeError("Lage kaputt"))))
+result = st.get_system_info()
+assert result.success and "pc_lage" not in result.data and "autostart_count" not in result.data and "top_programs" in result.data
+assert all("media" not in d for d in result.data["drives"]), "ohne Lage bleiben die Laufwerke wie vorher"
+pc_health.set_default_health(None)
+st.set_default_monitor(None)
+
 # 10) Verdrahtung: alte Importadresse, Aufgabe, Risiko
 import risk
 from action import Action

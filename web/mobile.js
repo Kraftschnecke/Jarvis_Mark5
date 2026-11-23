@@ -148,7 +148,6 @@
   app.loadSettings();
   app.loadWidgets();
   app.loadTimers();
-  app.loadWeather();
 
   let ticks = 0;
   setInterval(() => {
@@ -158,7 +157,7 @@
     if (ticks % 5 === 0) { app.loadTimers(); app.loadNeeded(true); }
     if (ticks % 300 === 0) app.loadNeeded(false);
     if (ticks % 30 === 0) { app.loadWidgets(); if (app.enabled.includes("worldtime")) drawPanel("worldtime"); }
-    if (ticks % 600 === 0) { app.loadWeather(); app.loadSettings(); }
+    if (ticks % 600 === 0) app.loadSettings();
     if (app.focus.active || app.timers.length) drawPanel("focus");
     app.tickListeners.slice().forEach((fn) => fn());
   }, 1000);

@@ -1,8 +1,9 @@
 """Proaktive Hinweise (Mark 5, Step 2.29): nur Anzeige im Chat, Jarvis fuehrt dabei NIE etwas aus.
 
-Zwei Arten, beide aus (opt-in) und einzeln einschaltbar:
+Drei Arten, alle aus (opt-in) und einzeln einschaltbar:
   - Termin in X Minuten (Kalender, auch Apple; Erinnerungen und Wecker melden sich selbst und zaehlen hier nicht),
-  - Wetter fuer morgen (ab einer Abendstunde, einmal pro Tag, am Heimatort).
+  - Wetter fuer morgen (ab einer Abendstunde, einmal pro Tag, am Heimatort),
+  - kritisches PC-Problem (nur Stufe "bad" der PC-Lage: Laufwerk meldet Fehler oder ist fast voll, RAM/CPU dauerhaft am Limit, Akku fast leer).
 Abgelaufene Timer meldet schon der Ringer (Step 2.9): sie brauchen hier keinen zweiten Hinweis.
 Die Texte werden ohne KI zusammengesetzt; Termintitel (bei Apple fremder Text) werden bereinigt und gekuerzt.
 Jeder Hinweis kommt hoechstens einmal: die Datei hints_state.json merkt sich die schon gezeigten Hinweise des Tages.
@@ -13,7 +14,7 @@ import os
 import re
 import tempfile
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from untrusted import clean_text
@@ -70,6 +71,39 @@ def weather_hint(data, tomorrow):
         return None
     where = f" in {place}" if place else ""
     return {"id": f"weather:{tomorrow}", "kind": "weather", "text": f"Morgen{where}: " + ", ".join(parts) + "."}
+
+
+PC_SUSTAIN_MINUTES = {"ram": 5, "cpu": 10}      # so lange muss es anhalten, bevor es gemeldet wird (kurze Spitzen sind normal)
+PC_DEFAULT_SUSTAIN_MINUTES = 5
+PC_MAX_GAP_MINUTES = 3                           # laenger nicht geprueft (Seite war zu): die Zeit des Anhaltens beginnt neu
+
+
+def pc_hints(assessment, state, now):
+    """Meldungen zu kritischen PC-Problemen aus der Bewertung (tools/pc_health.assess).
+
+    Nur Hinweise der Stufe "bad". Was nur bei Dauer ein Problem ist ("sustained": RAM, CPU), wird erst gemeldet, wenn es
+    so lange angehalten hat. state = {"since": {Hinweis: Beginn}, "last": letzte Pruefung} wird hier gepflegt und bleibt
+    zwischen den Pruefungen erhalten. Wann ein Hinweis schon gezeigt wurde, merkt sich das HintLog (einmal pro Tag und Art).
+    """
+    findings = assessment.get("findings") if isinstance(assessment, dict) else None
+    bad = {f["id"]: f for f in findings or [] if isinstance(f, dict) and f.get("level") == "bad" and isinstance(f.get("id"), str)}
+    since = state.setdefault("since", {})
+    last = state.get("last")
+    if last is None or now - last > timedelta(minutes=PC_MAX_GAP_MINUTES):
+        since.clear()
+    state["last"] = now
+    for key in [k for k in since if k not in bad]:
+        del since[key]
+    found = []
+    for key, finding in bad.items():
+        if finding.get("sustained"):
+            started = since.setdefault(key, now)
+            if now - started < timedelta(minutes=PC_SUSTAIN_MINUTES.get(key, PC_DEFAULT_SUSTAIN_MINUTES)):
+                continue
+        text = " ".join(clean_text(str(finding.get(part) or ""), 300).strip() for part in ("text", "tip")).strip()
+        if text:
+            found.append({"id": f"pc:{key}", "kind": "pc", "text": "PC-Warnung: " + text})
+    return found
 
 
 class HintLog:

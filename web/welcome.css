@@ -157,6 +157,62 @@ body.welcome::before {
 .wmeter .bar.warn i { background: #e7b94a; box-shadow: 0 0 8px #e7b94a; }
 .wmeter .bar.high i { background: #e5534b; box-shadow: 0 0 8px #e5534b; }
 
+/* Wetter */
+.wicon { flex: none; color: var(--accent); }
+.wxnow { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.wxtemp { font-size: 1.5rem; font-weight: 300; line-height: 1; white-space: nowrap; }
+.col.compact .wxtemp { font-size: 1.1rem; }
+.wxline { margin-top: 4px; }
+.wxstrip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.wxday { display: grid; justify-items: center; gap: 2px; font-size: 0.85rem; }
+.wxsearch { margin-top: 0; margin-bottom: 16px; }
+.wxsearch .field { font-size: 1rem; }
+.wxplace { margin-bottom: 10px; }
+.wxplace b { font-weight: 500; font-size: 1.05rem; }
+.wxbignow { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 4px 0 14px; }
+.wxbigtemp { font-size: 2.4rem; font-weight: 300; line-height: 1.05; }
+.wxfacts { display: flex; gap: 22px; margin-left: auto; flex-wrap: wrap; }
+.wxfact { display: grid; gap: 1px; }
+.wxweek { border-top: 1px solid var(--line); }
+.wxrow { display: grid; grid-template-columns: 84px 28px minmax(90px, 1.1fr) minmax(90px, 1.6fr) 74px 44px; align-items: center; gap: 12px; padding: 9px 8px; border-bottom: 1px solid var(--line); font-size: 0.92rem; }
+.wxrow.today { background: var(--accent-soft); border-radius: 8px; }
+.wxname { display: flex; flex-direction: column; line-height: 1.25; }
+.wxname b { font-weight: 500; }
+.wxcond { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wxtrack { position: relative; height: 6px; border-radius: 3px; background: var(--line); }
+.wxtrack i { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); box-shadow: 0 0 8px var(--accent-soft); }
+.wxtemps { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wxrain { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 620px) {
+  .wxrow { grid-template-columns: 62px 26px minmax(40px, 1fr) 64px 38px; gap: 8px; padding: 9px 2px; }
+  .wxcond { display: none; }
+  .wxfacts { margin-left: 0; gap: 18px; }
+}
+
+/* PC-Lage und Laufwerke */
+.wlight { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--muted); }
+.wlight.ok { background: #3fb950; box-shadow: 0 0 8px #3fb950; }
+.wlight.warn { background: #e7b94a; box-shadow: 0 0 8px #e7b94a; }
+.wlight.bad { background: #e5534b; box-shadow: 0 0 8px #e5534b; }
+.wlight.tip { background: var(--accent); }
+.wlightrow { display: flex; align-items: flex-start; gap: 10px; font-size: 0.95rem; line-height: 1.4; }
+.wlightrow .wlight { margin-top: 6px; }
+.wlightrow.big { font-size: 1.2rem; font-weight: 300; padding-bottom: 6px; }
+.wfinding { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.wfinding .wlight { margin-top: 6px; }
+.wcols3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.wprog { padding: 3px 0; overflow-wrap: anywhere; font-size: 0.92rem; }
+.wdrive { display: grid; grid-template-columns: 74px 1fr auto; align-items: center; gap: 8px; padding: 2px 0; font-size: 0.85rem; }
+.wdrive .bar { margin-top: 0; }
+.wdrives { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.wdrivecard { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.wdrivehead { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 2px; }
+.wbadge { font-size: 0.74rem; border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; color: var(--muted); }
+.wbadge.ok { color: #3fb950; border-color: #3fb950; }
+.wbadge.warn { color: #e7b94a; border-color: #e7b94a; }
+.wbadge.bad { color: #e5534b; border-color: #e5534b; }
+@media (max-width: 620px) { .wcols3 { grid-template-columns: 1fr; gap: 10px; } .wdrive { grid-template-columns: 64px 1fr auto; } }
+
 /* Grosse Fenster */
 #layer { position: relative; z-index: 20; }
 .wl-dim { position: fixed; inset: 0; background: rgba(10, 12, 14, 0.62); backdrop-filter: blur(3px); animation: fade-in 0.2s ease both; }

@@ -72,7 +72,7 @@ assert "/api/remote/whoami" in remote_policy.GET_API
 assert 'return remoteMode && !window.JarvisRemoteMode.widgetAllowed(choice) ? "Off" : choice;' in app
 assert "!guestMode && !remoteMode && !ended" in app                                  # Weckwort
 assert "if (guestMode || remoteMode || !(settings.goals && settings.goals.evening)) return;" in app
-assert "if (guestMode || remoteMode || !h || !(h.appointments || h.weather)) return;" in app
+assert "if (guestMode || remoteMode || !h || !(h.appointments || h.weather || h.pc)) return;" in app
 assert "if (!remoteMode && settings.briefing && settings.briefing.auto) {" in app
 assert "if (remoteMode) return;        // Umbenennen" in app
 assert "area.readOnly" not in app                                                   # Notizen am Handy bearbeitbar (Stufe Alltag, Server prueft)

@@ -172,6 +172,8 @@ const PAGES = [
         note: "Abends einmal das Wetter von morgen am Heimatort (Open-Meteo). Braucht die Fähigkeit Wetter und einen Heimatort." },
       { label: "Weather from (hour)", category: "hints", key: "weather_hour", type: "number", min: 15, max: 23, live: true,
         note: "Die Stunde, ab der der Wetterhinweis kommen darf (15 bis 23 Uhr)." },
+      { label: "Serious PC problems", category: "hints", key: "pc", type: "toggle", live: true,
+        note: "Jarvis meldet sich nur bei echten Problemen: ein Laufwerk meldet Fehler oder ist fast voll (unter 5 %, Windows-Laufwerk unter 10 %), der Arbeitsspeicher liegt 5 Minuten über 95 %, der Prozessor 10 Minuten über 95 % oder der Akku ist unter 10 % und nicht am Strom. Jede Art höchstens einmal pro Tag. Alles bleibt auf dem PC." },
     ],
   },
   {

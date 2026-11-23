@@ -71,7 +71,19 @@ class FakeJarvis:
         return "Guten Abend, Sir. Heute: nichts Besonderes."
 
 
-httpd = server.JarvisServer(("127.0.0.1", 0), FakeJarvis(), monitor=object())
+forecast_calls = []
+
+
+def fake_week(place, icons=False):
+    forecast_calls.append((place, icons))
+    if place == "Nirgendwo":
+        return ToolResult(success=False, error="Den Ort „Nirgendwo“ habe ich nicht gefunden.")
+    if place == "kaputt":
+        raise RuntimeError("geheime Einzelheit")
+    return ToolResult(success=True, data={"place": "Ort " + place, "now": None, "days": []})
+
+
+httpd = server.JarvisServer(("127.0.0.1", 0), FakeJarvis(), monitor=object(), weather=types.SimpleNamespace(week_forecast=fake_week))
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
 guest_httpd = server.JarvisServer(("127.0.0.1", 0), types.SimpleNamespace(settings_manager=settings, guest=True), guest=True)
 threading.Thread(target=guest_httpd.serve_forever, daemon=True).start()
@@ -145,16 +157,58 @@ settings.set("abilities", "volume", False)
 assert request(httpd, "POST", "/api/volume", {"percent": 50})[0] == 403 and calls["volume"] == [40, 13]
 settings.set("abilities", "volume", True)
 
+# 5b) Wochenvorhersage: Heimatort ohne Angabe, gesuchter Ort ueber ?place=, aus -> "disabled", Fehler -> 502 ohne Einzelheiten
+assert request(httpd, "GET", "/api/forecast") == (200, {"forecast": {"place": "Ort heimat", "now": None, "days": []}})
+assert request(httpd, "GET", "/api/forecast?place=Lissabon")[1]["forecast"]["place"] == "Ort Lissabon"
+assert request(httpd, "GET", "/api/forecast?place=Bad%20Homburg%20v.%20d.%20H.")[1]["forecast"]["place"] == "Ort Bad Homburg v. d. H."
+assert request(httpd, "GET", "/api/forecast?place=")[1]["forecast"]["place"] == "Ort heimat"
+assert forecast_calls == [("heimat", True), ("Lissabon", True), ("Bad Homburg v. d. H.", True), ("heimat", True)], forecast_calls
+status, data = request(httpd, "GET", "/api/forecast?place=Nirgendwo")
+assert status == 502 and "nicht gefunden" in data["error"]
+status, data = request(httpd, "GET", "/api/forecast?place=kaputt")
+assert status == 502 and "geheime" not in json.dumps(data) and "nicht abrufbar" in data["error"]
+n_calls = len(forecast_calls)
+settings.set("abilities", "weather", False)
+assert request(httpd, "GET", "/api/forecast?place=Lissabon") == (200, {"disabled": True}) and len(forecast_calls) == n_calls
+settings.set("abilities", "weather", True)
+
+# 5c) PC-Lage: der Bericht der Auswertung, aus -> "disabled", Fehler -> 502 ohne Einzelheiten
+class FakeHealth:
+    broken = False
+
+    def report(self):
+        if self.broken:
+            raise RuntimeError("geheime Einzelheit")
+        return {"now": {}, "drives": [{"letter": "C", "media": "SSD"}], "programs": {"ram": [], "cpu": [], "disk": []}, "autostart": [],
+                "assessment": {"level": "ok", "headline": "Alles ruhig.", "findings": []}}
+
+
+health = FakeHealth()
+health_httpd = server.JarvisServer(("127.0.0.1", 0), FakeJarvis(), monitor=object(), health=health)
+threading.Thread(target=health_httpd.serve_forever, daemon=True).start()
+status, data = request(health_httpd, "GET", "/api/pc_lage")
+assert status == 200 and data["pc_lage"]["assessment"]["headline"] == "Alles ruhig." and data["pc_lage"]["drives"][0]["media"] == "SSD", data
+health.broken = True
+status, data = request(health_httpd, "GET", "/api/pc_lage")
+assert status == 502 and "geheime" not in json.dumps(data) and "PC-Lage" in data["error"]
+health.broken = False
+import abilities
+real_enabled = abilities.task_enabled
+abilities.task_enabled = lambda task, manager: False if task == "GET_SYSTEM_INFO" else real_enabled(task, manager)
+assert request(health_httpd, "GET", "/api/pc_lage") == (200, {"disabled": True})
+abilities.task_enabled = real_enabled
+
 # 6) Gastmodus: keine dieser Adressen
-for method, path, payload in (("GET", "/api/reminders", None), ("GET", "/api/news", None), ("GET", "/api/briefing", None),
+for method, path, payload in (("GET", "/api/pc_lage", None), ("GET", "/api/forecast?place=Rom", None), ("GET", "/api/reminders", None), ("GET", "/api/news", None), ("GET", "/api/briefing", None),
                               ("POST", "/api/media", {"action": "next"}), ("POST", "/api/volume", {"percent": 10})):
     status, data = request(guest_httpd, method, path, payload)
     assert status in (403, 404), (path, status)
 assert calls["volume"] == [40, 13] and len(calls["press"]) <= 1
 
 # 7) Remote: lesen ja (Anzeige), Medientaste und Lautstaerke nie
-for path in ("/api/reminders", "/api/news", "/api/briefing"):
+for path in ("/api/reminders", "/api/news", "/api/briefing", "/api/forecast"):
     assert remote_policy.api_allowed("GET", path), path
+assert not remote_policy.api_allowed("GET", "/api/pc_lage"), "PC-Lage nur am PC"
 for path in ("/api/media", "/api/volume"):
     assert not remote_policy.api_allowed("POST", path, {"info": True, "daily": True, "pc": True}), path
     assert not remote_policy.api_allowed("GET", path), path

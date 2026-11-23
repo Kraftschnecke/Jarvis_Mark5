@@ -5,6 +5,9 @@ Reine Logik ohne Netz und ohne Server. Wichtig:
 - Ein Kopplungscode gilt 5 Minuten und genau einmal. Er liegt nur im Speicher.
 - Nach zu vielen falschen Codes von derselben Quelle ist die Kopplung kurz gesperrt.
 - Alles Zeitliche kommt ueber eine Uhr, die sich in Tests ersetzen laesst.
+- Vollzugriff (Server-Betrieb, DESIGN_SERVER.md): Ein Geraet mit full=True darf wie der PC selbst arbeiten. Diesen Code gibt es
+  nur ueber ``create_pairing(..., full=True)`` (Aufruf im Server-Terminal: ``server_main.py --pair-owner``), nie ueber die Weboberflaeche.
+  Der Code liegt zusaetzlich (nur als Hash) in einer Datei neben remote_devices.json, weil das Terminal ein eigener Prozess ist.
 """
 import hashlib
 import hmac
@@ -21,6 +24,7 @@ from pathlib import Path
 from profiles import OWNER, is_profile_id
 
 DEVICES_FILE = Path(__file__).resolve().parent / "remote_devices.json"
+FULL_PENDING_NAME = "remote_pending_full.json"     # neben remote_devices.json: offene Kopplungen mit Vollzugriff (nur Hashes)
 
 PAIRING_TTL = 300                    # Sekunden, die ein Kopplungscode gilt
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"    # ohne I, L, O, 0, 1: nichts, was man verwechseln kann
@@ -124,6 +128,8 @@ class DeviceStore:
                     # Aeltere Geraete haben keinen Bereich und gehoeren dem Besitzer; Unsinn in der Datei zaehlt nie als Gast
                     "profile": item["profile"] if is_profile_id(item.get("profile")) else OWNER,
                 })
+                # Vollzugriff nur fuer Geraete des Besitzers; Unsinn oder ein Gast-Geraet mit "full" in der Datei zaehlt nie
+                devices[-1]["full"] = item.get("full") is True and devices[-1]["profile"] == OWNER
         return devices
 
     def _set_aside_broken_file(self):
@@ -147,10 +153,14 @@ class DeviceStore:
             raise
 
     # --- Kopplung -------------------------------------------------------
-    def create_pairing(self, name, profile=OWNER):
-        """Neuer Kopplungscode fuer ein Geraet des Besitzers oder eines Gast-Bereichs. Gibt {"code", "expires", "name", "profile"} zurueck."""
+    def create_pairing(self, name, profile=OWNER, full=False):
+        """Neuer Kopplungscode fuer ein Geraet des Besitzers oder eines Gast-Bereichs. Gibt {"code", "expires", "name", "profile", "full"} zurueck.
+
+        ``full=True`` (Vollzugriff wie am PC) gibt es nur fuer den Besitzer und wird nur vom Server-Terminal aus verlangt."""
         if profile != OWNER and not is_profile_id(profile):
             raise ValueError("Ungültiger Bereich.")
+        if full and profile != OWNER:
+            raise ValueError("Vollzugriff gibt es nur für den Besitzer.")
         with self._lock:
             now = self.clock()
             self._pending = {h: p for h, p in self._pending.items() if p["expires"] > now}
@@ -162,8 +172,67 @@ class DeviceStore:
                 code = self.code_factory()       # ungueltig oder schon vergeben: neu wuerfeln
             expires = now + PAIRING_TTL
             device_name = clean_device_name(name)
-            self._pending[hash_token(normalize_code(code))] = {"name": device_name, "expires": expires, "profile": profile}
-            return {"code": code, "expires": expires, "name": device_name, "profile": profile}
+            code_hash = hash_token(normalize_code(code))
+            self._pending[code_hash] = {"name": device_name, "expires": expires, "profile": profile, "full": full}
+            if full:
+                self._write_full_pending(code_hash, {"name": device_name, "expires": expires})
+            return {"code": code, "expires": expires, "name": device_name, "profile": profile, "full": full}
+
+    # --- offene Kopplungen mit Vollzugriff in einer Datei (das Server-Terminal ist ein eigener Prozess) ---------
+    def _full_pending_path(self):
+        return self.path.with_name(FULL_PENDING_NAME)
+
+    def _read_full_pending(self):
+        try:
+            data = json.loads(self._full_pending_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        now = self.clock()
+        result = {}
+        for code_hash, entry in (data.items() if isinstance(data, dict) else []):
+            if (isinstance(code_hash, str) and isinstance(entry, dict) and isinstance(entry.get("name"), str)
+                    and isinstance(entry.get("expires"), (int, float)) and not isinstance(entry["expires"], bool) and entry["expires"] > now):
+                result[code_hash] = {"name": clean_device_name(entry["name"]), "expires": float(entry["expires"])}
+        return result
+
+    def _store_full_pending(self, entries):
+        path = self._full_pending_path()
+        if not entries:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            return
+        handle, temp_path = tempfile.mkstemp(dir=str(path.parent), prefix=".pending_", suffix=".tmp")
+        try:
+            with os.fdopen(handle, "w", encoding="utf-8") as file:
+                json.dump(entries, file)
+            try:
+                os.chmod(temp_path, 0o600)           # nur der Besitzer des Servers darf die Datei lesen
+            except OSError:
+                pass
+            os.replace(temp_path, path)
+        except OSError:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+            raise
+
+    def _write_full_pending(self, code_hash, entry):
+        entries = self._read_full_pending()
+        entries[code_hash] = entry
+        while len(entries) > MAX_PENDING:
+            del entries[min(entries, key=lambda h: entries[h]["expires"])]
+        self._store_full_pending(entries)
+
+    def _take_full_pending(self, code_hash):
+        """Ein offener Vollzugriff-Code aus der Datei (und dort gleich verbraucht), sonst None."""
+        entries = self._read_full_pending()
+        entry = entries.pop(code_hash, None)
+        if entry is not None or not entries:
+            self._store_full_pending(entries)
+        return entry
 
     def redeem(self, code, source=""):
         """Tauscht einen Kopplungscode gegen ein Token. Gibt (status, token, geraet) zurueck.
@@ -176,6 +245,12 @@ class DeviceStore:
             now = self.clock()
             canonical = normalize_code(code)
             entry = self._pending.pop(hash_token(canonical), None) if canonical else None
+            if entry is None and canonical:
+                found = self._take_full_pending(hash_token(canonical))         # im Server-Terminal erzeugt
+                entry = dict(found, profile=OWNER, full=True) if found is not None else None
+            elif entry is not None and entry.get("full"):
+                if self._take_full_pending(hash_token(canonical)) is None:     # die Datei-Kopie ist die Wahrheit: schon anderswo benutzt
+                    entry = None
             if entry is None or entry["expires"] <= now:
                 self.guard.failure(source)
                 return "invalid", None, None
@@ -183,7 +258,8 @@ class DeviceStore:
             device_id = secrets.token_hex(4)
             token = f"{device_id}.{self.secret_factory(32)}"
             device = {"id": device_id, "name": entry["name"], "token_hash": hash_token(token), "created": now,
-                      "last_seen": now, "expires": now + TOKEN_LIFETIME, "revoked": False, "profile": entry["profile"]}
+                      "last_seen": now, "expires": now + TOKEN_LIFETIME, "revoked": False, "profile": entry["profile"],
+                      "full": entry.get("full") is True}
             self._devices.append(device)
             try:
                 self._save()
@@ -327,4 +403,4 @@ def _number(value):
 
 def _public(device):
     """Ohne Hash: das ist alles, was die Seite je zu sehen bekommt."""
-    return {key: device[key] for key in ("id", "name", "created", "last_seen", "expires", "revoked", "profile")}
+    return {key: device[key] for key in ("id", "name", "created", "last_seen", "expires", "revoked", "profile", "full")}

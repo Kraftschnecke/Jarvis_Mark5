@@ -222,4 +222,13 @@ def get_system_info():
         data = {**facts(), "now": default_monitor().sample(fresh_cpu=True), "top_programs": top_processes()}
     except Exception as error:
         return ToolResult(success=False, error=f"Die Systemdaten konnten nicht gelesen werden: {error}")
+    try:                                                    # die Lage (SSD/HDD, Last, Verbraucher, Bewertung) ist ein Zusatz: ohne sie bleibt die Antwort wie sie war
+        from tools import pc_health
+        report = pc_health.default_health().report()
+        data["drives"] = report["drives"]
+        data["programs"] = report["programs"]
+        data["autostart_count"] = len(report["autostart"])
+        data["pc_lage"] = report["assessment"]
+    except Exception:
+        pass
     return ToolResult(success=True, data=data)

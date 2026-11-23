@@ -5,10 +5,10 @@ const phonePrefsDialog = byId("phone-prefs");
 const phonePrefsRows = byId("phone-prefs-rows");
 const phonePrefsError = byId("phone-prefs-error");
 const PHONE_LABELS = {
-  Dark: "Dunkel", Light: "Hell", System: "Wie das Handy", "J.A.R.V.I.S. Blue": "Blau", "British Racing Green": "Grün",
+  Dark: "Dunkel", Light: "Hell", System: "Auto", "J.A.R.V.I.S. Blue": "Blau", "British Racing Green": "Grün",
   Off: "Aus", Clock: "Uhr", Date: "Datum", Calendar: "Kalender", Notes: "Notizen", Goals: "Ziele", Lists: "Listen",
 };
-const PHONE_SLOT_LABELS = { top: "Seitenleiste: Feld 1", middle: "Seitenleiste: Feld 2", fourth: "Seitenleiste: Feld 3", fifth: "Seitenleiste: Feld 4" };
+const PHONE_SLOT_LABELS = { top: "Oben", middle: "Mitte", fourth: "Unten 1", fifth: "Unten 2" };
 
 function changePhonePref(change) {
   const prefs = window.JarvisRemotePrefs;
@@ -21,22 +21,120 @@ function changePhonePref(change) {
   applyWidgets();
 }
 
-function phoneSelectRow(label, key, options, current, onChange) {
-  const row = el("div", "phone-prefs-row");
-  const id = "phone-pref-" + key;
-  const lab = el("label", "", label);
-  lab.htmlFor = id;
+// ---- Bausteine der Einstellungsseite: Karten mit Zeilen; jeder Baustein haelt seinen Zustand selbst aktuell
+function phoneGroup(title) {
+  const card = el("div", "phone-card");
+  phonePrefsRows.append(el("div", "phone-group", title), card);
+  return card;
+}
+
+function phoneLine(card, label, control) {
+  const line = el("div", "phone-line");
+  line.append(el("span", "phone-line-label", label), control);
+  card.append(line);
+  return line;
+}
+
+// Umschalter mit mehreren Stellungen (Dunkel | Hell | Auto)
+function phoneSegment(label, options, current, onPick) {
+  const wrap = el("div", "phone-seg");
+  wrap.setAttribute("role", "radiogroup");
+  wrap.setAttribute("aria-label", label);
+  const buttons = options.map((option) => {
+    const button = el("button", "", PHONE_LABELS[option] || String(option));
+    button.type = "button";
+    button.setAttribute("role", "radio");
+    button.addEventListener("click", () => { mark(option); onPick(option); });
+    wrap.append(button);
+    return [option, button];
+  });
+  function mark(value) {
+    buttons.forEach(([option, button]) => {
+      button.classList.toggle("on", String(option) === String(value));
+      button.setAttribute("aria-checked", String(String(option) === String(value)));
+    });
+  }
+  mark(current);
+  return wrap;
+}
+
+// Farbpunkte
+function phoneSwatches(options, current, onPick) {
+  const wrap = el("div", "phone-swatches");
+  wrap.setAttribute("role", "radiogroup");
+  wrap.setAttribute("aria-label", "Akzentfarbe");
+  const buttons = options.map((option) => {
+    const button = el("button", "phone-swatch");
+    button.type = "button";
+    button.dataset.accent = option === "British Racing Green" ? "green" : "blue";
+    button.setAttribute("role", "radio");
+    button.setAttribute("aria-label", PHONE_LABELS[option] || option);
+    button.addEventListener("click", () => { mark(option); onPick(option); });
+    wrap.append(button);
+    return [option, button];
+  });
+  function mark(value) {
+    buttons.forEach(([option, button]) => {
+      button.classList.toggle("on", option === value);
+      button.setAttribute("aria-checked", String(option === value));
+    });
+  }
+  mark(current);
+  return wrap;
+}
+
+// Zahl mit minus und plus, geht durch die erlaubten Werte
+function phoneStepper(values, current, onPick) {
+  const wrap = el("div", "phone-step");
+  const minus = el("button", "", "−");
+  const plus = el("button", "", "＋");
+  const number = el("b", "", String(current));
+  minus.type = plus.type = "button";
+  minus.setAttribute("aria-label", "Kleiner");
+  plus.setAttribute("aria-label", "Größer");
+  let index = Math.max(0, values.indexOf(current));
+  function show() {
+    number.textContent = String(values[index]);
+    minus.disabled = index <= 0;
+    plus.disabled = index >= values.length - 1;
+  }
+  const move = (step) => () => { index = Math.min(values.length - 1, Math.max(0, index + step)); show(); onPick(values[index]); };
+  minus.addEventListener("click", move(-1));
+  plus.addEventListener("click", move(1));
+  show();
+  wrap.append(minus, number, plus);
+  return wrap;
+}
+
+// Schalter an/aus
+function phoneSwitch(label, on, onToggle) {
+  const button = el("button", "phone-switch");
+  button.type = "button";
+  button.setAttribute("role", "switch");
+  button.setAttribute("aria-label", label);
+  function mark(value) {
+    button.classList.toggle("on", value);
+    button.setAttribute("aria-checked", String(value));
+  }
+  mark(on);
+  button.addEventListener("click", () => { const next = button.getAttribute("aria-checked") !== "true"; mark(next); onToggle(next); });
+  return button;
+}
+
+// Eine Zeile mit dem gewaehlten Wert; ein Tipp oeffnet die Auswahl des Handys (ein unsichtbares Auswahlfeld liegt darueber)
+function phonePicker(label, options, current, onPick) {
+  const wrap = el("label", "phone-picker");
   const select = el("select");
-  select.id = id;
+  select.setAttribute("aria-label", label);
   options.forEach((option) => {
-    const item = el("option", "", PHONE_LABELS[option] || option);
+    const item = el("option", "", PHONE_LABELS[option] || String(option));
     item.value = String(option);
     item.selected = String(option) === String(current);
     select.appendChild(item);
   });
-  select.addEventListener("change", () => (onChange || ((value) => changePhonePref({ [key]: value })))(select.value));
-  row.append(lab, select);
-  return row;
+  select.addEventListener("change", () => onPick(select.value));
+  wrap.append(select);
+  return wrap;
 }
 
 function renderPhonePrefs() {
@@ -44,28 +142,29 @@ function renderPhonePrefs() {
   mergePhonePrefs();
   const shown = prefs.view(serverSettings, phonePrefs);
   phonePrefsRows.replaceChildren();
-  phonePrefsRows.appendChild(phoneSelectRow("Design", "theme", prefs.THEMES, shown.theme));
-  phonePrefsRows.appendChild(phoneSelectRow("Akzentfarbe", "accent_color", prefs.ACCENTS, shown.accent_color));
 
-  const row = el("div", "phone-prefs-row phone-prefs-switch");
-  const lab = el("label", "", "Antworten vorlesen");
-  lab.htmlFor = "phone-pref-speech";
-  const box = el("input");
-  box.type = "checkbox";
-  box.id = "phone-pref-speech";
-  box.checked = shown.speech;
-  box.addEventListener("change", () => changePhonePref({ speech: box.checked }));
-  row.append(lab, box);
-  phonePrefsRows.appendChild(row);
+  const look = phoneGroup("Aussehen");
+  phoneLine(look, "Design", phoneSegment("Design", prefs.THEMES, shown.theme, (value) => changePhonePref({ theme: value })));
+  phoneLine(look, "Akzentfarbe", phoneSwatches(prefs.ACCENTS, shown.accent_color, (value) => changePhonePref({ accent_color: value })));
+  phoneLine(look, "Schriftgröße", phoneStepper(prefs.FONT_SIZES, shown.font_size, (value) => changePhonePref({ font_size: Number(value) })));
 
-  phonePrefsRows.appendChild(phoneSelectRow("Schriftgröße (px)", "font_size", prefs.FONT_SIZES, shown.font_size,
-    (value) => changePhonePref({ font_size: Number(value) })));
+  const voice = phoneGroup("Sprache");
+  phoneLine(voice, "Antworten vorlesen", phoneSwitch("Antworten vorlesen", shown.speech, (on) => changePhonePref({ speech: on })));
+
+  const side = phoneGroup("Seitenleiste");
   Object.keys(prefs.SLOTS).forEach((slot) => {
-    phonePrefsRows.appendChild(phoneSelectRow(PHONE_SLOT_LABELS[slot], "widget-" + slot, prefs.SLOTS[slot], shown.widgets[slot],
-      (value) => changePhonePref({ widgets: Object.assign({}, phonePrefs.widgets || shown.widgets, { [slot]: value }) })));
+    const current = shown.widgets[slot];
+    const picker = phonePicker(PHONE_SLOT_LABELS[slot], prefs.SLOTS[slot], current, (value) => {
+      value = String(value);
+      line.querySelector(".phone-value").textContent = PHONE_LABELS[value] || value;
+      changePhonePref({ widgets: Object.assign({}, phonePrefs.widgets || shown.widgets, { [slot]: value }) });
+    });
+    picker.prepend(el("span", "phone-value", PHONE_LABELS[current] || String(current)));
+    const line = phoneLine(side, PHONE_SLOT_LABELS[slot], picker);
   });
+  phonePrefsRows.append(el("p", "phone-hint", "Tippen öffnet eine kurze Liste. Aus lässt das Feld leer."));
 
-  const reset = smallButton("Alles wie am PC", "secondary", () => {
+  const reset = smallButton("Alles wie am PC", "phone-reset", () => {
     phonePrefs = {};
     prefs.save(localStorage, phonePrefs);
     mergePhonePrefs();
@@ -84,6 +183,7 @@ byId("open-phone-prefs").addEventListener("click", () => {
   phonePrefsDialog.showModal();
 });
 byId("phone-prefs-close").addEventListener("click", () => phonePrefsDialog.close());
+byId("phone-prefs-done").addEventListener("click", () => phonePrefsDialog.close());
 
 // ======================================================================
 // Meldungen im Hintergrund (z.B. Timer)
@@ -294,7 +394,7 @@ setInterval(checkEvening, 5 * 60 * 1000);
 // Proaktive Hinweise (Step 2.29): Termin bald, Wetter von morgen. Nur Anzeige, nichts wird ausgefuehrt.
 async function checkHints() {
   const h = settings.hints;
-  if (guestMode || remoteMode || !h || !(h.appointments || h.weather)) return;
+  if (guestMode || remoteMode || !h || !(h.appointments || h.weather || h.pc)) return;
   try {
     const data = await api("POST", "/api/hints", {});
     data.hints.forEach((hint) => addMessage("background", hint.text, "HINWEIS"));

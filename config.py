@@ -65,6 +65,13 @@ def _clean_host(value):
 
 REMOTE_HOST = _clean_host(os.getenv("JARVIS_REMOTE_HOST", ""))
 
+# Server-Betrieb (siehe server_main.py): Jarvis laeuft ohne Fenster auf einem Rechner, der immer an ist, und schickt faellige
+# Erinnerungen, Wecker, Timer und Hinweise als Push aufs Handy (ntfy). Der "Themenname" ist das Passwort: lang und zufaellig waehlen.
+# Alles leer = kein Push. Ueberschreibbar mit NTFY_TOPIC, NTFY_SERVER, NTFY_TOKEN in der .env
+NTFY_TOPIC = os.getenv("NTFY_TOPIC", "").strip()
+NTFY_SERVER = os.getenv("NTFY_SERVER", "https://ntfy.sh").strip()
+NTFY_TOKEN = os.getenv("NTFY_TOKEN", "").strip()
+
 
 def mail_accounts():
     """E-Mail-Postfaecher aus der .env (Mark 5, Step 2.20). Nur der Besitzer traegt sie dort ein.

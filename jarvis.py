@@ -21,7 +21,7 @@ import remote_policy
 import ringing
 import timer as timer_module
 import widgets
-from tools import news_tool, weather_tool
+from tools import news_tool, pc_health, weather_tool
 import cost_guard
 from task_registry import TaskRegistry
 import plan_view
@@ -283,6 +283,13 @@ class Jarvis:
                 except Exception as error:
                     print(f"[HINWEIS] Wetter nicht geprueft: {type(error).__name__}")
                     self._weather_hint_retry = now + timedelta(minutes=10)
+            if manager.get("hints", "pc", False) and abilities.task_enabled("GET_SYSTEM_INFO", manager):
+                try:
+                    state = self.__dict__.setdefault("_pc_hint_state", {})
+                    assessment = pc_health.default_health().report()["assessment"]
+                    due += [h for h in hints.pc_hints(assessment, state, now) if not log.seen(h["id"], today)]
+                except Exception as error:
+                    print(f"[HINWEIS] PC nicht geprueft: {type(error).__name__}")
             for hint in due:
                 log.mark(hint["id"], today)
         return [{"kind": h["kind"], "text": h["text"]} for h in due]

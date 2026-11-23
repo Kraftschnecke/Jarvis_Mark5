@@ -44,12 +44,11 @@
       L, W, el, api,
       local: L.isLocalHost(location.hostname),     // am PC: Termine eintragen erlaubt, ueber Remote nicht
       data: null,                                  // Antwort von /api/widgets (Termine, Ziele, Listen, ...)
-      weather: null,                               // Wettersatz vom Server
       focus: { active: false },
       timers: [],
       fetchedAt: 0,                                // wann Fokus/Timer geholt wurden (damit sie lokal weiterzaehlen)
       enabled: [],
-      extra: {},                                   // News, Briefing, Erinnerungen, PC-Werte: name -> { status: loading|ok|disabled|error, data, error }
+      extra: {},                                   // News, Briefing, Erinnerungen, PC-Werte, Wettervorhersage: name -> { status: loading|ok|disabled|error, data, error }
       cities: [],                                  // gewaehlte Staedte der Weltuhr
       online: null,
       address: "Sir",
@@ -94,6 +93,8 @@
       briefing: { path: "/api/briefing", pick: (d) => d.text || "" },
       reminders: { path: "/api/reminders", pick: (d) => d.reminders || [] },
       perf: { path: "/api/performance", pick: (d) => d },
+      forecast: { path: "/api/forecast", pick: (d) => d.forecast || null },      // Wochenvorhersage fuer den Heimatort
+      pclage: { path: "/api/pc_lage", pick: (d) => d.pc_lage || null },          // PC-Lage und Laufwerke (nur am PC)
     };
     const pending = {};
     app.loadExtra = async (name, force) => {
@@ -112,15 +113,50 @@
       emit();
     };
     // welche Quellen ein eingeschaltetes Fenster braucht
-    const NEEDS = { news: "news", briefing: "briefing", reminders: "reminders", system: "perf" };
+    const NEEDS = { news: "news", briefing: "briefing", reminders: "reminders", system: "perf", weather: "forecast", pclage: "pclage", drives: "pclage" };
+    const LOCAL_ONLY = ["system", "pclage", "drives"];                   // gibt es nur am PC
+    const LIVE = ["perf", "pclage"];                                     // jede Runde neu holen (alle paar Sekunden)
+    const ALWAYS_FRESH = ["perf", "forecast", "pclage"];                 // und bei der grossen Runde auch erneuern
     function loadNeeded(onlyLive) {
       app.enabled.forEach((id) => {
         const name = NEEDS[id];
-        if (!name || (id === "system" && !app.local)) return;
-        if (onlyLive && name !== "perf") return;
-        app.loadExtra(name, name === "perf");
+        if (!name || (LOCAL_ONLY.includes(id) && !app.local)) return;
+        if (onlyLive && !LIVE.includes(name)) return;
+        app.loadExtra(name, ALWAYS_FRESH.includes(name));
       });
     }
+
+    // ---- Wetter: Vorhersage fuer einen gesuchten Ort (der Heimatort steht in app.extra.forecast)
+    app.searchForecast = async (place) => {
+      const data = await api("GET", "/api/forecast?place=" + encodeURIComponent(place));
+      if (data.disabled) throw new Error("Wetter ist in den Einstellungen ausgeschaltet.");
+      if (!data.forecast) throw new Error("Keine Vorhersage erhalten.");
+      return data.forecast;
+    };
+
+    // ---- Wetter-Symbol als kleines SVG (Linien, Farbe vom Text); unbekannter Name = Wolke
+    const SVG = "http://www.w3.org/2000/svg";
+    app.icon = (key, size) => {
+      const shapes = L.WEATHER_ICONS[L.isWeatherIcon(key) ? key : "cloudy"];
+      const svg = document.createElementNS(SVG, "svg");
+      const set = (node, name, value) => node.setAttribute(name, String(value));
+      set(svg, "viewBox", "0 0 24 24");
+      set(svg, "width", size || 20);
+      set(svg, "height", size || 20);
+      set(svg, "fill", "none");
+      set(svg, "stroke", "currentColor");
+      set(svg, "stroke-width", 1.7);
+      set(svg, "stroke-linecap", "round");
+      set(svg, "stroke-linejoin", "round");
+      set(svg, "aria-hidden", "true");
+      svg.setAttribute("class", "wicon");
+      shapes.forEach(([tag, attrs]) => {
+        const shape = document.createElementNS(SVG, tag);
+        Object.keys(attrs).forEach((name) => set(shape, name, attrs[name]));
+        svg.append(shape);
+      });
+      return svg;
+    };
 
     // ---- Musiktasten und Lautstaerke (nur am PC); gibt einen Hinweistext zurueck, wenn es nicht klappt
     app.media = async (action) => {
@@ -148,10 +184,6 @@
         app.fetchedAt = Date.now();
         emit();
       } catch (error) { /* naechste Runde */ }
-    };
-    app.loadWeather = async () => {
-      try { app.weather = (await api("GET", "/api/weather")).summary || null; } catch (error) { app.weather = null; }
-      emit();
     };
     app.loadSettings = async function loadSettings() {
       try {

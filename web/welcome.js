@@ -116,7 +116,6 @@
   loadSettings();
   loadWidgets();
   app.loadTimers();
-  app.loadWeather();
 
   let ticks = 0;
   setInterval(() => {
@@ -127,7 +126,7 @@
     if (ticks % 300 === 0) app.loadNeeded(false);
     if (ticks % 30 === 0 && app.enabled.includes("worldtime")) drawPanel("worldtime");
     if (ticks % 30 === 0) loadWidgets();
-    if (ticks % 600 === 0) { app.loadWeather(); loadSettings(); }
+    if (ticks % 600 === 0) loadSettings();
     if (app.focus.active || app.timers.length) drawPanel("focus");
     app.tickListeners.slice().forEach((fn) => fn());
   }, 1000);

@@ -119,7 +119,7 @@ store = remote_auth.DeviceStore(tmp / "remote_devices.json")
 gate = remote_gate.RemoteGate(REMOTE_HOST, store, settings)
 spy = SpyJarvis()
 httpd = server.JarvisServer(("127.0.0.1", 0), spy, widget_store=widget_store, monitor=object(),
-                            weather=types.SimpleNamespace(summary=lambda: None), remote=gate)
+                            weather=types.SimpleNamespace(summary=lambda: None, week_forecast=lambda place, icons=False: ToolResult(success=True, data={"place": place, "now": None, "days": []})), remote=gate)
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
 plain_httpd = server.JarvisServer(("127.0.0.1", 0), SpyJarvis(), widget_store=widget_store, monitor=object())   # ohne Remote
 threading.Thread(target=plain_httpd.serve_forever, daemon=True).start()

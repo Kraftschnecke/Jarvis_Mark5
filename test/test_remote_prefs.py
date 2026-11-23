@@ -18,7 +18,7 @@ js = (WEB / "remote_prefs.js").read_text(encoding="utf-8")
 # 1) Einbindung: Skript vor app.js, Knopf nur am Handy sichtbar (anfangs versteckt), eigener Dialog
 assert html.count('src="remote_prefs.js"') == 1 and html.index('src="remote_prefs.js"') < html.index('src="app_base.js"')
 assert 'id="open-phone-prefs" type="button" hidden' in html and "Handy-Einstellungen" in html
-assert '<dialog id="phone-prefs">' in html and 'id="phone-prefs-rows"' in html and 'id="phone-prefs-close"' in html
+assert '<dialog id="phone-prefs">' in html and 'id="phone-prefs-rows"' in html and 'id="phone-prefs-close"' in html and 'id="phone-prefs-done"' in html
 assert "innerHTML" not in js
 assert "body.remote #open-phone-prefs { display: flex !important; }" in css
 
@@ -27,6 +27,9 @@ assert "body.remote #open-phone-prefs { display: flex !important; }" in css
 assert ".side-button[hidden] { display: none; }" in css
 assert css.index(".side-button[hidden] { display: none; }") > css.index(".side-button, .row {")
 assert "#open-phone-prefs { margin-top: 0; }" in css and "body.remote #open-settings + #open-phone-prefs { margin-top: auto; }" in css
+# Abmelden darf keinen eigenen automatischen Abstand haben: sonst teilen sich beide den freien Platz und die Handy-Einstellungen sitzen mitten in der Leiste
+assert "#logout-button { margin-top: 0; }" in css
+assert css.index("#logout-button { margin-top: 0; }") > css.index(".settings-button { margin-top: auto; }")
 
 # 2) Der Knopf folgt dem Modus, den der Server meldet
 block = app.split("function setRemoteMode(value) {")[1].split("document.addEventListener")[0]
@@ -46,7 +49,8 @@ for part in ("prefs.normalize(", "prefs.save(localStorage", "mergePhonePrefs()",
 assert "api(" not in change and "fetch(" not in change and "/api/settings" not in change
 dialog = app.split("// Handy-Einstellungen: nur Anzeige und Browser-Speicher")[1].split('byId("open-phone-prefs").addEventListener("click"')[0]
 assert "api(" not in dialog and "fetch(" not in dialog and "innerHTML" not in dialog
-assert "prefs.THEMES" in dialog and "prefs.ACCENTS" in dialog and 'changePhonePref({ speech: box.checked })' in dialog
+assert "prefs.THEMES" in dialog and "prefs.ACCENTS" in dialog and 'changePhonePref({ speech: on })' in dialog
+assert 'changePhonePref({ theme: value })' in dialog and 'changePhonePref({ accent_color: value })' in dialog
 
 # 4b) Schriftgroesse und Seitenleiste pro Geraet, Zuruecksetzen, Speicher im Arbeitsspeicher gefuehrt
 assert "let phonePrefs = null;" in app and "if (phonePrefs === null) phonePrefs = window.JarvisRemotePrefs.load(localStorage);" in app
@@ -54,7 +58,14 @@ assert "applyWidgets()" in change
 assert "prefs.FONT_SIZES" in dialog and "prefs.SLOTS" in dialog and 'changePhonePref({ font_size: Number(value) })' in dialog
 assert 'smallButton("Alles wie am PC"' in dialog and "phonePrefs = {};" in dialog and "prefs.save(localStorage, phonePrefs)" in dialog
 assert dialog.count("applyWidgets()") >= 1
-assert "PHONE_SLOT_LABELS" in app and "Seitenleiste: Feld 1" in app
+assert "PHONE_SLOT_LABELS" in app and 'top: "Oben"' in app and "Feld 1" not in app
+for part in ("phoneSegment(", "phoneSwatches(", "phoneStepper(", "phoneSwitch(", "phonePicker("):          # die Bausteine der neuen Seite
+    assert part in dialog, part
+for part in ("role", "aria-checked", "aria-label"):                                                          # bedienbar mit Vorleseprogramm
+    assert part in dialog, part
+assert 'id="phone-prefs-done"' in html and 'phone-prefs-done").addEventListener("click"' in app
+guest = (WEB / "guest.html").read_text(encoding="utf-8")
+assert 'id="phone-prefs-done"' in guest and 'id="phone-prefs-close"' in guest                                 # gleiche Seite im Gast-Bereich
 
 # 5) Der Dialog der PC-Einstellungen ist am Handy weiter nicht erreichbar, und es gibt keine neue erlaubte Adresse
 import remote_policy

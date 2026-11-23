@@ -76,6 +76,7 @@ class SettingsManager:
             "appointment_minutes": 30,
             "weather": False,         # abends das Wetter von morgen
             "weather_hour": 19,       # ab dieser Uhrzeit (Stunde, 15 bis 23)
+            "pc": False,              # bei kritischen PC-Problemen melden (Laufwerk, Speicher, Prozessor, Akku)
         },
         # Zugriff vom Handy (Mark 5, Remote R2, siehe DESIGN_REMOTE.md): standardmaessig aus
         "remote": {

@@ -1,5 +1,6 @@
 """Wetter (Mark 5, Step 2.1): Open-Meteo, ohne Internet getestet."""
 
+import json
 import sys
 import tempfile
 import types
@@ -288,5 +289,70 @@ assert geo.locate("Gibtsnicht") is None and searches == [("Gibtsnicht", "de"), (
 searches.clear()
 assert geo.locate("Tokio") is None and searches == [("Tokyo", "de"), ("Tokyo", "en"), ("Tokio", "de"), ("Tokio", "en")], searches
 assert "kalkutta" in weather_tool.GERMAN_NAMES and all(v and v == v.strip() for v in weather_tool.GERMAN_NAMES.values())
+
+# 17) Wochenvorhersage: alle 7 Tage auf einmal, Chat ohne Symbole, Seite mit Symbolen; "woche" im Chat-Werkzeug
+state["fail"] = None
+state["places"] = None
+state["forecast"] = None
+wk = WeatherService(fetch=fetch, clock=lambda: now[0], today=lambda: TODAY, home=lambda: "Mannheim")
+r = wk.week_forecast("Vaxjo")
+assert r.success, r.error
+assert r.data["place"] == "Vaxjo, Kronobergs län, Schweden" and len(r.data["days"]) == 7
+first, last = r.data["days"][0], r.data["days"][6]
+assert first == {"date": "2026-10-22", "weekday": "Donnerstag", "condition": "bedeckt", "high": 13, "low": 6,
+                 "rain_chance_percent": 20, "rain_mm": 0.0}, first
+assert last["weekday"] == "Mittwoch" and last["condition"] == "leichter Schneefall" and last["low"] == -1
+assert r.data["now"] == {"condition": "bedeckt", "temperature": 12, "feels_like": 9, "humidity_percent": 81, "wind_kmh": 14}
+assert "icon" not in json.dumps(r.data), "der Chat braucht keine Symbole"
+r = wk.week_forecast("Vaxjo", icons=True)
+assert [d["icon"] for d in r.data["days"]] == ["cloudy", "rain", "thunder", "clear", "clear", "partly", "snow"], r.data["days"]
+assert r.data["now"]["icon"] == "cloudy"
+assert all(icon in weather_tool.ICON_KEYS for icon in [d["icon"] for d in r.data["days"]])
+for code, key in ((0, "clear"), (1, "clear"), (2, "partly"), (3, "cloudy"), (45, "fog"), (48, "fog"), (51, "rain"), (65, "rain"), (67, "rain"),
+                  (80, "rain"), (82, "rain"), (71, "snow"), (77, "snow"), (85, "snow"), (86, "snow"), (95, "thunder"), (99, "thunder"),
+                  (4, None), (-1, None), (100, None), (True, None), ("0", None), (None, None), (1.0, None)):
+    assert weather_tool.icon_key(code) == key, (code, key)
+
+# Heimatort bei "heimat" und leerem Ort; anderer Ort holt den anderen Ort; Heimatort aendern -> neuer Ort
+n = len(calls)
+assert wk.week_forecast("heimat").data["place"].startswith("Mannheim")
+assert wk.week_forecast("").data["place"].startswith("Mannheim")
+assert wk.week_forecast("Lissabon").data["place"].startswith("Lisbon")
+assert any(c[2]["params"].get("name") == "Mannheim" for c in calls[n:]) and any(c[2]["params"].get("name") == "Lisbon" for c in calls[n:])
+home_before = home[0]
+home[0] = "Berlin"
+wk2 = WeatherService(fetch=fetch, clock=lambda: now[0], today=lambda: TODAY, home=lambda: home[0])
+assert wk2.week_forecast("heimat").data["place"].startswith("Berlin")
+home[0] = "Hamburg"
+assert wk2.week_forecast("heimat").data["place"].startswith("Hamburg"), "neuer Heimatort gilt sofort"
+home[0] = home_before
+
+# Fehler: unbekannter Ort, Netzfehler, kein Heimatort
+state["places"] = {}
+r = wk.week_forecast("Gibtsnirgends")
+assert not r.success and "nicht gefunden" in r.error
+state["places"] = None
+state["fail"] = NetError("Zeitueberschreitung")
+r = WeatherService(fetch=fetch, today=lambda: TODAY, home=lambda: "X").week_forecast("Neuort")
+assert not r.success and "nicht abrufbar" in r.error
+state["fail"] = None
+r = WeatherService(fetch=fetch, today=lambda: TODAY, home=lambda: "").week_forecast("heimat")
+assert not r.success and "Heimatort" in r.error
+# kaputte Tageslisten: keine Tage -> Meldung, kaputtes Datum wird uebersprungen
+state["forecast"] = {"current": {}, "daily": {"time": ["kaputt", None, "2026-10-23"], "weather_code": [0, 0, 61], "temperature_2m_max": [1, 1, 5.5],
+                                               "temperature_2m_min": [0, 0, 2], "precipitation_probability_max": [0, 0, 150], "precipitation_sum": [0, 0, 1]}}
+r = WeatherService(fetch=fetch, today=lambda: TODAY, home=lambda: "X").week_forecast("Teststadt")
+assert r.success and [d["date"] for d in r.data["days"]] == ["2026-10-23"] and r.data["days"][0]["rain_chance_percent"] is None, r.data
+state["forecast"] = {"daily": {"time": []}}
+assert not WeatherService(fetch=fetch, today=lambda: TODAY, home=lambda: "X").week_forecast("Teststadt").success
+state["forecast"] = None
+
+# Chat-Werkzeug: "woche" liefert alle Tage, die Beschreibung nennt es
+chat = wk.get_weather("Vaxjo", " Woche ")
+assert chat.success and len(chat.data["days"]) == 7 and "day" not in chat.data
+assert wk.get_weather("Vaxjo", "week").data == chat.data
+assert wk.get_weather("Vaxjo", "heute").data["day"].startswith("Donnerstag"), "heute bleibt ein einzelner Tag"
+from tasks import create_get_weather_task
+assert "woche" in json.dumps(create_get_weather_task().actions[0].parameters["day"], ensure_ascii=False)
 
 print("ALL TESTS PASSED")
