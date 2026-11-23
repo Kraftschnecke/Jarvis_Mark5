@@ -55,3 +55,5 @@ remote_devices.json.defekt
 remote_pending_full.json
 profiles/
 profiles.json
+# Merkzettel der Warnungen (aendert sich laufend, gehoert nicht in git)
+hints_state.json
