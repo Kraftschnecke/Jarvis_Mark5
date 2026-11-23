@@ -50,6 +50,9 @@ for path in used:
     assert f'"{path}"' in server_text, path
 # Termine eintragen geht ueber Remote nicht: die Seite zeigt dort das Formular gar nicht erst
 assert "/api/widgets/events" not in remote_policy.DAILY_POST_API and "app.local" in js["welcome_dialogs.js"]
+# Besitzer ueber die Server-Adresse (Tailscale) ist auch "am PC": die Seite fragt es bei /api/settings ab und holt dann die PC-Fenster
+assert "L.isLocalHost(location.hostname) || L.isOwnerSettings(data)" in js["welcome_app.js"]
+assert "if (local !== app.local) {\n          app.local = local;\n          loadNeeded(false);" in js["welcome_app.js"]
 for path in ("/api/widgets/goals", "/api/widgets/lists"):
     assert path in remote_policy.DAILY_POST_API, path
 

@@ -117,6 +117,10 @@
   // Nur diese Orte gelten als "am PC": dort darf man Termine eintragen (ueber Remote ist das gesperrt)
   const isLocalHost = (hostname) => hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
 
+  // Auch ueber die Server-Adresse (Tailscale) ist der Besitzer "am PC": Der Server sagt es mit /api/settings.
+  // Eingeschraenkte Geraete (Handy) bekommen dort "remote: true". Ohne gueltige Antwort gilt der Rechnername.
+  const isOwnerSettings = (data) => Boolean(data) && typeof data === "object" && !Array.isArray(data) && data.remote !== true;
+
   // ---- Weltuhr: Staedte zur Auswahl (Zeitzonen kennt der Browser selbst)
   const CITIES = [
     { id: "stockholm", name: "Stockholm", tz: "Europe/Stockholm" }, { id: "berlin", name: "Berlin", tz: "Europe/Berlin" },
@@ -253,7 +257,7 @@
   }
 
   const api = { lightLevel, healthText, healthLevel, mediaLabel, programText, WEATHER_ICONS, isWeatherIcon, degrees, celsius, tempRange, shortPlace, rainText, forecastDay, barSpan, WINDOWS, STORAGE_KEY, CITIES_KEY, DEFAULT_ENABLED, CITIES, DEFAULT_CITIES, MAX_CITIES, normalizeCities, toggleCity, cityOf, cityTime, cityDayLabel, describeDue, COMPACT_FROM, CARD_TEXT, builtIds, normalizeEnabled, toggleWindow, splitColumns, isCompact, cardState,
-                greetingWord, formatRemaining, dayKey, addDays, eventsOn, goalProgress, bestStreak, isLocalHost };
+                greetingWord, formatRemaining, dayKey, addDays, eventsOn, goalProgress, bestStreak, isLocalHost, isOwnerSettings };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.WelcomeLogic = api;
 })(typeof window !== "undefined" ? window : this);

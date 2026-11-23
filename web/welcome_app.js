@@ -190,6 +190,12 @@
         const data = await api("GET", "/api/settings");
         const name = data && data.jarvis && typeof data.jarvis.address === "string" ? data.jarvis.address.trim() : "";
         if (name) app.address = name;
+        const local = L.isLocalHost(location.hostname) || L.isOwnerSettings(data);       // Besitzer ueber die Server-Adresse ist auch "am PC"
+        if (local !== app.local) {
+          app.local = local;
+          loadNeeded(false);                                                            // PC-Fenster holen jetzt ihre Daten
+          emit();
+        }
         setOnline(true);
         options.onAddress();
       } catch (error) { setOnline(false); }

@@ -76,6 +76,10 @@ assert.strictEqual(L.bestStreak([]), 0);
 // ---- Termine eintragen nur am PC
 assert.ok(L.isLocalHost("127.0.0.1") && L.isLocalHost("localhost"));
 assert.ok(!L.isLocalHost("gott-desktop.taild3a628.ts.net") && !L.isLocalHost("127.0.0.1.evil.example"));
+// Besitzer ueber die Server-Adresse: nur "remote: true" (eingeschraenktes Geraet) heisst "nicht am PC"
+assert.ok(L.isOwnerSettings({ jarvis: { address: "Sir" } }) && L.isOwnerSettings({}));
+assert.ok(!L.isOwnerSettings({ remote: true, levels: {} }));
+for (const bad of [null, undefined, "x", 5, true, [], [{ remote: true }]]) assert.ok(!L.isOwnerSettings(bad), String(bad));
 
 // ---- kleine Fenster mit einem Papier-DOM: alles kommt als Text an, nie als HTML
 class Node {
