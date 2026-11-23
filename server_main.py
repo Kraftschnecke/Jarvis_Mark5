@@ -16,6 +16,7 @@ Aufruf:  python server_main.py [--port 8000]
 import sys
 
 import notify
+import remote_pc
 import server
 from server_loop import ServerLoop
 
@@ -100,6 +101,7 @@ def run(argv=None, notifier=None):
 
     def on_ready(httpd):
         enable_remote(httpd)
+        remote_pc.install(httpd)                    # PC-Daten kommen vom PC-Agent, nicht von diesem Server (S6)
         loop = ServerLoop(httpd, notifier)
         loop.start()
         holder["loop"] = loop

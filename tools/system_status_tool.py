@@ -216,10 +216,27 @@ def set_default_monitor(monitor):
     _default_monitor = monitor
 
 
+_remote = None
+
+
+def set_remote(remote):
+    """Server-Betrieb (S6): Fakten und Programme kommen vom PC-Agent (remote_pc.RemotePc); None = dieser Rechner."""
+    global _remote
+    _remote = remote
+
+
+def current_facts():
+    return _remote.facts() if _remote is not None else facts()
+
+
+def current_top_processes():
+    return _remote.top_processes() if _remote is not None else top_processes()
+
+
 def get_system_info():
     """Fakten + aktuelle Auslastung + groesste Programme fuer die Antwort im Chat."""
     try:
-        data = {**facts(), "now": default_monitor().sample(fresh_cpu=True), "top_programs": top_processes()}
+        data = {**current_facts(), "now": default_monitor().sample(fresh_cpu=True), "top_programs": current_top_processes()}
     except Exception as error:
         return ToolResult(success=False, error=f"Die Systemdaten konnten nicht gelesen werden: {error}")
     try:                                                    # die Lage (SSD/HDD, Last, Verbraucher, Bewertung) ist ein Zusatz: ohne sie bleibt die Antwort wie sie war

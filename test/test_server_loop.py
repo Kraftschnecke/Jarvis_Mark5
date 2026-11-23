@@ -204,7 +204,7 @@ jarvis2.hints = [{"kind": "weather", "text": "bleibt liegen"}]
 before = jarvis2.hint_calls
 assert request(httpd2, "POST", "/api/hints", {}) == (200, {"hints": []}) and jarvis2.hint_calls == before and jarvis2.hints
 
-HTTPD = types.SimpleNamespace(remote=None)
+HTTPD = types.SimpleNamespace(remote=None, hub=object(), monitor=None, health=None)
 
 # 9) server_main: startet den Takt, wenn der Server bereit ist, und stoppt ihn am Ende; kein Browser
 started = {}
@@ -226,6 +226,13 @@ with redirect_stdout(out):
     assert server_main.run(["--port", "8123"], notifier=notifier) == 0
 assert started == {"args": (HTTPD, notifier), "start": True, "stop": True, "argv": ["--port", "8123"], "browser": False}, started
 assert "Push AN" in out.getvalue() and TOPIC not in out.getvalue()
+# Im Server-Betrieb kommen die PC-Daten vom PC-Agent (S6): Fenster, Chat und Warnungen fragen nicht den Server selbst
+from tools import pc_health as _pc_health, system_status_tool as _sst
+assert _sst._remote is not None and _sst._remote.hub is HTTPD.hub
+assert HTTPD.monitor is _sst.default_monitor() and HTTPD.health is _pc_health.default_health() and HTTPD.monitor is not None
+_sst.set_remote(None)
+_sst.set_default_monitor(None)
+_pc_health.set_default_health(None)
 started.clear()
 out = io.StringIO()
 with redirect_stdout(out):
@@ -361,11 +368,14 @@ class FakeLoop2(FakeLoop):
 server_main.ServerLoop = FakeLoop2
 gate_ = FakeGate("h.ts.net", False)
 def main_with_gate(argv=None, on_ready=None, open_browser=True):
-    on_ready(types.SimpleNamespace(remote=gate_))
+    on_ready(types.SimpleNamespace(remote=gate_, hub=object(), monitor=None, health=None))
 server.main = main_with_gate
 with redirect_stdout(io.StringIO()):
     server_main.run([], notifier=notifier)
 assert gate_.active() is True and started.get("start") is True                       # run() schaltet ein, bevor der Takt startet
+_sst.set_remote(None)
+_sst.set_default_monitor(None)
+_pc_health.set_default_health(None)
 server_main.ServerLoop = real_loop
 server.main = real_main
 

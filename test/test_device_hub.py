@@ -26,7 +26,8 @@ try:
 except device_commands.CommandError:
     pass
 assert device_commands.check_result("ping", GOOD) == GOOD
-for bad in (None, [], {}, dict(GOOD, extra=1), dict(GOOD, name=5), dict(GOOD, name="x" * 41), dict(GOOD, version=True),
+assert device_commands.check_result("ping", dict(GOOD, extra="fremd")) == GOOD          # Fremdes wird verworfen, nicht weitergegeben
+for bad in (None, [], {}, dict(GOOD, name=5), dict(GOOD, name="x" * 41), dict(GOOD, version=True),
             dict(GOOD, version=0), dict(GOOD, version="1"), {k: v for k, v in GOOD.items() if k != "time"},
             dict(GOOD, time="y" * 41), float("nan")):
     try:

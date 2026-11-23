@@ -14,6 +14,7 @@ from settings_manager import SettingsManager
 from personality import get_address, set_address, DEFAULT_ADDRESS
 import abilities
 import briefing
+import device_hub
 import hints
 import focus
 import reminders
@@ -289,6 +290,8 @@ class Jarvis:
                     state = self.__dict__.setdefault("_pc_hint_state", {})
                     assessment = pc_health.default_health().report()["assessment"]
                     due += [h for h in hints.pc_hints(assessment, state, now) if not log.seen(h["id"], today)]
+                except device_hub.DeviceOffline:
+                    pass                                                # PC aus (Server-Betrieb): kein Fehler, nachts normal
                 except Exception as error:
                     print(f"[HINWEIS] PC nicht geprueft: {type(error).__name__}")
             for hint in due:

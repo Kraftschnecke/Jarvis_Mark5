@@ -3,7 +3,7 @@ import sys
 import webapp
 import tempfile
 import types
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -285,6 +285,28 @@ clock[0] = datetime(2026, 12, 3, 10, 0)
 cal.add_event("Mit kaputtem PC-Check", "2026-12-03", "10:20")
 assert [h["kind"] for h in j.proactive_hints()] == ["appointment"], "kaputte PC-Pruefung stoert den Termin nicht"
 FakeHealth.fail = False
+# PC aus (Server-Betrieb, PC-Agent nicht verbunden): kein Hinweis und keine Fehlermeldung im Protokoll, ein anderer Fehler wird weiter gemeldet
+import contextlib
+import io
+import device_hub
+
+
+class OfflineHealth:
+    error = device_hub.DeviceOffline("Der PC ist gerade nicht erreichbar.")
+
+    def report(self):
+        raise OfflineHealth.error
+
+
+for error, expect_log in ((device_hub.DeviceOffline("aus"), False), (device_hub.DeviceTimeout("langsam"), True), (RuntimeError("kaputt"), True)):
+    OfflineHealth.error = error
+    pc_health.set_default_health(OfflineHealth())
+    clock[0] += timedelta(days=1)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        assert j.proactive_hints() == []
+    assert ("PC nicht geprueft" in out.getvalue()) is expect_log, (type(error).__name__, out.getvalue())
+pc_health.set_default_health(FakeHealth())
 import abilities
 real_enabled = abilities.task_enabled                                                         # GET_SYSTEM_INFO ist eine Kernaufgabe: nur so laesst sich "aus" nachstellen
 abilities.task_enabled = lambda task, manager: False if task == "GET_SYSTEM_INFO" else real_enabled(task, manager)

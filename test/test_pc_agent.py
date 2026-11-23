@@ -138,4 +138,54 @@ for argv in (["--pair"], ["--pair", "CODE"], ["--pair", "CODE", "--server"], ["-
     logs = []
     assert pc_agent.main(argv, config_path=folder / "nix.json", log=logs.append) == 1 and logs and "Aufruf" in logs[0], argv
 
+# 13) Die echten Auftraege des PCs (S6, G2): laden die Messfunktionen erst beim ersten Auftrag, geben "fresh" weiter, teilen sich den Monitor
+from tools import pc_health, system_status_tool
+
+calls = []
+made = []
+
+
+class FakeMonitor:
+    def __init__(self):
+        made.append(self)
+
+    def sample(self, fresh_cpu=False):
+        calls.append(("sample", fresh_cpu))
+        return {"cpu_percent": 1.0}
+
+
+class FakeHealth:
+    def __init__(self, monitor=None):
+        self.monitor = monitor
+
+    def snapshot(self):
+        calls.append(("snapshot", self.monitor is made[0]))
+        return {"drives": []}
+
+
+real = (system_status_tool.PerformanceMonitor, system_status_tool.facts, system_status_tool.top_processes, pc_health.PcHealth)
+system_status_tool.PerformanceMonitor = FakeMonitor
+system_status_tool.facts = lambda: calls.append("facts") or {"os": "Test"}
+system_status_tool.top_processes = lambda: calls.append("top") or []
+pc_health.PcHealth = FakeHealth
+try:
+    handlers = pc_agent.default_handlers()
+    assert set(handlers) == set(device_commands.COMMANDS) and made == [] and calls == [], "nichts wird vor dem ersten Auftrag geladen"
+    assert handlers["pc.performance"]({"fresh": True}) == {"cpu_percent": 1.0} and calls[-1] == ("sample", True)
+    assert handlers["pc.performance"]({"fresh": False}) and calls[-1] == ("sample", False)
+    assert handlers["pc.facts"]({}) == {"os": "Test"} and handlers["pc.top"]({}) == []
+    assert handlers["pc.snapshot"]({}) == {"drives": []} and calls[-1] == ("snapshot", True), "PC-Lage nutzt denselben Monitor"
+    assert len(made) == 1, "ein Monitor fuer alles"
+    assert pc_agent.default_handlers() is not handlers and set(pc_agent.HANDLERS) == {"ping"}
+finally:
+    system_status_tool.PerformanceMonitor, system_status_tool.facts, system_status_tool.top_processes, pc_health.PcHealth = real
+
+# 14) Jeder Auftrag der Liste hat einen Handler und umgekehrt; echte Messwerte (ohne PC-Lage: sie startet PowerShell) passen zu den Mustern
+assert set(pc_agent.default_handlers()) == set(device_commands.COMMANDS)
+real_handlers = pc_agent.default_handlers()
+for command, args in (("pc.facts", None), ("pc.top", None), ("pc.performance", {"fresh": True}), ("ping", None)):
+    clean_args = device_commands.check_args(command, args)
+    data = json.loads(json.dumps(real_handlers[command](clean_args)))
+    assert device_commands.check_result(command, data), command
+
 print("ALL TESTS PASSED")

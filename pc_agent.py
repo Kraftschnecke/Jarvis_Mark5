@@ -66,6 +66,26 @@ def handle_ping(args):
             "version": device_commands.AGENT_VERSION}
 
 
+def default_handlers():
+    """Die Auftraege dieses PCs. Die Messfunktionen werden erst beim ersten Auftrag geladen (und behalten ihre Zwischenspeicher)."""
+    state = {}
+
+    def tools():
+        if not state:
+            from tools import pc_health, system_status_tool
+            monitor = system_status_tool.PerformanceMonitor()
+            state.update(sst=system_status_tool, monitor=monitor, health=pc_health.PcHealth(monitor=monitor))
+        return state
+
+    return {
+        "ping": handle_ping,
+        "pc.facts": lambda args: tools()["sst"].facts(),
+        "pc.performance": lambda args: tools()["monitor"].sample(fresh_cpu=args["fresh"]),
+        "pc.top": lambda args: tools()["sst"].top_processes(),
+        "pc.snapshot": lambda args: tools()["health"].snapshot(),
+    }
+
+
 HANDLERS = {"ping": handle_ping}
 
 
@@ -73,7 +93,7 @@ class Agent:
     def __init__(self, transport, token, handlers=None, log=print, sleep=time.sleep):
         self.transport = transport
         self.token = token
-        self.handlers = HANDLERS if handlers is None else handlers
+        self.handlers = default_handlers() if handlers is None else handlers
         self.log = log
         self.sleep = sleep
 

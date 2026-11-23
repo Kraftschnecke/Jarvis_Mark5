@@ -16,15 +16,19 @@ REQUEST_TIMEOUT = 8            # so lange wartet der Server auf ein Ergebnis
 MAX_QUEUED = 20                # pro Geraet; mehr offene Auftraege lehnt der Hub ab
 
 
-class DeviceOffline(Exception):
+class DeviceError(Exception):
+    """Gemeinsame Basis: Der Auftrag ging nicht durch (aus, zu langsam oder fehlgeschlagen)."""
+
+
+class DeviceOffline(DeviceError):
     """Kein Geraet verbunden."""
 
 
-class DeviceTimeout(Exception):
+class DeviceTimeout(DeviceError):
     """Das Geraet hat nicht rechtzeitig geantwortet."""
 
 
-class DeviceFailed(Exception):
+class DeviceFailed(DeviceError):
     """Das Geraet meldet einen Fehler oder ein ungueltiges Ergebnis."""
 
 
@@ -100,9 +104,10 @@ class DeviceHub:
                 return device_id if device_id in fresh else None
             return max(fresh, key=fresh.get) if fresh else None
 
-    def request(self, command, args=None, device_id=None, timeout=REQUEST_TIMEOUT):
+    def request(self, command, args=None, device_id=None, timeout=None):
         """Auftrag stellen und auf das Ergebnis warten. Wirft CommandError, DeviceOffline, DeviceTimeout oder DeviceFailed."""
         args = device_commands.check_args(command, args)
+        timeout = device_commands.timeout_for(command) if timeout is None else timeout
         target = self.online_device(device_id)
         if target is None:
             raise DeviceOffline("Der PC ist gerade nicht erreichbar.")

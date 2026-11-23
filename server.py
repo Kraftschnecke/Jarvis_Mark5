@@ -1189,13 +1189,17 @@ class JarvisHandler(BaseHTTPRequestHandler):
         # PC-Fakten und Leistungsdaten fuer die Widgets (lokal gelesen, kein Internet)
         if path == "/api/system":
             try:
-                return self.send_json(200, system_status_tool.facts())
+                return self.send_json(200, system_status_tool.current_facts())
+            except device_hub.DeviceError as error:
+                return self.send_json(503, {"error": str(error)})
             except Exception:
                 return self.send_json(502, {"error": "Die Systemdaten konnten nicht gelesen werden."})
 
         if path == "/api/performance":
             try:
                 return self.send_json(200, self.server.monitor.sample())
+            except device_hub.DeviceError as error:
+                return self.send_json(503, {"error": str(error)})
             except Exception:
                 return self.send_json(502, {"error": "Die Leistungsdaten konnten nicht gelesen werden."})
 
@@ -1205,6 +1209,8 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"disabled": True})
             try:
                 return self.send_json(200, {"pc_lage": self.server.health.report()})
+            except device_hub.DeviceError as error:
+                return self.send_json(503, {"error": str(error)})
             except Exception:
                 return self.send_json(502, {"error": "Die PC-Lage konnte nicht gelesen werden."})
 
