@@ -284,39 +284,54 @@
             const done = el("div", "gym-done");
             done.append(el("span", "", "✓ Heute: " + L.resultText(x.today)));
             if (x.today.improved) done.append(el("span", "gym-new", "Neues Ziel!"));
-            const change = button("Ändern", "", () => { editing[x.id] = true; typed[x.id] = { weight: String(x.today.weight), reps: L.repsText(x.today.reps) }; draw(); });
+            const change = button("Ändern", "", () => { editing[x.id] = true; typed[x.id] = x.today.sets.map((st) => ({ weight: String(st.weight), reps: String(st.reps) })); draw(); });
             const clear = button("Löschen", "", () => send("/api/gym/clear", { exercise: x.id }));
             done.append(change, clear);
             card.append(done);
             return card;
           }
-          const mine = typed[x.id] || (typed[x.id] = { weight: String(x.weight), reps: L.repsText(new Array(x.sets).fill(x.reps)) });
+          // Jeder Satz hat sein eigenes Gewicht und seine eigenen Wiederholungen (100 kg x 6, dann 96 kg x 8)
+          const rowsData = typed[x.id] || (typed[x.id] = Array.from({ length: x.sets }, () => ({ weight: String(x.weight), reps: String(x.reps) })));
           const form = el("form", "gym-form");
-          const weight = field("kg", "gym-kg");
-          weight.value = mine.weight;
-          weight.inputMode = "decimal";
-          weight.setAttribute("aria-label", x.name + ": Gewicht in kg");
-          const reps = field("8 8 8", "gym-reps");
-          reps.value = mine.reps;
-          reps.setAttribute("aria-label", x.name + ": Wiederholungen je Satz");
-          weight.addEventListener("input", () => { mine.weight = weight.value; });
-          reps.addEventListener("input", () => { mine.reps = reps.value; });
+          const setsBox = el("div", "gym-sets");
+          rowsData.forEach((mine, index) => {
+            const line = el("div", "gym-set");
+            const weight = field("kg", "gym-kg");
+            weight.value = mine.weight;
+            weight.inputMode = "decimal";
+            weight.setAttribute("aria-label", x.name + ", Satz " + (index + 1) + ": Gewicht in kg");
+            const reps = field("Wdh.", "gym-num");
+            reps.value = mine.reps;
+            reps.inputMode = "numeric";
+            reps.setAttribute("aria-label", x.name + ", Satz " + (index + 1) + ": Wiederholungen");
+            weight.addEventListener("input", () => { mine.weight = weight.value; });
+            reps.addEventListener("input", () => { mine.reps = reps.value; });
+            line.append(el("span", "muted small gym-setno", "Satz " + (index + 1)), weight, el("span", "muted small", "kg ×"), reps, el("span", "muted small", "Wdh."));
+            if (rowsData.length > 1) {
+              const remove = button("×", "", () => { rowsData.splice(index, 1); draw(); });
+              remove.setAttribute("aria-label", "Satz " + (index + 1) + " entfernen");
+              line.append(remove);
+            }
+            setsBox.append(line);
+          });
+          const actions = el("div", "gym-actions");
+          if (rowsData.length < 20) {
+            actions.append(button("+ Satz", "", () => { const last = rowsData[rowsData.length - 1]; rowsData.push({ weight: last.weight, reps: last.reps }); draw(); }));
+          }
           const save = button("Eintragen", "primary");
           save.type = "submit";
           const same = button("Wie Ziel", "", () => {
-            const r = L.goalAsResult(x);
             delete editing[x.id];
-            send("/api/gym/log", { exercise: x.id, weight: r.weight, reps: r.reps }, reportResult(x));
+            send("/api/gym/log", { exercise: x.id, sets: L.goalAsResult(x).sets }, reportResult(x));
           });
-          form.append(weight, el("span", "muted small", "kg ×"), reps, save, same);
+          actions.append(save, same);
+          form.append(setsBox, actions);
           form.addEventListener("submit", (event) => {
             event.preventDefault();
-            const w = L.parseWeight(weight.value);
-            const r = L.parseReps(reps.value);
-            if (w === null) { note.textContent = x.name + ": Gewicht bitte als Zahl (z. B. 62,5), leer = Körpergewicht."; return; }
-            if (r === null) { note.textContent = x.name + ": Wiederholungen je Satz, z. B. „8 8 7“ oder „3x8“."; return; }
+            const parsed = L.parseSets(rowsData);
+            if (parsed.error) { note.textContent = x.name + ": " + parsed.error; return; }
             delete editing[x.id];
-            send("/api/gym/log", { exercise: x.id, weight: w, reps: r }, reportResult(x));
+            send("/api/gym/log", { exercise: x.id, sets: parsed.sets }, reportResult(x));
           });
           card.append(form);
           return card;

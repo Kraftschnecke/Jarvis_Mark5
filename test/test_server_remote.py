@@ -338,6 +338,9 @@ assert status == 200 and answer["result"]["improved"] and answer["today"]["exerc
 assert answer["widgets"]["goals"][0]["text"] == "Gym: Push"
 assert call(httpd, "POST", "/api/gym/log", cookie=cookie, origin=ORIGIN, body={"exercise": exercise["id"], "weight": "x", "reps": [8]})[0] == 400
 assert call(httpd, "POST", "/api/gym/log", cookie=cookie, origin=ORIGIN, body={"exercise": exercise["id"], "weight": 60, "reps": [8], "day": "morgen"})[0] == 400
+status, _, raw = call(httpd, "POST", "/api/gym/log", cookie=cookie, origin=ORIGIN, body={"exercise": exercise["id"], "sets": [{"weight": 62.5, "reps": 6}, {"weight": 60, "reps": 8}]})
+assert status == 200 and jbody(raw)["today"]["exercises"][0]["today"]["sets"][1] == {"weight": 60, "reps": 8}
+assert call(httpd, "POST", "/api/gym/log", cookie=cookie, origin=ORIGIN, body={"exercise": exercise["id"], "sets": [{"weight": 60}]})[0] == 400
 assert call(httpd, "POST", "/api/gym/clear", cookie=cookie, origin=ORIGIN, body={"exercise": exercise["id"]})[0] == 200
 assert gym_store.today_view()["exercises"][0]["weight"] == 60
 settings.set("remote", "daily", False)                                                               # Stufe aus: auch Eintragen zu

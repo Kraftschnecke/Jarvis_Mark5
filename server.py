@@ -995,7 +995,7 @@ class JarvisHandler(BaseHTTPRequestHandler):
             if path == "/api/gym/plan":
                 store.set_plan(data.get("days"))
             elif path == "/api/gym/log":
-                result = store.log(data.get("exercise"), data.get("weight"), data.get("reps"), day=day)
+                result = store.log(data.get("exercise"), data.get("weight"), data.get("reps"), day=day, sets=data.get("sets"))
             else:
                 store.clear_log(data.get("exercise"), day=day)
         except gym.GymError as error:

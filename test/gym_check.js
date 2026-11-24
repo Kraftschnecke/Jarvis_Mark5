@@ -30,8 +30,22 @@ assert.strictEqual(L.kgText(60), "60 kg");
 assert.strictEqual(L.kgText(0), "Körpergewicht");
 assert.strictEqual(L.goalText({ weight: 60, sets: 3, reps: 8 }), "60 kg · 3 × 8");
 assert.strictEqual(L.goalText({ weight: 0, sets: 4, reps: 6 }), "Körpergewicht · 4 × 6");
-assert.strictEqual(L.resultText({ weight: 62.5, reps: [8, 8, 7] }), "62,5 kg · 8 8 7");
-assert.deepStrictEqual(L.goalAsResult({ weight: 50, sets: 3, reps: 8 }), { weight: 50, reps: [8, 8, 8] });
+const S = (w, reps) => reps.map((r) => ({ weight: w, reps: r }));
+assert.strictEqual(L.resultText({ sets: S(62.5, [8, 8, 7]) }), "62,5 kg · 8 8 7");
+assert.strictEqual(L.resultText({ sets: [{ weight: 100, reps: 6 }, { weight: 96, reps: 8 }] }), "100 kg × 6 · 96 kg × 8");
+assert.strictEqual(L.resultText({ sets: [{ weight: 0, reps: 10 }, { weight: 0, reps: 9 }] }), "Körpergewicht · 10 9");
+assert.strictEqual(L.resultText({ sets: [] }), "");
+assert.strictEqual(L.resultText(null), "");
+assert.deepStrictEqual(L.parseSets([{ weight: "100", reps: "6" }, { weight: "96,5", reps: "8" }]), { sets: [{ weight: 100, reps: 6 }, { weight: 96.5, reps: 8 }] });
+assert.deepStrictEqual(L.parseSets([{ weight: "", reps: "12" }]), { sets: [{ weight: 0, reps: 12 }] });
+assert.ok(L.parseSets([]).error && L.parseSets(null).error && L.parseSets("x").error);
+assert.ok(L.parseSets([{ weight: "x", reps: "6" }]).error.startsWith("Satz 1: Gewicht"));
+assert.ok(L.parseSets([{ weight: "50", reps: "6" }, { weight: "50", reps: "" }]).error.startsWith("Satz 2: Wiederholungen"));
+for (const bad of ["8.5", "-1", "101", "a", "8 8", "1000"]) assert.ok(L.parseSets([{ weight: "50", reps: bad }]).error, bad);
+assert.deepStrictEqual(L.parseSets([{ weight: "50", reps: "0" }]), { sets: [{ weight: 50, reps: 0 }] });
+assert.strictEqual(L.parseSets(new Array(21).fill({ weight: "1", reps: "1" })).error, "Höchstens 20 Sätze.");
+assert.strictEqual(L.parseSets(new Array(20).fill({ weight: "1", reps: "1" })).sets.length, 20);
+assert.deepStrictEqual(L.goalAsResult({ weight: 50, sets: 3, reps: 8 }), { sets: S(50, [8, 8, 8]) });
 assert.ok(L.WINDOWS.some((w) => w.id === "gym" && w.state === "built"));
 
 // ---- Papier-DOM
@@ -57,7 +71,7 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 function exercise(id, name, weight, sets, reps, extra) { return Object.assign({ id, name, weight, sets, reps, note: "", today: null, last: null }, extra); }
 function todayView(over) {
   return Object.assign({ date: "2026-11-24", has_plan: true, weekday: 1, label: "Dienstag", name: "Pull", offday: false, logged: 0, total: 2,
-    exercises: [exercise("a1", "Klimmzüge", 0, 4, 6), exercise("b2", "Rudern <b>x</b>", 50, 3, 8, { note: "Pause 2 min", last: { date: "2026-11-17", weight: 47.5, reps: [8, 8, 8] } })] }, over);
+    exercises: [exercise("a1", "Klimmzüge", 0, 4, 6), exercise("b2", "Rudern <b>x</b>", 50, 3, 8, { note: "Pause 2 min", last: { date: "2026-11-17", sets: S(47.5, [8, 8, 8]) } })] }, over);
 }
 function planDays(over) {
   const days = [];
@@ -99,7 +113,7 @@ function openGym(app) {
   assert.strictEqual(panel.extra(), "Pull");
   let text = draw(panel);
   assert.ok(text.includes("Klimmzüge · Körpergewicht · 4 × 6") && text.includes("Rudern <b>x</b> · 50 kg · 3 × 8") && text.includes("0 von 2 eingetragen"), text);
-  app = makeApp(gymData(todayView({ logged: 1, exercises: [exercise("a1", "Klimmzüge", 0, 4, 6, { today: { weight: 0, reps: [6, 6, 6, 6] } }), exercise("b2", "Rudern", 50, 3, 8)] })));
+  app = makeApp(gymData(todayView({ logged: 1, exercises: [exercise("a1", "Klimmzüge", 0, 4, 6, { today: { sets: S(0, [6, 6, 6, 6]) } }), exercise("b2", "Rudern", 50, 3, 8)] })));
   const bodyNode = el("div");
   Panels.create(app).gym.draw(bodyNode);
   assert.ok(bodyNode.all().filter((n) => n.className === "wbox d").length === 1 && bodyNode.all().filter((n) => n.className === "wbox").length === 1);
@@ -128,33 +142,32 @@ function openGym(app) {
   assert.ok(w.view().includes("Dienstag: Pull") && w.view().includes("0 von 2 eingetragen"), w.view());
   assert.ok(w.view().includes("Ziel: Körpergewicht · 4 × 6") && w.view().includes("Ziel: 50 kg · 3 × 8") && w.view().includes("Pause 2 min"), w.view());
   assert.ok(w.view().includes("Letztes Mal (17.11.): 47,5 kg · 8 8 8") && w.view().includes("Rudern <b>x</b>"), w.view());      // Text bleibt Text
-  let inputs = w.inputs().filter((n) => n.className.includes("gym-kg") || n.className.includes("gym-reps"));
-  assert.deepStrictEqual(inputs.map((n) => n.value), ["0", "6 6 6 6", "50", "8 8 8"], "Felder sind mit dem Ziel vorbelegt");
+  const setInputs = () => w.inputs().filter((n) => n.className.includes("gym-kg") || n.className.includes("gym-num"));
+  let inputs = setInputs();
+  assert.deepStrictEqual(inputs.map((n) => n.value), ["0", "6", "0", "6", "0", "6", "0", "6", "50", "8", "50", "8", "50", "8"], "je Satz ein Gewicht und Wiederholungen, mit dem Ziel vorbelegt");
+  assert.ok(w.view().includes("Satz 1") && w.view().includes("Satz 4"));
 
-  // ungueltige Eingabe: nichts wird gesendet, Hinweis steht da
-  inputs[2].value = "viel";
-  inputs[2].fire("input");
+  // ungueltige Eingabe: nichts wird gesendet, Hinweis steht da (Rudern = Felder 8 bis 13)
+  const type = (node, value) => { node.value = value; node.fire("input"); };
+  type(inputs[8], "viel");
   w.nodes().filter((n) => n.tag === "form")[1].fire("submit");
   await flush();
   assert.strictEqual(app.calls.length, 0);
-  assert.ok(w.note().includes("Gewicht bitte als Zahl"), w.note());
-  inputs[2].value = "52,5";
-  inputs[2].fire("input");
-  inputs[3].value = "8 8 x";
-  inputs[3].fire("input");
+  assert.ok(w.note().includes("Satz 1: Gewicht bitte als Zahl"), w.note());
+  type(inputs[8], "52,5");
+  type(inputs[11], "x");
   w.nodes().filter((n) => n.tag === "form")[1].fire("submit");
   await flush();
   assert.strictEqual(app.calls.length, 0);
-  assert.ok(w.note().includes("Wiederholungen je Satz"), w.note());
+  assert.ok(w.note().includes("Satz 2: Wiederholungen"), w.note());
 
   // gueltig: sendet geparst; Antwort: neues Ziel
-  inputs[3].value = "8,8,8";
-  inputs[3].fire("input");
-  const improvedToday = todayView({ logged: 1, exercises: [exercise("a1", "Klimmzüge", 0, 4, 6), exercise("b2", "Rudern <b>x</b>", 52.5, 3, 8, { today: { name: "Rudern", weight: 52.5, reps: [8, 8, 8], improved: true } })] });
+  type(inputs[11], "8");
+  const improvedToday = todayView({ logged: 1, exercises: [exercise("a1", "Klimmzüge", 0, 4, 6), exercise("b2", "Rudern <b>x</b>", 52.5, 3, 8, { today: { name: "Rudern", sets: S(52.5, [8, 8, 8]), improved: true } })] });
   app.reply = (p, body) => ({ today: improvedToday, plan: { days: planDays(), has_plan: true }, result: { improved: true, goal: { weight: 52.5, sets: 3, reps: 8 }, entry: {} }, widgets: { goals: [{ text: "Gym: Pull", done: false, daily: true, managed: "gym" }] } });
   w.nodes().filter((n) => n.tag === "form")[1].fire("submit");
   await flush();
-  assert.deepStrictEqual(app.calls, [["POST", "/api/gym/log", { exercise: "b2", weight: 52.5, reps: [8, 8, 8] }]]);
+  assert.deepStrictEqual(app.calls, [["POST", "/api/gym/log", { exercise: "b2", sets: [{ weight: 52.5, reps: 8 }, { weight: 50, reps: 8 }, { weight: 50, reps: 8 }] }]]);   // jeder Satz mit eigenem Gewicht
   assert.ok(w.note().includes("Rudern <b>x</b>: neues Ziel 52,5 kg · 3 × 8."), w.note());
   assert.ok(w.view().includes("✓ Heute: 52,5 kg · 8 8 8") && w.view().includes("Neues Ziel!") && w.view().includes("1 von 2 eingetragen"), w.view());
   assert.strictEqual(app.data.goals[0].text, "Gym: Pull", "Tagesziele wurden aus der Antwort uebernommen");
@@ -162,22 +175,45 @@ function openGym(app) {
 
   // "Wie Ziel": sendet genau das Ziel, ohne Neu-Ziel-Hinweis
   app.calls.length = 0;
-  app.reply = () => ({ today: todayView({ logged: 1, exercises: [exercise("a1", "Klimmzüge", 0, 4, 6, { today: { name: "K", weight: 0, reps: [6, 6, 6, 6] } }), exercise("b2", "Rudern", 52.5, 3, 8)] }), plan: { days: planDays(), has_plan: true }, result: { improved: false, goal: { weight: 0, sets: 4, reps: 6 }, entry: {} } });
+  app.reply = () => ({ today: todayView({ logged: 1, exercises: [exercise("a1", "Klimmzüge", 0, 4, 6, { today: { name: "K", sets: S(0, [6, 6, 6, 6]) } }), exercise("b2", "Rudern", 52.5, 3, 8)] }), plan: { days: planDays(), has_plan: true }, result: { improved: false, goal: { weight: 0, sets: 4, reps: 6 }, entry: {} } });
   w.button("Wie Ziel").fire("click");
   await flush();
-  assert.deepStrictEqual(app.calls, [["POST", "/api/gym/log", { exercise: "a1", weight: 0, reps: [6, 6, 6, 6] }]]);        // die erste offene Uebung
+  assert.deepStrictEqual(app.calls, [["POST", "/api/gym/log", { exercise: "a1", sets: S(0, [6, 6, 6, 6]) }]]);        // die erste offene Uebung
   assert.ok(w.note().includes("Klimmzüge: eingetragen.") && !w.note().includes("neues Ziel"), w.note());
 
   // Ergebnis aendern: Felder mit dem Eingetragenen, und Loeschen
   w.nodes().filter((n) => n.tag === "button" && n.textContent === "Ändern")[0].fire("click");
-  inputs = w.inputs().filter((n) => n.className.includes("gym-kg") || n.className.includes("gym-reps"));
-  assert.deepStrictEqual(inputs.slice(0, 2).map((n) => n.value), ["0", "6 6 6 6"]);
+  inputs = setInputs();
+  assert.deepStrictEqual(inputs.slice(0, 4).map((n) => n.value), ["0", "6", "0", "6"]);
   w = openGym(app);
   app.reply = () => ({ today: todayView(), plan: { days: planDays(), has_plan: true }, result: null });
   app.calls.length = 0;
   w.button("Löschen").fire("click");
   await flush();
   assert.deepStrictEqual(app.calls, [["POST", "/api/gym/clear", { exercise: "a1" }]]);
+
+  // Saetze hinzufuegen/entfernen und Gewicht je Satz: 100 kg x 6, dann 96 kg x 8
+  app = makeApp(gymData(todayView({ exercises: [exercise("b2", "Bankdrücken", 100, 1, 5)], total: 1 })));
+  w = openGym(app);
+  assert.strictEqual(setInputs().length, 2);
+  assert.ok(!w.buttons().includes("×"), "bei einem Satz gibt es kein Entfernen");
+  type(setInputs()[1], "6");
+  w.button("+ Satz").fire("click");
+  assert.strictEqual(setInputs().length, 4);
+  assert.deepStrictEqual(setInputs().map((n) => n.value), ["100", "6", "100", "6"], "neuer Satz startet mit dem Wert des letzten");
+  type(setInputs()[2], "96");
+  type(setInputs()[3], "8");
+  w.button("+ Satz").fire("click");
+  assert.strictEqual(setInputs().length, 6);
+  w.nodes().filter((n) => n.tag === "button" && n.textContent === "×")[2].fire("click");                // dritten Satz wieder weg
+  assert.deepStrictEqual(setInputs().map((n) => n.value), ["100", "6", "96", "8"], "Eingaben bleiben beim Neuzeichnen");
+  app.reply = () => ({ today: todayView({ exercises: [exercise("b2", "Bankdrücken", 100, 1, 6, { today: { sets: [{ weight: 100, reps: 6 }, { weight: 96, reps: 8 }], improved: true } })], total: 1, logged: 1 }), plan: { days: planDays(), has_plan: true }, result: { improved: true, goal: { weight: 100, sets: 1, reps: 6 }, entry: {} } });
+  w.nodes().filter((n) => n.tag === "form")[0].fire("submit");
+  await flush();
+  assert.deepStrictEqual(app.calls, [["POST", "/api/gym/log", { exercise: "b2", sets: [{ weight: 100, reps: 6 }, { weight: 96, reps: 8 }] }]]);
+  assert.ok(w.view().includes("✓ Heute: 100 kg × 6 · 96 kg × 8") && w.view().includes("Neues Ziel!") && w.note().includes("neues Ziel 100 kg · 1 × 6"), w.view() + w.note());
+  w.button("Ändern").fire("click");
+  assert.deepStrictEqual(setInputs().map((n) => n.value), ["100", "6", "96", "8"], "Aendern zeigt die eingetragenen Saetze");
 
   // Serverfehler: Hinweis, nichts bricht
   app = makeApp(gymData());

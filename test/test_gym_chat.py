@@ -39,7 +39,7 @@ assert res.data["exercises"][1] == {"name": "Dips", "goal": {"weight": 0, "sets"
 assert "id" not in str(res.data) and "last" not in res.data["exercises"][0]
 store.log(bench, 62.5, [8, 8, 8])
 res = gym_tool.gym_today(store)
-assert res.data["logged"] == 1 and res.data["exercises"][0]["done"] == {"weight": 62.5, "reps": [8, 8, 8]} and res.data["exercises"][0]["goal"]["weight"] == 62.5
+assert res.data["logged"] == 1 and res.data["exercises"][0]["done"] == {"sets": [{"weight": 62.5, "reps": 8}] * 3} and res.data["exercises"][0]["goal"]["weight"] == 62.5
 assert briefing.gym_sentence(store.today_view()) == "Heute steht Push an, 2 Übungen."
 store.set_plan([{"weekday": 0, "name": "Push", "exercises": [{"name": "Bank", "weight": 60, "sets": 3, "reps": 8}]}])
 assert briefing.gym_sentence(store.today_view()) == "Heute steht Push an, 1 Übung."

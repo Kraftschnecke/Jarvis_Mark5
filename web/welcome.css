@@ -354,3 +354,7 @@ body.welcome::before {
   .gym-wd { width: 5rem; }
   .gym-form .field { font-size: 1rem; }
 }
+.gym-sets { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.gym-set { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gym-setno { width: 3.6rem; flex: none; }
+.gym-actions { display: flex; gap: 8px; flex-wrap: wrap; }

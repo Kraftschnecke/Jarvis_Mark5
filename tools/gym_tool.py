@@ -27,7 +27,7 @@ def gym_today(store=None):
         if item["note"]:
             row["note"] = item["note"]
         if item["today"]:
-            row["done"] = {"weight": item["today"]["weight"], "reps": item["today"]["reps"]}
+            row["done"] = {"sets": item["today"]["sets"]}
         exercises.append(row)
     return ToolResult(success=True, data={"has_plan": True, "weekday": view["label"], "name": view["name"], "offday": view["offday"],
                                           "exercises": exercises, "logged": view["logged"], "total": view["total"]})

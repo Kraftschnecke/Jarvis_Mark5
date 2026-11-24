@@ -98,8 +98,8 @@ for call, part in (
         (lambda: store.log("gibtsnicht", 50, [8, 8, 8]), "nicht im Plan"), (lambda: store.log(5, 50, [8]), "gibt es nicht"),
         (lambda: store.log(push["Bankdrücken"], 60, [8, 8, 8]), "nicht im Plan"),                              # Uebung eines anderen Tages
         (lambda: store.log(rows, -1, [8]), "Gewicht"), (lambda: store.log(rows, "50", [8]), "Zahl"), (lambda: store.log(rows, True, [8]), "Zahl"),
-        (lambda: store.log(rows, float("nan"), [8]), "Zahl"), (lambda: store.log(rows, 50, []), "Wiederholungen"), (lambda: store.log(rows, 50, "8"), "Wiederholungen"),
-        (lambda: store.log(rows, 50, [8] * 21), "Wiederholungen"), (lambda: store.log(rows, 50, [8, -1]), "Wiederholungen"),
+        (lambda: store.log(rows, float("nan"), [8]), "Zahl"), (lambda: store.log(rows, 50, []), "Satz"), (lambda: store.log(rows, 50, "8"), "Wiederholungen"),
+        (lambda: store.log(rows, 50, [8] * 21), "Satz"), (lambda: store.log(rows, 50, [8, -1]), "Wiederholungen"),
         (lambda: store.log(rows, 50, [8, 101]), "Wiederholungen"), (lambda: store.log(rows, 50, [8, 7.5]), "ganze Zahl"), (lambda: store.log(rows, 50, [True]), "Zahl"),
         (lambda: store.log(rows, 50, [8], day=date(2026, 11, 25)), "Nachtragen"),                              # Zukunft
         (lambda: store.log(rows, 50, [8], day=date(2026, 11, 16)), "Nachtragen"),                              # 8 Tage zurueck
@@ -124,15 +124,30 @@ cases = [
     (50, [0, 0, 0], False),
 ]
 for weight, reps, expected in cases:
-    assert GymStore.beats(goal, weight, reps) is expected, (weight, reps, expected)
+    got = GymStore.improvement(goal, [{"weight": weight, "reps": r} for r in reps])
+    assert (got is not None) is expected, (weight, reps, expected, got)
+    if expected:
+        assert got == {"weight": weight, "sets": len(reps), "reps": min(reps)}, got
+
+# Saetze mit verschiedenen Gewichten: 100 kg x 6, dann 96 kg x 8
+imp = lambda g, sets: GymStore.improvement(g, [{"weight": w, "reps": r} for w, r in sets])
+assert imp({"weight": 100, "sets": 1, "reps": 5}, [(100, 6), (96, 8)]) == {"weight": 100, "sets": 1, "reps": 6}
+assert imp({"weight": 96, "sets": 2, "reps": 6}, [(100, 6), (96, 8)]) is None                                    # genau das Ziel (beide Saetze zaehlen ab 96 kg)
+assert imp({"weight": 96, "sets": 2, "reps": 5}, [(100, 6), (96, 8)]) == {"weight": 96, "sets": 2, "reps": 6}      # beide Saetze zaehlen ab 96 kg, kleinste Wdh. 6
+assert imp({"weight": 96, "sets": 2, "reps": 6}, [(100, 5), (96, 8)]) is None                                     # 100 x 5 reicht nicht fuer 6 Wdh.
+assert imp({"weight": 100, "sets": 2, "reps": 6}, [(100, 6), (96, 8)]) is None                                    # nur ein Satz mit 100 kg
+assert imp({"weight": 50, "sets": 2, "reps": 5}, [(60, 5), (55, 8), (50, 8)]) == {"weight": 55, "sets": 2, "reps": 5}      # mehrere Stufen sind besser: die mit dem hoechsten Gewicht
+assert imp({"weight": 50, "sets": 3, "reps": 8}, [(52.5, 8), (50, 8), (50, 8)]) is None                          # gleiche Stufe wie das Ziel
+assert imp({"weight": 50, "sets": 3, "reps": 8}, [(52.5, 9), (52.5, 9), (50, 8), (50, 8)]) == {"weight": 50, "sets": 4, "reps": 8}
+assert imp({"weight": 50, "sets": 3, "reps": 8}, [(55, 8), (55, 8), (55, 8)]) == {"weight": 55, "sets": 3, "reps": 8}
 
 # 7) Eintrag speichern, Ergebnis, Ziel waechst mit
 r = store.log(rows, 50, [8, 8, 7])
-assert r["improved"] is False and r["goal"] == {"weight": 50, "sets": 3, "reps": 8} and r["entry"]["reps"] == [8, 8, 7] and "improved" not in r["entry"]
+assert r["improved"] is False and r["goal"] == {"weight": 50, "sets": 3, "reps": 8} and r["entry"]["sets"] == [{"weight": 50, "reps": 8}, {"weight": 50, "reps": 8}, {"weight": 50, "reps": 7}] and "improved" not in r["entry"]
 view = store.today_view()
-assert view["logged"] == 1 and view["exercises"][1]["today"]["reps"] == [8, 8, 7]
+assert view["logged"] == 1 and view["exercises"][1]["today"]["sets"][2]["reps"] == 7
 r = store.log(rows, 52.5, [8, 8, 8])                                                      # Korrektur am selben Tag, jetzt besser
-assert r["improved"] and r["goal"] == {"weight": 52.5, "sets": 3, "reps": 8} and r["entry"]["goal_before"] == {"weight": 50, "sets": 3, "reps": 8}
+assert r["improved"] and r["goal"] == {"weight": 52.5, "sets": 3, "reps": 8} and r["entry"]["goal_before"] == {"weight": 50, "sets": 3, "reps": 8} and r["entry"]["goal_after"] == {"weight": 52.5, "sets": 3, "reps": 8}
 assert store.today_view()["exercises"][1]["weight"] == 52.5 and store.today_view()["logged"] == 1
 r = store.log(rows, 50, [8, 8, 8])                                                         # nochmal korrigiert: schlechter -> Ziel zurueck auf 50
 assert r["improved"] is False and store.today_view()["exercises"][1]["weight"] == 50
@@ -146,7 +161,7 @@ TODAY[0] = date(2026, 11, 24)
 store.log(rows, 52.5, [8, 8, 8])                              # Dienstag: Ziel 52.5
 TODAY[0] = date(2026, 12, 1)                                  # eine Woche spaeter, wieder Dienstag
 view = store.today_view()
-assert view["exercises"][1]["weight"] == 52.5 and view["exercises"][1]["last"] == {"date": "2026-11-24", "weight": 52.5, "reps": [8, 8, 8]}
+assert view["exercises"][1]["weight"] == 52.5 and view["exercises"][1]["last"] == {"date": "2026-11-24", "sets": [{"weight": 52.5, "reps": 8}] * 3}
 store.log(rows, 55, [8, 8, 8])                                # Ziel 55
 assert store.today_view()["exercises"][1]["weight"] == 55
 # der Eintrag vom 24.11. ist genau 7 Tage her: loeschen geht, aber das Ziel (jetzt 55) bleibt, weil es nicht mehr der damalige Stand ist
@@ -158,13 +173,13 @@ assert store.today_view()["exercises"][1]["last"] is None
 TODAY[0] = date(2026, 12, 3)                                                              # Donnerstag
 yesterday = date(2026, 12, 2)                                                             # Mittwoch = Push
 r = store.log(push["Bankdrücken"], 62.5, [8, 8, 8], day=yesterday)
-assert r["improved"] and store.today_view(yesterday)["exercises"][0]["today"]["weight"] == 62.5
+assert r["improved"] and store.today_view(yesterday)["exercises"][0]["today"]["sets"][0]["weight"] == 62.5
 refused(lambda: store.log(pull["Rudern"], 50, [8], day=yesterday), "nicht im Plan")        # Rudern ist ein Pull-Tag (Dienstag)
 assert store.today_view()["offday"]                                                       # heute (Donnerstag) ist Offday
 
 # 10) Dauerhaft und robust: neu laden, kaputte Datei, fremde Eintraege werden beim Lesen bereinigt
 fresh = GymStore(tmp / "gym.json", today=lambda: TODAY[0])
-assert fresh.get_plan() == store.get_plan() and fresh.today_view(yesterday)["exercises"][0]["today"]["weight"] == 62.5
+assert fresh.get_plan() == store.get_plan() and fresh.today_view(yesterday)["exercises"][0]["today"]["sets"][0]["weight"] == 62.5
 (tmp / "kaputt.json").write_text("{nicht json", encoding="utf-8")
 assert GymStore(tmp / "kaputt.json").get_plan()["has_plan"] is False
 (tmp / "fremd.json").write_text(json.dumps({"plan": {"0": {"name": "X", "exercises": [{"name": "A", "weight": "viel", "sets": 3, "reps": 8}, {"name": "B", "weight": 5, "sets": 3, "reps": 8}]},
@@ -188,5 +203,35 @@ for t in threads:
 for t in threads:
     t.join()
 assert store.today_view()["logged"] == 10
+
+# 12) Saetze mit eigenem Gewicht eintragen (100 kg x 6, dann 96 kg x 8) und Korrektur
+TODAY[0] = date(2026, 12, 1)
+mixed = store.set_plan([{"weekday": 1, "name": "Pull", "exercises": [ex("Bank", 100, 1, 5)]}])
+bank = mixed["days"][1]["exercises"][0]["id"]
+r = store.log(bank, sets=[{"weight": 100, "reps": 6}, {"weight": 96, "reps": 8}])
+assert r["improved"] and r["goal"] == {"weight": 100, "sets": 1, "reps": 6}
+assert r["entry"]["sets"] == [{"weight": 100, "reps": 6}, {"weight": 96, "reps": 8}] and r["entry"]["goal_after"] == r["goal"]
+assert store.today_view()["exercises"][0]["today"]["sets"][1] == {"weight": 96, "reps": 8}
+r = store.log(bank, sets=[{"weight": 100, "reps": 4}, {"weight": 96, "reps": 8}])          # korrigiert: schlechter, Ziel zurueck
+assert r["improved"] is False and store.today_view()["exercises"][0]["weight"] == 100 and store.today_view()["exercises"][0]["reps"] == 5
+for bad, part in (([], "Satz"), ("x", "Satz"), ([{"weight": 100}], "Zahl"), ([{"weight": 100, "reps": 5.5}], "ganze Zahl"), ([{"weight": -1, "reps": 5}], "Gewicht"),
+                  ([{"weight": 100, "reps": 101}], "Wiederholungen"), (["x"], "Ungültiger Satz"), ([{"weight": 100, "reps": 5}] * 21, "Satz"),
+                  ([{"weight": True, "reps": 5}], "Zahl"), ([{"weight": 100, "reps": True}], "Zahl")):
+    refused(lambda: store.log(bank, sets=bad), part)
+assert store.today_view()["exercises"][0]["today"]["sets"][0]["reps"] == 4                  # Fehlversuche aendern nichts
+store.log(bank, sets=[{"weight": 102.5, "reps": 5}])
+assert store.today_view()["exercises"][0]["weight"] == 102.5 and store.clear_log(bank) and store.today_view()["exercises"][0]["weight"] == 100
+
+# 13) Aelteres Dateiformat (ein Gewicht + Wiederholungen je Satz) wird gelesen; kaputte Saetze fallen weg
+legacy = tmp / "legacy.json"
+legacy.write_text(json.dumps({"plan": {"1": {"name": "Pull", "exercises": [{"id": "x1", "name": "Rudern", "weight": 55, "sets": 3, "reps": 8}]}},
+                              "logs": {"2026-11-24": {"day": "Pull", "entries": {"x1": {"name": "Rudern", "weight": 55, "reps": [8, 8, 8], "improved": True,
+                                                                                         "goal_before": {"weight": 52.5, "sets": 3, "reps": 8}}},
+                                                                 "bad": {"name": "B", "sets": [{"weight": "x", "reps": 5}]}}}}), encoding="utf-8")
+old = GymStore(legacy, today=lambda: date(2026, 12, 1)).today_view(date(2026, 12, 1))
+assert old["exercises"][0]["last"] == {"date": "2026-11-24", "sets": [{"weight": 55, "reps": 8}] * 3}
+fresh = GymStore(legacy, today=lambda: date(2026, 11, 24))
+assert fresh.today_view()["exercises"][0]["today"]["improved"] is True and fresh.today_view()["exercises"][0]["today"]["goal_after"] == {"weight": 55, "sets": 3, "reps": 8}
+assert "bad" not in fresh.today_view()["exercises"][0]["today"]["name"]
 
 print("ALL TESTS PASSED")

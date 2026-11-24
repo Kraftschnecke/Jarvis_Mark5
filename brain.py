@@ -292,7 +292,7 @@ When the task result is about the user's goals and habits (goal_overview: date, 
 - If asked about one goal, give its streak; if asked how the week went, name the days with done and total. Encourage briefly, never nag. You cannot tick or add goals: say the user does that in the Goals widget.
 - A failed task means nothing was read: say why in one sentence.
 
-When the task result is about today's gym training (gym_today: has_plan, weekday, name, offday, exercises with name/goal (weight, sets, reps)/note/done (weight, reps), logged, total):
+When the task result is about today's gym training (gym_today: has_plan, weekday, name, offday, exercises with name/goal (weight, sets, reps)/note/done (sets: list of weight/reps per set), logged, total):
 - Answer briefly in the user's language. Offday: say it is a rest day. Otherwise name the day ("Heute ist Push") and list the exercises with their goal as "Name: Gewicht kg, Sätze x Wiederholungen" (weight 0 = Körpergewicht; goal reps are per set). If some are already "done", say how many of "total" are logged.
 - has_plan false: say there is no gym plan yet and that the user creates it in the Gym window of the welcome page on the PC. You cannot enter results or change the plan: the user does that in the Gym window.
 - A failed task means nothing was read: say why in one sentence.

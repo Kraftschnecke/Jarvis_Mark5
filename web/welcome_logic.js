@@ -280,12 +280,31 @@
   const kgText = (weight) => (Number(weight) > 0 ? String(Number(weight)).replace(".", ",") + " kg" : "Körpergewicht");
   // Ziel einer Uebung: "60 kg · 3 × 8"
   const goalText = (e) => kgText(e.weight) + " · " + e.sets + " × " + e.reps;
-  // Ein Ergebnis: "62,5 kg · 8 8 7"
-  const resultText = (r) => kgText(r.weight) + " · " + repsText(r.reps);
-  // Das ganze Ziel als Ergebnis (der Knopf "Wie Ziel")
-  const goalAsResult = (e) => ({ weight: e.weight, reps: new Array(e.sets).fill(e.reps) });
+  // Ein Ergebnis (Liste von Saetzen): gleiches Gewicht "62,5 kg · 8 8 7", sonst "100 kg × 6 · 96 kg × 8"
+  function resultText(r) {
+    const sets = r && Array.isArray(r.sets) ? r.sets : [];
+    if (!sets.length) return "";
+    if (sets.every((s) => s.weight === sets[0].weight)) return kgText(sets[0].weight) + " · " + sets.map((s) => s.reps).join(" ");
+    return sets.map((s) => kgText(s.weight) + " × " + s.reps).join(" · ");
+  }
+  // Das ganze Ziel als Ergebnis (der Knopf "Wie Ziel"): so viele Saetze wie im Ziel
+  const goalAsResult = (e) => ({ sets: Array.from({ length: e.sets }, () => ({ weight: e.weight, reps: e.reps })) });
+  // Felder -> Saetze: rows = [{ weight: "100", reps: "6" }, ...]; { sets } oder { error }
+  function parseSets(rows) {
+    if (!Array.isArray(rows) || !rows.length) return { error: "Trage mindestens einen Satz ein." };
+    if (rows.length > 20) return { error: "Höchstens 20 Sätze." };
+    const sets = [];
+    for (let i = 0; i < rows.length; i += 1) {
+      const weight = parseWeight(rows[i].weight);
+      const t = String(rows[i].reps === undefined || rows[i].reps === null ? "" : rows[i].reps).trim();
+      if (weight === null) return { error: "Satz " + (i + 1) + ": Gewicht bitte als Zahl (z. B. 62,5), leer = Körpergewicht." };
+      if (!/^\d{1,3}$/.test(t) || Number(t) > 100) return { error: "Satz " + (i + 1) + ": Wiederholungen bitte als ganze Zahl von 0 bis 100." };
+      sets.push({ weight, reps: Number(t) });
+    }
+    return { sets };
+  }
 
-  const api = { parseWeight, parseReps, repsText, kgText, goalText, resultText, goalAsResult, lightLevel, healthText, healthLevel, mediaLabel, programText, WEATHER_ICONS, isWeatherIcon, degrees, celsius, tempRange, shortPlace, rainText, forecastDay, barSpan, WINDOWS, STORAGE_KEY, CITIES_KEY, DEFAULT_ENABLED, CITIES, DEFAULT_CITIES, MAX_CITIES, normalizeCities, toggleCity, cityOf, cityTime, cityDayLabel, describeDue, COMPACT_FROM, CARD_TEXT, builtIds, normalizeEnabled, toggleWindow, splitColumns, isCompact, cardState,
+  const api = { parseWeight, parseReps, parseSets, repsText, kgText, goalText, resultText, goalAsResult, lightLevel, healthText, healthLevel, mediaLabel, programText, WEATHER_ICONS, isWeatherIcon, degrees, celsius, tempRange, shortPlace, rainText, forecastDay, barSpan, WINDOWS, STORAGE_KEY, CITIES_KEY, DEFAULT_ENABLED, CITIES, DEFAULT_CITIES, MAX_CITIES, normalizeCities, toggleCity, cityOf, cityTime, cityDayLabel, describeDue, COMPACT_FROM, CARD_TEXT, builtIds, normalizeEnabled, toggleWindow, splitColumns, isCompact, cardState,
                 greetingWord, formatRemaining, dayKey, addDays, eventsOn, goalProgress, bestStreak, isLocalHost, isOwnerSettings };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.WelcomeLogic = api;
