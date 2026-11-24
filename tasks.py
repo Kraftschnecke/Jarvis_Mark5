@@ -1029,7 +1029,7 @@ def create_write_note_task():
                     "type": "string"
                 },
                 "mode": {
-                    "description": "append, wenn der Nutzer an eine bestehende Datei anhängen oder ergänzen will, sonst new",
+                    "description": "append, wenn der Nutzer an eine bestehende Notiz oder Datei anhängen, ergänzen oder hinzufügen will (hänge an, adde zu, füge zu Notiz X hinzu, schreibe in die Notiz X, ergänze meine Notiz X). Sonst new",
                     "type": "string"
                 }
             }
