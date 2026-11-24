@@ -90,6 +90,18 @@ REMOTE_REFUSAL = "Das geht nur am PC."
 _remote_scope = threading.local()      # die eingeschraenkte Aufgabenliste, solange dieser Thread eine Handy-Nachricht bearbeitet
 
 
+PENDING_NOTE_SECONDS = 10 * 60
+NOTE_KEYS = ("filename", "content", "folder", "mode")
+
+
+def fresh_pending_note(jarvis):
+    """Die Notiz, zu der Jarvis gerade nachgefragt hat (seit hoechstens zehn Minuten), sonst None."""
+    pending = getattr(jarvis, "pending_note", None)
+    if pending is None or time.monotonic() - pending["time"] > PENDING_NOTE_SECONDS:
+        return None
+    return pending
+
+
 class Jarvis:
     # Klassen-Standard: es gibt nie eine offene Rueckfrage, bevor eine entsteht
     pending_action = None
@@ -693,6 +705,9 @@ class Jarvis:
             parts.append(router_module.document_context(document_tool.default_reader().active_name()))
         if registry.get("READ_MAIL") is not None and mail_tool.default_state().active():
             parts.append(router_module.mail_context(len(mail_tool.default_state().items)))
+        pending = fresh_pending_note(self)
+        if registry.get("WRITE_NOTE") is not None and pending is not None:
+            parts.append(router_module.note_context(pending["question"]))
         return " ".join(p for p in parts if p)
 
     def prepare_note(self, prepared):
@@ -714,14 +729,25 @@ class Jarvis:
                 continue
 
             params = action.parameters
+            pending = fresh_pending_note(self)
+            if pending is not None:                          # Antwort auf eine Rueckfrage ("Desktop"): das Bisherige bleibt, nur Leeres wird ergaenzt
+                for key, value in pending["params"].items():
+                    if value and not (isinstance(params.get(key), str) and params[key].strip()):
+                        params[key] = value
             content = params.get("content")
 
             if not isinstance(content, str) or not content.strip():
                 params["content"] = getattr(self, "last_reply", None) or ""
 
-            return note_tool.default_writer().check(
+            problem = note_tool.default_writer().check(
                 params.get("filename", ""), params.get("content", ""), params.get("folder", ""), params.get("mode", "new")
             )
+            if problem and "?" in problem:                    # eine Frage an den Nutzer: merken, damit die kurze Antwort dazu passt
+                self.pending_note = {"question": problem, "time": time.monotonic(),
+                                     "params": {key: params[key] for key in NOTE_KEYS if isinstance(params.get(key), str)}}
+            else:
+                self.pending_note = None
+            return problem
 
         return None
 

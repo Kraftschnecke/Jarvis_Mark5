@@ -179,6 +179,21 @@ def document_context(name):
     )
 
 
+def note_context(question):
+    """Hinweis fuer den Router: Jarvis hat gerade nachgefragt, was zur Notiz noch fehlt ("In welchen Ordner?"). Eine kurze Antwort gehoert dazu.
+
+    Die Frage enthaelt Ordnernamen vom Rechner: Sonderzeichen und Laenge werden begrenzt, damit sie keine Anweisung enthalten kann.
+    """
+    safe = re.sub(r"[^\w .,:?()\-]", "", str(question or ""))[:200].strip()
+    if not safe:
+        return ""
+    return (
+        f'The user was just asked this question about the note they want to save: "{safe}" If the message is a short answer to it '
+        "(a folder name, the note text or a file name), choose TASK WRITE_NOTE and put the answer in the matching parameter "
+        "(folder, content or filename); leave the other parameters empty. Messages that have nothing to do with it are routed as usual."
+    )
+
+
 def mail_context(count):
     """Hinweis fuer den Router: Eine nummerierte Mail-Liste wurde gerade gezeigt ("fass die dritte zusammen")."""
     try:
