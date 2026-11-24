@@ -35,6 +35,25 @@
       },
     };
 
+    // ---- Gym: der heutige Trainingstag (Daten vom Server: app.extra.gym.data.today)
+    const gym = {
+      title: "Gym",
+      extra() {
+        const e = app.extra.gym;
+        const t = e && e.status === "ok" && e.data && e.data.today;
+        return t && t.has_plan ? (t.offday ? "Offday" : t.name) : "";
+      },
+      draw(body) {
+        if (!loaded("gym", body)) return;
+        const t = app.extra.gym.data.today;
+        if (!t.has_plan) return body.append(empty(app.local ? "Noch kein Plan. Klick, um ihn anzulegen." : "Noch kein Plan (am PC anlegen)."));
+        if (t.offday) return body.append(empty("Offday: Ruhetag."));
+        if (!t.exercises.length) return body.append(empty(t.name + ": keine Übungen eingetragen."));
+        rows(body, t.exercises, lines(4, 3), (x) => row([el("span", "wbox" + (x.today ? " d" : "")), el("span", "", x.name + " · " + L.goalText(x))]));
+        body.append(el("div", "wempty small", t.logged + " von " + t.total + " eingetragen"));
+      },
+    };
+
     // ---- Fokus und Timer (die Zeiten zaehlen jede Sekunde, siehe app.onTick)
     const focus = {
       title: "Fokus & Timer",
@@ -286,7 +305,7 @@
       },
     };
 
-    return { goals, focus, lists, calendar, weather, notes, news, briefing, worldtime, music, system, pclage, drives, reminders };
+    return { goals, gym, focus, lists, calendar, weather, notes, news, briefing, worldtime, music, system, pclage, drives, reminders };
   }
 
   const api = { create };

@@ -16,6 +16,7 @@ from tools.volume_tool import set_volume
 from tools.media_tool import media_control
 from tools.system_tool import system_control
 from tools.goals_tool import goal_overview
+from tools.gym_tool import gym_today
 from tools.history_tool import search_history
 from tools.lists_tool import add_to_list, remove_from_list, show_list
 from tools.browser_tool import open_website
@@ -99,6 +100,8 @@ def execute_action(action):
         return remove_from_list(action.parameters.get("list", ""), action.parameters.get("item", ""), action.parameters.get("mode", "done"))
     if action.name == "goal_overview":
         return goal_overview()
+    if action.name == "gym_today":
+        return gym_today()
     if action.name == "search_history":
         return search_history(action.parameters.get("query", ""), action.parameters.get("project", ""), action.parameters.get("days", 0))
 

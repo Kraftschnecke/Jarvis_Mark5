@@ -17,6 +17,7 @@ import briefing
 import device_hub
 import hints
 import focus
+import gym as gym_module
 import reminders
 import remote_policy
 import ringing
@@ -213,6 +214,7 @@ class Jarvis:
             reminder_items=(lambda: reminders.default_store().list()) if on("LIST_REMINDERS") else None,
             alarm_items=(lambda: reminders.default_store().list("alarm")) if on("LIST_ALARMS") else None,
             weather=(lambda: weather_tool.default_service().summary()) if on("GET_WEATHER") else None,
+            gym=(lambda: gym_module.default_store().today_view()) if on("GYM_TODAY") and not getattr(self, "guest", False) else None,
             goals=lambda: widgets.default_store().get()["goals"],
             timers=(lambda: timer_module.list_timers()) if on("LIST_TIMERS") else None,
             news=news,

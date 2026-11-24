@@ -266,6 +266,15 @@ def create_goal_overview_task():
     return task
 
 
+def create_gym_today_task():
+    task = Task(
+        "GYM_TODAY",
+        "Das heutige Training aus dem eigenen Gym-Plan des Nutzers ansehen: welcher Tag ist heute (Push, Pull, Offday), welche Übungen mit welchem Ziel stehen an (Was steht heute im Training an? Ist heute Offday? Was ist mein Ziel beim Bankdrücken?). Nur ansehen; Plan und Ergebnisse trägt der Nutzer im Gym-Fenster ein"
+    )
+    task.add_action(Action("gym_today", {}))
+    return task
+
+
 def create_add_to_list_task():
     task = Task(
         "ADD_TO_LIST",
@@ -1109,6 +1118,7 @@ def register_all_tasks(registry):
     registry.register(create_open_website_task())
     registry.register(create_search_history_task())
     registry.register(create_goal_overview_task())
+    registry.register(create_gym_today_task())
     registry.register(create_add_to_list_task())
     registry.register(create_show_list_task())
     registry.register(create_remove_from_list_task())

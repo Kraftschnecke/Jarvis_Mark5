@@ -2,7 +2,7 @@
 import sys
 import tempfile
 import types
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -118,7 +118,9 @@ class RemoteJarvis(SpyJarvis):
 store = remote_auth.DeviceStore(tmp / "remote_devices.json")
 gate = remote_gate.RemoteGate(REMOTE_HOST, store, settings)
 spy = SpyJarvis()
-httpd = server.JarvisServer(("127.0.0.1", 0), spy, widget_store=widget_store, monitor=object(),
+import gym
+gym_store = gym.GymStore(Path(tempfile.mkdtemp()) / "gym.json")
+httpd = server.JarvisServer(("127.0.0.1", 0), spy, widget_store=widget_store, gym_store=gym_store, monitor=object(),
                             weather=types.SimpleNamespace(summary=lambda: None, week_forecast=lambda place, icons=False: ToolResult(success=True, data={"place": place, "now": None, "days": []})), remote=gate)
 threading.Thread(target=httpd.serve_forever, daemon=True).start()
 plain_httpd = server.JarvisServer(("127.0.0.1", 0), SpyJarvis(), widget_store=widget_store, monitor=object())   # ohne Remote
@@ -290,7 +292,7 @@ assert spy.touched == [], spy.touched
 assert spy.local_messages == []
 
 # 8b) Ziele abhaken und Listen pflegen: nur mit der Stufe "Alltag", Notizen und Termine nie
-assert remote_policy.DAILY_POST_API == {"/api/widgets/goals", "/api/widgets/lists", "/api/widgets/notes", "/api/widgets/device_note"}
+assert remote_policy.DAILY_POST_API == {"/api/widgets/goals", "/api/widgets/lists", "/api/widgets/notes", "/api/widgets/device_note", "/api/gym/log", "/api/gym/clear"}
 goal_body = {"items": [{"text": "Sport", "done": True, "daily": False}]}
 list_body = {"lists": [{"name": "Einkaufen", "items": [{"text": "Milch", "done": True}]}]}
 settings.set("remote", "daily", True)
@@ -320,6 +322,30 @@ for path, body in (("/api/widgets/goals", {"items": []}), ("/api/widgets/lists",
     assert call(httpd, "POST", path, cookie=cookie, origin=ORIGIN, body=body)[0] == 403, path
 assert json.dumps(widget_store.get(), sort_keys=True) == before_widgets
 settings.set("remote", "daily", True)
+
+# Gym: das Handy sieht den Plan und traegt Ergebnisse ein (Stufe "Alltag"); den Plan aendert nur der PC
+today_name = date.today()
+plan_body = {"days": [{"weekday": d, "name": "Push", "exercises": [{"name": "Bank", "weight": 60, "sets": 3, "reps": 8}]} for d in range(7)]}
+assert call(httpd, "POST", "/api/gym/plan", cookie=cookie, origin=ORIGIN, body=plan_body)[0] == 403          # nie vom Handy
+assert gym_store.has_plan() is False
+assert call(httpd, "POST", "/api/gym/plan", host="localhost", origin="http://localhost", body=plan_body)[0] == 200
+phone_gym = jbody(call(httpd, "GET", "/api/gym", cookie=cookie)[2])
+exercise = phone_gym["today"]["exercises"][0]
+assert phone_gym["today"]["name"] == "Push" and exercise["weight"] == 60
+status, _, raw = call(httpd, "POST", "/api/gym/log", cookie=cookie, origin=ORIGIN, body={"exercise": exercise["id"], "weight": 62.5, "reps": [8, 8, 8]})
+answer = jbody(raw)
+assert status == 200 and answer["result"]["improved"] and answer["today"]["exercises"][0]["weight"] == 62.5
+assert answer["widgets"]["goals"][0]["text"] == "Gym: Push"
+assert call(httpd, "POST", "/api/gym/log", cookie=cookie, origin=ORIGIN, body={"exercise": exercise["id"], "weight": "x", "reps": [8]})[0] == 400
+assert call(httpd, "POST", "/api/gym/log", cookie=cookie, origin=ORIGIN, body={"exercise": exercise["id"], "weight": 60, "reps": [8], "day": "morgen"})[0] == 400
+assert call(httpd, "POST", "/api/gym/clear", cookie=cookie, origin=ORIGIN, body={"exercise": exercise["id"]})[0] == 200
+assert gym_store.today_view()["exercises"][0]["weight"] == 60
+settings.set("remote", "daily", False)                                                               # Stufe aus: auch Eintragen zu
+assert call(httpd, "POST", "/api/gym/log", cookie=cookie, origin=ORIGIN, body={"exercise": exercise["id"], "weight": 70, "reps": [9, 9, 9]})[0] == 403
+assert gym_store.today_view()["exercises"][0]["weight"] == 60
+settings.set("remote", "daily", True)
+assert call(httpd, "POST", "/api/gym/plan", host="localhost", origin="http://localhost", body={"days": "x"})[0] == 400
+gym_store.set_plan([])
 
 # Notizen: die gemeinsame Notiz gilt fuer alle Geraete, die eigene Notiz gehoert nur diesem Handy und der PC zeigt sie an
 status, _, raw = call(httpd, "POST", "/api/widgets/notes", cookie=cookie, origin=ORIGIN, body={"text": "fuer alle"})

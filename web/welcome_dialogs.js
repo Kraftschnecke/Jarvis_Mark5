@@ -202,6 +202,14 @@
             box.checked = goal.done;
             box.setAttribute("aria-label", goal.text);
             box.addEventListener("change", () => { items[index].done = box.checked; persist(); });
+            if (goal.managed) {
+              // Das feste Gym-Ziel kommt aus dem Gym-Plan: nur abhaken (Offday ist von selbst erledigt), nicht loeschen oder umstellen
+              box.disabled = /Offday$/.test(goal.text);
+              r.append(box, el("span", "goal-text", goal.text));
+              if (goal.streak > 0) r.append(el("span", "goal-streak", goal.streak + (goal.streak === 1 ? " Tag" : " Tage")));
+              rows.append(r);
+              return;
+            }
             const repeat = button("↻", "", () => { items[index].daily = !items[index].daily; persist(); });
             repeat.setAttribute("aria-pressed", String(goal.daily));
             repeat.title = goal.daily ? "Täglich: klicken, um nur für heute zu behalten" : "Nur heute: klicken, damit es täglich wiederkommt";
@@ -228,6 +236,209 @@
         const fromData = () => { items = JSON.parse(JSON.stringify((app.data && app.data.goals) || [])); draw(); };
         fromData();
         win.onData(() => { if (!saver.busy()) fromData(); });
+      });
+    }
+
+    // ---- Gym: heutiges Training mit Zielen, Ergebnis eintragen (auch am Handy), Wochenplan (aendern nur am PC)
+    function gym() {
+      app.openWindow({ title: "Gym", wide: true }, (body, win) => {
+        const note = el("div", "note");
+        const head = el("div", "gym-head");
+        const list = el("div");
+        const planBox = el("div");
+        body.append(head, list, note, el("div", "section-title", "Wochenplan"), planBox);
+        const typed = {};                   // was in den Feldern steht (bleibt beim Neuzeichnen erhalten): id -> { weight, reps }
+        const editing = {};                 // id -> true: ein schon eingetragenes Ergebnis wird gerade geaendert
+        let draft = null;                   // Plan-Editor: Kopie der Tage, solange er offen ist
+        let busy = false;
+
+        const data = () => {
+          const e = app.extra.gym;
+          return e && e.status === "ok" ? e.data : null;
+        };
+        const dateText = (iso) => iso.slice(8, 10) + "." + iso.slice(5, 7) + ".";
+
+        async function send(path, payload, onOk) {
+          if (busy) return;
+          busy = true;
+          note.textContent = "";
+          try {
+            const answer = await app.api("POST", path, payload);
+            app.setGym(answer);
+            if (onOk) onOk(answer);
+          } catch (error) {
+            note.textContent = "Nicht gespeichert: " + error.message;
+          }
+          busy = false;
+          draw();
+        }
+
+        function exerciseCard(x) {
+          const card = el("div", "gym-card");
+          const title = el("div", "gym-title");
+          title.append(el("b", "", x.name), el("span", "gym-goal", "Ziel: " + L.goalText(x)));
+          card.append(title);
+          if (x.note) card.append(el("div", "muted small", x.note));
+          if (x.last) card.append(el("div", "muted small", "Letztes Mal (" + dateText(x.last.date) + "): " + L.resultText(x.last)));
+          if (x.today && !editing[x.id]) {
+            const done = el("div", "gym-done");
+            done.append(el("span", "", "✓ Heute: " + L.resultText(x.today)));
+            if (x.today.improved) done.append(el("span", "gym-new", "Neues Ziel!"));
+            const change = button("Ändern", "", () => { editing[x.id] = true; typed[x.id] = { weight: String(x.today.weight), reps: L.repsText(x.today.reps) }; draw(); });
+            const clear = button("Löschen", "", () => send("/api/gym/clear", { exercise: x.id }));
+            done.append(change, clear);
+            card.append(done);
+            return card;
+          }
+          const mine = typed[x.id] || (typed[x.id] = { weight: String(x.weight), reps: L.repsText(new Array(x.sets).fill(x.reps)) });
+          const form = el("form", "gym-form");
+          const weight = field("kg", "gym-kg");
+          weight.value = mine.weight;
+          weight.inputMode = "decimal";
+          weight.setAttribute("aria-label", x.name + ": Gewicht in kg");
+          const reps = field("8 8 8", "gym-reps");
+          reps.value = mine.reps;
+          reps.setAttribute("aria-label", x.name + ": Wiederholungen je Satz");
+          weight.addEventListener("input", () => { mine.weight = weight.value; });
+          reps.addEventListener("input", () => { mine.reps = reps.value; });
+          const save = button("Eintragen", "primary");
+          save.type = "submit";
+          const same = button("Wie Ziel", "", () => {
+            const r = L.goalAsResult(x);
+            delete editing[x.id];
+            send("/api/gym/log", { exercise: x.id, weight: r.weight, reps: r.reps }, reportResult(x));
+          });
+          form.append(weight, el("span", "muted small", "kg ×"), reps, save, same);
+          form.addEventListener("submit", (event) => {
+            event.preventDefault();
+            const w = L.parseWeight(weight.value);
+            const r = L.parseReps(reps.value);
+            if (w === null) { note.textContent = x.name + ": Gewicht bitte als Zahl (z. B. 62,5), leer = Körpergewicht."; return; }
+            if (r === null) { note.textContent = x.name + ": Wiederholungen je Satz, z. B. „8 8 7“ oder „3x8“."; return; }
+            delete editing[x.id];
+            send("/api/gym/log", { exercise: x.id, weight: w, reps: r }, reportResult(x));
+          });
+          card.append(form);
+          return card;
+        }
+
+        const reportResult = (x) => (answer) => {
+          delete typed[x.id];
+          note.textContent = answer.result && answer.result.improved ? x.name + ": neues Ziel " + L.goalText(answer.result.goal) + "." : x.name + ": eingetragen.";
+        };
+
+        function drawToday() {
+          head.replaceChildren();
+          list.replaceChildren();
+          const e = app.extra.gym;
+          if (!e || e.status === "loading") return head.append(el("div", "wempty", "Lade …"));
+          if (e.status !== "ok") return head.append(el("div", "wempty", e.status === "disabled" ? "In den Einstellungen ausgeschaltet." : e.error || "Gerade nicht verfügbar."));
+          const t = e.data.today;
+          if (!t.has_plan) return head.append(el("div", "wempty", app.local ? "Noch kein Plan. Unten kannst du ihn anlegen." : "Noch kein Plan. Den legst du am PC an."));
+          head.append(el("div", "gym-day", t.label + ": " + (t.offday ? "Offday" : t.name)));
+          if (t.offday) return head.append(el("div", "muted small", "Ruhetag. Das Tagesziel ist von selbst erledigt."));
+          if (!t.exercises.length) return head.append(el("div", "muted small", "Für diesen Tag sind keine Übungen eingetragen."));
+          head.append(el("div", "muted small", t.logged + " von " + t.total + " eingetragen. Das Ziel „Gym“ hakst du bei den Tageszielen ab."));
+          t.exercises.forEach((x) => list.append(exerciseCard(x)));
+        }
+
+        // ---- Wochenplan: ansehen (ueberall), aendern (nur am PC)
+        const num = (text) => (/^\d{1,3}$/.test(String(text).trim()) ? Number(text) : null);
+
+        function startEdit() {
+          const plan = data() && data().plan;
+          draft = (plan ? plan.days : []).map((d) => ({
+            weekday: d.weekday, label: d.label, name: d.offday ? "" : d.name,
+            exercises: d.exercises.map((x) => ({ id: x.id, name: x.name, weight: String(x.weight), sets: String(x.sets), reps: String(x.reps), note: x.note || "" })),
+          }));
+          draw();
+        }
+
+        function savePlan() {
+          const days = [];
+          for (const d of draft) {
+            const exercises = [];
+            for (const x of d.exercises) {
+              if (!x.name.trim()) continue;
+              const w = L.parseWeight(x.weight);
+              const s = num(x.sets);
+              const r = num(x.reps);
+              if (w === null || s === null || r === null || s < 1 || r < 1) { note.textContent = d.label + ", " + x.name.trim() + ": Gewicht, Sätze und Wiederholungen müssen Zahlen sein (Sätze und Wiederholungen mindestens 1)."; return; }
+              const item = { name: x.name.trim(), weight: w, sets: s, reps: r, note: x.note.trim() };
+              if (x.id) item.id = x.id;
+              exercises.push(item);
+            }
+            if (d.name.trim() || exercises.length) days.push({ weekday: d.weekday, name: d.name.trim(), exercises });
+          }
+          send("/api/gym/plan", { days }, () => { draft = null; note.textContent = "Plan gespeichert."; });
+        }
+
+        function drawEditor() {
+          draft.forEach((d) => {
+            const box = el("div", "gym-plan-day");
+            const top = el("div", "gym-plan-top");
+            const name = field("Tagesname, z. B. Push (leer = Offday)", "grow");
+            name.maxLength = 30;
+            name.value = d.name;
+            name.setAttribute("aria-label", d.label + ": Tagesname");
+            name.addEventListener("input", () => { d.name = name.value; });
+            top.append(el("b", "gym-wd", d.label), name);
+            box.append(top);
+            d.exercises.forEach((x, index) => {
+              const line = el("div", "gym-ex");
+              const bind = (key, placeholder, cls, label) => {
+                const input = field(placeholder, cls);
+                input.value = x[key];
+                input.setAttribute("aria-label", d.label + ", Übung " + (index + 1) + ": " + label);
+                input.addEventListener("input", () => { x[key] = input.value; });
+                return input;
+              };
+              const nameInput = bind("name", "Übung", "grow", "Name");
+              nameInput.maxLength = 60;
+              const noteInput = bind("note", "Notiz (optional)", "gym-note", "Notiz");
+              noteInput.maxLength = 80;
+              const remove = button("×", "", () => { d.exercises.splice(index, 1); draw(); });
+              remove.setAttribute("aria-label", "Übung entfernen");
+              line.append(nameInput, bind("weight", "kg", "gym-kg", "Gewicht"), bind("sets", "Sätze", "gym-num", "Sätze"), bind("reps", "Wdh.", "gym-num", "Wiederholungen"), noteInput, remove);
+              box.append(line);
+            });
+            if (d.exercises.length < 12) {
+              box.append(button("+ Übung", "", () => { d.exercises.push({ id: "", name: "", weight: "0", sets: "3", reps: "8", note: "" }); draw(); }));
+            }
+            planBox.append(box);
+          });
+          const bar = el("div", "form");
+          bar.append(button("Plan speichern", "primary", savePlan), button("Abbrechen", "", () => { draft = null; note.textContent = ""; draw(); }));
+          planBox.append(bar, el("div", "muted small", "Gewicht 0 = Körpergewicht. Ein Tag ohne Namen und ohne Übungen ist Offday. Ergebnisse, die besser sind als das Ziel, werden von selbst das neue Ziel."));
+        }
+
+        function drawPlan() {
+          planBox.replaceChildren();
+          const d = data();
+          if (!d) return planBox.append(el("div", "wempty", "Noch nicht geladen."));
+          if (draft) return drawEditor();
+          d.plan.days.forEach((day) => {
+            const r = el("div", "gym-plan-row");
+            const text = day.offday ? "Offday" : day.name + (day.exercises.length ? " · " + day.exercises.map((x) => x.name + " " + L.goalText(x)).join(", ") : "");
+            r.append(el("b", "gym-wd", day.label), el("span", day.offday ? "muted" : "", text));
+            planBox.append(r);
+          });
+          if (app.local) planBox.append(button(d.plan.has_plan ? "Plan bearbeiten" : "Plan anlegen", "primary", startEdit));
+          else planBox.append(el("div", "muted small", "Den Plan änderst du am PC. Hier trägst du Ergebnisse ein."));
+        }
+
+        function draw() {
+          drawToday();
+          drawPlan();
+        }
+
+        draw();
+        win.onData(() => {
+          // Waehrend du tippst, wird nichts neu gezeichnet (sonst waere das Feld weg)
+          const active = document.activeElement;
+          if (!busy && !(active && active.tagName === "INPUT" && body.contains(active))) draw();
+        });
+        app.loadExtra("gym", true);
       });
     }
 
@@ -814,7 +1025,7 @@
       });
     }
 
-    return { calendar, goals, lists, weather, focus, notes, news, briefing, worldtime, music, system, pclage, drives, reminders, manage };
+    return { calendar, goals, gym, lists, weather, focus, notes, news, briefing, worldtime, music, system, pclage, drives, reminders, manage };
   }
 
   const api = { create };

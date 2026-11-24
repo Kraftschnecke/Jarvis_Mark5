@@ -8,6 +8,7 @@
   //   none    = Jarvis kann es noch nicht
   const WINDOWS = [
     { id: "goals", title: "Tagesziele", desc: "Haken, Serie, Woche", state: "built" },
+    { id: "gym", title: "Gym", desc: "Training heute, Ziele, Ergebnis eintragen", state: "built" },
     { id: "focus", title: "Fokus & Timer", desc: "laufende Sitzung und Timer", state: "built" },
     { id: "lists", title: "Listen", desc: "Einkauf & Co. abhaken", state: "built" },
     { id: "calendar", title: "Kalender", desc: "Termine heute und morgen, Monat", state: "built" },
@@ -256,7 +257,35 @@
     return "";
   }
 
-  const api = { lightLevel, healthText, healthLevel, mediaLabel, programText, WEATHER_ICONS, isWeatherIcon, degrees, celsius, tempRange, shortPlace, rainText, forecastDay, barSpan, WINDOWS, STORAGE_KEY, CITIES_KEY, DEFAULT_ENABLED, CITIES, DEFAULT_CITIES, MAX_CITIES, normalizeCities, toggleCity, cityOf, cityTime, cityDayLabel, describeDue, COMPACT_FROM, CARD_TEXT, builtIds, normalizeEnabled, toggleWindow, splitColumns, isCompact, cardState,
+  // ---- Gym: Zahlen aus Eingabefeldern und Texte (die Regeln "besser = neues Ziel" rechnet der Server)
+  // Gewicht: "62,5" oder "62.5"; leer = 0 (Koerpergewicht); sonst null
+  function parseWeight(text) {
+    const t = String(text === undefined || text === null ? "" : text).trim().replace(",", ".");
+    if (t === "") return 0;
+    if (!/^\d{1,4}(\.\d{1,2})?$/.test(t)) return null;
+    const n = Number(t);
+    return n >= 0 && n <= 1000 ? n : null;
+  }
+  // Wiederholungen je Satz: "8 8 7", "8,8,7", "8/8/7" oder "3x8" (= 8 8 8); ungueltig = null
+  function parseReps(text) {
+    const t = String(text === undefined || text === null ? "" : text).trim().toLowerCase();
+    const times = /^(\d{1,2})\s*[x×]\s*(\d{1,3})$/.exec(t);
+    let reps;
+    if (times) reps = new Array(Number(times[1])).fill(Number(times[2]));
+    else if (/^\d{1,3}([\s,;/]+\d{1,3})*$/.test(t)) reps = t.split(/[\s,;/]+/).map(Number);
+    else return null;
+    return reps.length >= 1 && reps.length <= 20 && reps.every((r) => r >= 0 && r <= 100) ? reps : null;
+  }
+  const repsText = (reps) => (Array.isArray(reps) ? reps.join(" ") : "");
+  const kgText = (weight) => (Number(weight) > 0 ? String(Number(weight)).replace(".", ",") + " kg" : "Körpergewicht");
+  // Ziel einer Uebung: "60 kg · 3 × 8"
+  const goalText = (e) => kgText(e.weight) + " · " + e.sets + " × " + e.reps;
+  // Ein Ergebnis: "62,5 kg · 8 8 7"
+  const resultText = (r) => kgText(r.weight) + " · " + repsText(r.reps);
+  // Das ganze Ziel als Ergebnis (der Knopf "Wie Ziel")
+  const goalAsResult = (e) => ({ weight: e.weight, reps: new Array(e.sets).fill(e.reps) });
+
+  const api = { parseWeight, parseReps, repsText, kgText, goalText, resultText, goalAsResult, lightLevel, healthText, healthLevel, mediaLabel, programText, WEATHER_ICONS, isWeatherIcon, degrees, celsius, tempRange, shortPlace, rainText, forecastDay, barSpan, WINDOWS, STORAGE_KEY, CITIES_KEY, DEFAULT_ENABLED, CITIES, DEFAULT_CITIES, MAX_CITIES, normalizeCities, toggleCity, cityOf, cityTime, cityDayLabel, describeDue, COMPACT_FROM, CARD_TEXT, builtIds, normalizeEnabled, toggleWindow, splitColumns, isCompact, cardState,
                 greetingWord, formatRemaining, dayKey, addDays, eventsOn, goalProgress, bestStreak, isLocalHost, isOwnerSettings };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.WelcomeLogic = api;

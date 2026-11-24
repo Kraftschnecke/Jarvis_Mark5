@@ -15,7 +15,7 @@ DEFAULT_LEVELS = {"info": True, "daily": True, "pc": False}
 
 LEVEL_ABILITIES = {
     "info": ("web_search", "weather", "news", "translate", "wikipedia", "worldtime", "convert"),
-    "daily": ("timers", "reminders", "alarm", "briefing", "focus", "calendar", "lists", "goals"),
+    "daily": ("timers", "reminders", "alarm", "briefing", "focus", "calendar", "lists", "goals", "gym"),
     "pc": ("volume", "music", "system"),
 }
 LEVEL_CORE_TASKS = {
@@ -37,13 +37,15 @@ GET_API = frozenset({
     "/api/focus",             # laufende Fokus-Sitzung anzeigen
     "/api/sync", "/api/remote/whoami",
     "/api/reminders", "/api/news", "/api/briefing", "/api/forecast",       # Willkommensseite: nur lesen
+    "/api/gym",               # Trainingsplan und heutige Ziele ansehen
 })
 POST_API = frozenset({
     "/api/message", "/api/speak", "/api/ringing/stop", "/api/timer/cancel", "/api/focus/stop",
     "/api/conversation/open", "/api/conversation/new", "/api/project/open",
 })
 # Nur mit der Stufe "Alltag": Ziele abhaken, Listen pflegen (Einkaufsliste), gemeinsame Notiz und die eigene Notiz des Handys. Termine bleiben am PC.
-DAILY_POST_API = frozenset({"/api/widgets/goals", "/api/widgets/lists", "/api/widgets/notes", "/api/widgets/device_note"})
+DAILY_POST_API = frozenset({"/api/widgets/goals", "/api/widgets/lists", "/api/widgets/notes", "/api/widgets/device_note",
+                            "/api/gym/log", "/api/gym/clear"})      # Gym: Ergebnis eintragen geht auch vom Handy, den Plan aendert nur der PC
 # Ohne Anmeldung (Kopplung)
 PUBLIC_GET = frozenset({"/pair"})
 PUBLIC_POST = frozenset({"/api/remote/pair"})

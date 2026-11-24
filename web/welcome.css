@@ -329,3 +329,28 @@ body.welcome::before {
 @media (prefers-reduced-motion: reduce) {
   .stage, .core, .core *, .stage.leaving, .wl-dim, .wl-box { animation: none !important; transition: none !important; }
 }
+
+/* ---- Gym-Fenster */
+.gym-head { margin-bottom: 8px; }
+.gym-day { font-size: 1.15rem; font-weight: 600; }
+.gym-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.gym-title { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.gym-goal { color: var(--accent); font-size: 0.9rem; }
+.gym-form, .gym-done { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.gym-done { color: var(--accent); }
+.gym-new { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: var(--base); }
+.gym-kg { width: 5.5rem; flex: none; }
+.gym-reps { width: 8rem; flex: none; }
+.gym-num { width: 4.5rem; flex: none; }
+.gym-plan-day { border-bottom: 1px solid var(--line); padding: 8px 0; }
+.gym-plan-top { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.gym-wd { width: 6.5rem; flex: none; }
+.gym-ex { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.gym-ex .grow { flex: 1 1 140px; min-width: 0; }
+.gym-ex .gym-note { flex: 1 1 120px; min-width: 0; }
+.gym-plan-row { display: flex; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.gym-plan-row span { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 620px) {
+  .gym-wd { width: 5rem; }
+  .gym-form .field { font-size: 1rem; }
+}

@@ -19,6 +19,7 @@ Dinge:
        POST /api/hints -> faellige proaktive Hinweise: {"hints": [{"kind", "text"}]} (Step 2.29, nur Anzeige)
        POST /api/goals/evening -> Abendfrage zu offenen Zielen: {"text": ...} oder null (Step 2.28)
        POST /api/briefing/auto -> Tagesbriefing beim ersten Start des Tages: {"text": ...} oder null (Step 2.12)
+       GET  /api/gym         ->  Gym-Plan: heutiges Training mit Zielen und der ganze Wochenplan; POST /api/gym/plan (nur PC), /api/gym/log, /api/gym/clear
        GET  /api/folders     ->  freigegebene Ordner; POST /api/folders/add und /api/folders/remove pflegen sie (Step 2.14)
        GET  /api/focus       ->  laufende Fokus-Sitzung (Phase, Runde, Restzeit); POST /api/focus/stop beendet sie (Step 2.13)
        GET  /api/ringing     ->  was gerade laeutet (Wecker/Timer) und wer den Ton macht (Step 2.11)
@@ -62,6 +63,7 @@ import threading
 import time
 import traceback
 import webbrowser
+from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -77,6 +79,7 @@ import tester as tester_module
 import timer
 import reminders
 import focus
+import gym
 import folders
 import profiles as profile_module
 import remote_policy
@@ -646,13 +649,18 @@ class JarvisServer(ThreadingHTTPServer):
     # kurz hintereinander: auf Windows kann sonst eine Verbindung ins Leere laufen.
     request_queue_size = 128
 
-    def __init__(self, address, jarvis, guest=False, widget_store=None, hockey=None, weather=None, monitor=None, remote=None, health=None, hub=None):
+    def __init__(self, address, jarvis, guest=False, widget_store=None, hockey=None, weather=None, monitor=None, remote=None, health=None, hub=None,
+                 gym_store=None):
         super().__init__(address, JarvisHandler)
         self.hub = hub or device_hub.DeviceHub()      # Warteschlange zum PC-Agent (S6)
         self.jarvis = jarvis
         self.guest = guest
         self.remote = remote          # Pforte fuer Zugriff vom Handy (remote_gate.py), None = Remote gibt es nicht
         self.widget_store = widget_store or widgets.default_store()
+        # Gym-Plan: nur beim Besitzer (der Standard-Speicher); in Tests nur, wenn einer uebergeben wird
+        self.gym_store = gym_store or (gym.default_store() if widget_store is None and not guest else None)
+        if self.gym_store is not None and self.widget_store.gym is None:
+            self.widget_store.gym = self.gym_store
         self.hockey = hockey or widgets.HockeyFeed()
         self.weather = weather or weather_tool.default_service()
         self.monitor = monitor or system_status_tool.PerformanceMonitor()
@@ -966,6 +974,37 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
         return self.send_json(403, self.TESTER_DENIED)
 
+    def gym_payload(self):
+        store = self.server.gym_store
+        return {"today": store.today_view(), "plan": store.get_plan()}
+
+    def handle_gym_post(self, path, data):
+        store = self.server.gym_store
+        if store is None:
+            return self.send_json(404, {"error": "Gym ist hier nicht eingerichtet."})
+        try:
+            day = None
+            if data.get("day") is not None:
+                if not isinstance(data["day"], str):
+                    raise gym.GymError("Ungültiger Tag.")
+                try:
+                    day = date.fromisoformat(data["day"])
+                except ValueError:
+                    raise gym.GymError("Ungültiger Tag.")
+            result = None
+            if path == "/api/gym/plan":
+                store.set_plan(data.get("days"))
+            elif path == "/api/gym/log":
+                result = store.log(data.get("exercise"), data.get("weight"), data.get("reps"), day=day)
+            else:
+                store.clear_log(data.get("exercise"), day=day)
+        except gym.GymError as error:
+            return self.send_json(400, {"error": str(error)})
+        payload = self.gym_payload()
+        payload["result"] = result
+        payload["widgets"] = self.server.widget_store.get()
+        return self.send_json(200, payload)
+
     def tester_post(self, path, data):
         """Alle Adressen, die ein Gast schreiben darf, alle auf seinen Bereich. Alles andere: 403."""
         tester = self.server.tester_for(self.device["profile"])
@@ -1144,6 +1183,11 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
         if path == "/api/remote/state":
             return self.send_json(200, remote_panel_state(self.server.remote))
+
+        if path == "/api/gym":
+            if self.server.gym_store is None:
+                return self.send_json(404, {"error": "Gym ist hier nicht eingerichtet."})
+            return self.send_json(200, self.gym_payload())
 
         if path == "/api/folders":
             try:
@@ -1450,6 +1494,10 @@ class JarvisHandler(BaseHTTPRequestHandler):
                     or path in PROFILE_PATHS:
                 status, body = remote_admin_post(self.server.remote, path, data, own_id=getattr(self, "own_device_id", None))
                 return self.send_json(status, body)
+
+            # Gym: Plan aendern nur am PC (steht in keiner Remote-Stufe); Ergebnis eintragen darf auch das Handy (Stufe Alltag)
+            if path in ("/api/gym/plan", "/api/gym/log", "/api/gym/clear"):
+                return self.handle_gym_post(path, data)
 
             # Freigegebene Ordner pflegen (Step 2.14): nur hier, nie per Chat; lokal, ohne message_lock
             if path in ("/api/folders/add", "/api/folders/remove"):

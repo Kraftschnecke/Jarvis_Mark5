@@ -44,7 +44,7 @@ assert "textContent" in js["welcome.js"] and "textContent" in js["welcome_app.js
 used = set(re.findall(r'"(/api/[a-z_/]+)"', all_js))
 assert used == {"/api/widgets", "/api/settings", "/api/timers", "/api/focus", "/api/forecast", "/api/pc_lage", "/api/widgets/events", "/api/widgets/goals",
                 "/api/widgets/lists", "/api/focus/stop", "/api/timer/cancel", "/api/widgets/notes", "/api/news", "/api/briefing",
-                "/api/reminders", "/api/performance", "/api/system", "/api/media", "/api/volume"}, used
+                "/api/reminders", "/api/performance", "/api/system", "/api/media", "/api/volume", "/api/gym", "/api/gym/log", "/api/gym/clear", "/api/gym/plan"}, used
 server_text = (PROJECT_DIR / "server.py").read_text(encoding="utf-8")
 for path in used:
     assert f'"{path}"' in server_text, path
@@ -59,7 +59,7 @@ for path in ("/api/widgets/goals", "/api/widgets/lists"):
 # 6) Jedes gebaute Fenster hat Anzeige, grosses Fenster und Eintrag in der Seite
 logic = js["welcome_logic.js"]
 built = re.findall(r'\{ id: "(\w+)", title: "[^"]+", desc: "[^"]+", state: "built" \}', logic)
-assert built == ["goals", "focus", "lists", "calendar", "weather", "notes", "news", "briefing", "worldtime", "music", "system", "pclage", "drives", "reminders"], built
+assert built == ["goals", "gym", "focus", "lists", "calendar", "weather", "notes", "news", "briefing", "worldtime", "music", "system", "pclage", "drives", "reminders"], built
 assert "DEFAULT_ENABLED = [\"goals\", \"focus\", \"lists\", \"calendar\", \"weather\"]" in js["welcome_logic.js"]   # neue Fenster sind erst mal aus
 for window in built:
     assert re.search(rf"\b{window}\b", js["welcome_panels.js"].split("return {")[-1]), f"Anzeige fehlt: {window}"
@@ -115,6 +115,9 @@ if node:
     result = subprocess.run([node, str(PROJECT_DIR / "test" / "welcome_check.js")], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "welcome OK" in result.stdout
+    gym_result = subprocess.run([node, str(PROJECT_DIR / "test" / "gym_check.js")], capture_output=True, text=True, timeout=60)
+    assert gym_result.returncode == 0, gym_result.stdout + gym_result.stderr
+    assert "gym OK" in gym_result.stdout
 else:
     print("Hinweis: Node.js nicht gefunden, die Willkommensseite wurde nur statisch geprueft.")
 

@@ -29,9 +29,11 @@ projects/
 .jarvis_app_profile/
 
 widgets.json
+gym.json
 widgets.tmp
 
 widgets.json
+gym.json
 widgets.tmp
 
 # Tageszaehler fuer Aufrufe (Step 1.4)

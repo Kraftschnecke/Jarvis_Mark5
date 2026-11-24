@@ -84,6 +84,7 @@ ACTION_RISK = {
     # liest nur die eigenen frueheren Gespraeche in der Datenbank (nichts wird geaendert) (Step 2.27)
     "search_history": SAFE,
     "goal_overview": SAFE,
+    "gym_today": SAFE,            # liest nur den eigenen Gym-Plan
     "add_to_list": SAFE,          # lokale Liste in widgets.json, sichtbar und aenderbar im Widget
     "show_list": SAFE,
     "remove_from_list": SAFE,     # ein einzelner Eintrag; ganze Listen loescht nur die Seite

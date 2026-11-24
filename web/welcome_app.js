@@ -95,6 +95,7 @@
       perf: { path: "/api/performance", pick: (d) => d },
       forecast: { path: "/api/forecast", pick: (d) => d.forecast || null },      // Wochenvorhersage fuer den Heimatort
       pclage: { path: "/api/pc_lage", pick: (d) => d.pc_lage || null },          // PC-Lage und Laufwerke (nur am PC)
+      gym: { path: "/api/gym", pick: (d) => d },                                 // Gym-Plan: { today, plan }
     };
     const pending = {};
     app.loadExtra = async (name, force) => {
@@ -113,10 +114,10 @@
       emit();
     };
     // welche Quellen ein eingeschaltetes Fenster braucht
-    const NEEDS = { news: "news", briefing: "briefing", reminders: "reminders", system: "perf", weather: "forecast", pclage: "pclage", drives: "pclage" };
+    const NEEDS = { news: "news", briefing: "briefing", reminders: "reminders", system: "perf", weather: "forecast", pclage: "pclage", drives: "pclage", gym: "gym" };
     const LOCAL_ONLY = ["system", "pclage", "drives"];                   // gibt es nur am PC
     const LIVE = ["perf", "pclage"];                                     // jede Runde neu holen (alle paar Sekunden)
-    const ALWAYS_FRESH = ["perf", "forecast", "pclage"];                 // und bei der grossen Runde auch erneuern
+    const ALWAYS_FRESH = ["perf", "forecast", "pclage", "gym"];                 // und bei der grossen Runde auch erneuern
     function loadNeeded(onlyLive) {
       app.enabled.forEach((id) => {
         const name = NEEDS[id];
@@ -125,6 +126,13 @@
         app.loadExtra(name, ALWAYS_FRESH.includes(name));
       });
     }
+
+    // ---- Gym: Antwort des Servers ({ today, plan, widgets }) uebernehmen; die Tagesziele haben sich dann auch geaendert
+    app.setGym = (data) => {
+      app.extra.gym = { status: "ok", data: { today: data.today, plan: data.plan } };
+      if (data.widgets) app.data = data.widgets;
+      emit();
+    };
 
     // ---- Wetter: Vorhersage fuer einen gesuchten Ort (der Heimatort steht in app.extra.forecast)
     app.searchForecast = async (place) => {

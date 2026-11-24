@@ -40,6 +40,9 @@ EVENT_KEEP_DAYS = 31            # Termine, die laenger her sind, werden beim Spe
 # damit sich zwei gleichzeitige Speichervorgaenge nichts ueberschreiben.
 _FILE_LOCK = threading.RLock()
 
+GYM_KEY = "\u0001gym"                  # fester Serien-Schluessel, damit die Serie nicht mit dem Tagesnamen (Push/Pull) abreisst
+GYM_MANAGED = "gym"
+
 _TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
@@ -49,6 +52,7 @@ class WidgetStore:
         self.today = today
         self._lock = _FILE_LOCK
         self.remote = remote            # Apple-Kalender (calendar_sync.AppleCalendar) oder None
+        self.gym = None                 # GymStore: liefert das feste Tagesziel "Gym: ..." (nur beim Besitzer)
 
     def _load(self):
         try:
@@ -67,6 +71,30 @@ class WidgetStore:
     def goal_key(text):
         """Gleiches Ziel trotz anderer Gross-/Kleinschreibung oder Leerzeichen."""
         return " ".join(str(text).casefold().split())
+
+    def _gym_goal(self, data, day):
+        """Das feste Gym-Tagesziel als Eintrag (oder None). Offday ist von selbst erledigt; sonst haengt es am Haken des Nutzers."""
+        info = self.gym.goal_info(day) if self.gym is not None else None
+        if info is None:
+            return None
+        text, offday = info
+        stored = data.get("gym_done") if isinstance(data.get("gym_done"), dict) else {}
+        done = offday or (stored.get("date") == day.isoformat() and stored.get("done") is True)
+        return {"text": text, "done": done, "daily": True, "managed": GYM_MANAGED}
+
+    def _gym_streak(self, history, day, today_done):
+        """Serie fuers Gym: Offdays zaehlen von selbst, Trainingstage nur mit Haken. Nicht weiter zurueck als die erste Aufzeichnung."""
+        earliest = min(history) if history else day.isoformat()
+        current = day if today_done else day - timedelta(days=1)
+        count = 0
+        while count < HISTORY_DAYS and current.isoformat() >= earliest:
+            if current != day:
+                info = self.gym.goal_info(current)
+                if not (history.get(current.isoformat(), {}).get(GYM_KEY) or (info is not None and info[1])):
+                    break
+            count += 1
+            current -= timedelta(days=1)
+        return count
 
     @staticmethod
     def _clean_history(history):
@@ -350,6 +378,9 @@ class WidgetStore:
         history = self._clean_history(data.get("history"))
         day = self.today()
         items = [dict(g, streak=self.streak(history, self.goal_key(g["text"]), day)) if g["daily"] else g for g in items]
+        managed = self._gym_goal(data, day)
+        if managed is not None:
+            items.insert(0, dict(managed, streak=self._gym_streak(history, day, managed["done"])))
         result = {"notes": notes, "goals": items, "date": today, "events": events,
                   "week": self._week(history, items, day), "lists": self._clean_lists(data.get("lists"))}
         if self.remote is not None:
@@ -411,6 +442,7 @@ class WidgetStore:
         if not isinstance(items, list) or len(items) > MAX_GOALS:
             raise ValueError(f"Höchstens {MAX_GOALS} Ziele pro Tag.")
         clean = []
+        gym_done = None
         for item in items:
             if not isinstance(item, dict) or not isinstance(item.get("text"), str) \
                     or not isinstance(item.get("done"), bool) \
@@ -421,10 +453,17 @@ class WidgetStore:
                 raise ValueError("Ein Ziel darf nicht leer sein.")
             if len(text) > MAX_GOAL_LENGTH:
                 raise ValueError(f"Ein Ziel darf höchstens {MAX_GOAL_LENGTH} Zeichen lang sein.")
+            if item.get("managed") == GYM_MANAGED:          # das feste Gym-Ziel: nur der Haken zaehlt, es wird nie als normales Ziel gespeichert
+                gym_done = item["done"]
+                continue
             clean.append({"text": text, "done": item["done"], "daily": item.get("daily", False)})
         with self._lock:
             data = self._load()
             today = self.today().isoformat()
+            if gym_done is not None and self.gym is not None:
+                info = self.gym.goal_info(self.today())
+                if info is not None and not info[1]:
+                    data["gym_done"] = {"date": today, "done": gym_done}
             data["goals"] = {"date": today, "items": clean}
             # Fuer die Serien: der heutige Stand der taeglichen Ziele (spaeter erledigt/abgehakt ueberschreibt)
             history = self._clean_history(data.get("history"))
@@ -433,6 +472,9 @@ class WidgetStore:
                 if g["daily"]:
                     key = self.goal_key(g["text"])
                     day[key] = day.get(key, False) or g["done"]
+            managed = self._gym_goal(data, self.today())
+            if managed is not None:
+                day[GYM_KEY] = managed["done"]
             if day:
                 history[today] = day
             else:

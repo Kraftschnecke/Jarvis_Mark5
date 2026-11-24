@@ -10,7 +10,7 @@ const Widgets = require(path.join(web, "widgets.js"));
 
 // ---- Auswahl der Fenster
 const built = ["goals", "focus", "lists", "calendar", "weather"];                    // beim ersten Mal an
-const all = built.concat(["notes", "news", "briefing", "worldtime", "music", "system", "pclage", "drives", "reminders"]);
+const all = ["goals", "gym"].concat(built.slice(1), ["notes", "news", "briefing", "worldtime", "music", "system", "pclage", "drives", "reminders"]);
 assert.deepStrictEqual(L.builtIds(), all);
 assert.deepStrictEqual(L.DEFAULT_ENABLED, built);
 assert.deepStrictEqual(L.normalizeEnabled(undefined), built);          // nichts gespeichert: die ersten fuenf

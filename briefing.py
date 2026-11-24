@@ -79,9 +79,22 @@ def alarms_sentence(items, today):
     return head + ", ".join(parts) + _more(len(parts), len(todays)) + "."
 
 
+def gym_sentence(view):
+    """Das Training von heute ("Heute steht Push an, 6 Übungen." / "Heute ist Offday."); ohne Plan nichts."""
+    if not isinstance(view, dict) or not view.get("has_plan"):
+        return ""
+    if view.get("offday"):
+        return "Heute ist Offday."
+    count = view.get("total", 0)
+    name = _short(str(view.get("name", "Training")))
+    if not count:
+        return f"Heute steht {name} an."
+    return f"Heute steht {name} an, {count} Übung{'en' if count != 1 else ''}."
+
+
 def goals_sentence(goals):
     """Ziele von heute: [{"text", "done"}]. Ohne Ziele kein Satz."""
-    goals = [g for g in goals if isinstance(g, dict) and str(g.get("text", "")).strip()]
+    goals = [g for g in goals if isinstance(g, dict) and str(g.get("text", "")).strip() and not g.get("managed")]   # das Gym-Ziel hat einen eigenen Satz
     if not goals:
         return None
     open_goals = [g for g in goals if not g.get("done")]
@@ -147,7 +160,7 @@ def news_sentence(items):
     return "Schlagzeilen: " + "; ".join(lines) + "."
 
 
-def build_briefing(now, address, events=None, reminder_items=None, weather=None, goals=None, timers=None, news=None, alarm_items=None):
+def build_briefing(now, address, events=None, reminder_items=None, weather=None, goals=None, timers=None, news=None, alarm_items=None, gym=None):
     """Der gesprochene Text. Alle Quellen sind Funktionen (oder None = auslassen)."""
     today = now.strftime("%Y-%m-%d")
     parts = [f"{greeting(now.hour)}, {address}. Es ist {now.strftime('%H:%M')} Uhr, "
@@ -156,6 +169,7 @@ def build_briefing(now, address, events=None, reminder_items=None, weather=None,
                (reminder_items, lambda data: reminders_sentence(data, today)),
                (alarm_items, lambda data: alarms_sentence(data, today)),
                (weather, lambda data: data),
+               (gym, gym_sentence),
                (goals, goals_sentence),
                (timers, timers_sentence),
                (news, news_sentence))
