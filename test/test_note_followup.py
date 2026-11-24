@@ -62,6 +62,10 @@ class FakeWriter:
     def check(self, filename="", content="", folder="", mode="new"):
         if not content.strip():
             return "Was soll in die Notiz? Sag mir den Text."
+        if note_tool.wants_append(mode):                       # Anhaengen sucht die Notiz selbst, ein Ordner ist nicht noetig
+            if filename not in ("Einkaufsliste", "Test1"):
+                return f"Eine Notiz „{filename}“ gibt es nicht. Ähnlich heißen: Einkaufsliste. Welche meinst du? Oder soll ich eine neue Notiz anlegen?"
+            return None
         if not folder.strip():
             return "In welchen Ordner soll die Notiz? Freigegeben sind: test, Desktop, Documents."
         if folder not in ("test", "Desktop", "Documents"):
@@ -168,6 +172,42 @@ j.last_reply = "Sir, es sind 18 Grad in Vaexjoe."
 assert j.router_context() == "" and fresh_note(j) is None
 task = prepared(folder="Desktop")
 assert Jarvis.prepare_note(j, task) is None and task.actions[0].parameters["content"] == "Sir, es sind 18 Grad in Vaexjoe."
+
+# 5d) Anhaengen: gibt es die Notiz nicht, bleibt "anhaengen" bei der kurzen Antwort - der Router schreibt als Vorgabe "new"
+j = make()
+problem = Jarvis.prepare_note(j, prepared(filename="Einkauf", content="Eier", mode="append"))
+assert "Ähnlich heißen" in problem
+shown(j, problem)
+task = prepared(filename="Einkaufsliste", mode="new")                                  # "Einkaufsliste" (die Antwort), Text und Art kommen von vorhin
+assert Jarvis.prepare_note(j, task) is None
+assert task.actions[0].parameters == {"filename": "Einkaufsliste", "content": "Eier", "folder": "", "mode": "append"}
+
+# ... "neu" legt dagegen eine neue Notiz an (der Router schreibt dann mode "create"), Name und Text bleiben
+j = make()
+shown(j, Jarvis.prepare_note(j, prepared(filename="Einkauf", content="Eier", mode="append")))
+task = prepared(mode="create", folder="Desktop")
+assert Jarvis.prepare_note(j, task) is None
+assert task.actions[0].parameters == {"filename": "Einkauf", "content": "Eier", "folder": "Desktop", "mode": "create"}
+
+# ... eine ganz neue Notiz (eigener Text, neuer Name) mitten drin wird nicht zum Anhaengen gezwungen
+j = make()
+shown(j, Jarvis.prepare_note(j, prepared(filename="Einkauf", content="Eier", mode="append")))
+task = prepared(filename="Ideen", content="Etwas ganz anderes", folder="Desktop", mode="new")
+assert Jarvis.prepare_note(j, task) is None
+assert task.actions[0].parameters == {"filename": "Ideen", "content": "Etwas ganz anderes", "folder": "Desktop", "mode": "new"}
+
+# ... fehlte dagegen der Text, ist die Antwort der Text und "anhaengen" bleibt
+j = make()
+j.last_reply = ""
+problem = Jarvis.prepare_note(j, prepared(filename="Test1", mode="append"))
+assert "Was soll in die Notiz" in problem
+shown(j, problem)
+task = prepared(content="Eier kaufen", mode="new")
+assert Jarvis.prepare_note(j, task) is None
+assert task.actions[0].parameters == {"filename": "Test1", "content": "Eier kaufen", "folder": "", "mode": "append"}
+
+# ... und der Hinweis an den Router nennt "create"
+assert 'mode \"create\"' in router.note_context("Eine Notiz gibt es nicht. Soll ich eine neue Notiz anlegen?") or 'mode "create"' in router.note_context("Soll ich eine neue Notiz anlegen?")
 
 # 6) Faehigkeit ausgeschaltet: kein Hinweis; halb gebautes Objekt ohne Registry bleibt leer
 j = make()

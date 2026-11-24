@@ -229,7 +229,7 @@ COMMANDS = {
 
 # Wie lange der Server auf ein Ergebnis wartet (Sekunden); der Rest nimmt DEFAULT_TIMEOUT. Die PC-Lage misst Programme und Laufwerke und braucht laenger.
 DEFAULT_TIMEOUT = 8
-TIMEOUTS = {"pc.snapshot": 30, "files.find": 20, "files.read": 25, "notes.write": 10}
+TIMEOUTS = {"pc.snapshot": 30, "files.find": 20, "files.read": 25, "notes.check": 12, "notes.describe": 12, "notes.write": 12}
 
 
 def timeout_for(command):

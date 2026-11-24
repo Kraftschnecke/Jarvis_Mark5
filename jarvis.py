@@ -734,8 +734,15 @@ class Jarvis:
             params = action.parameters
             pending = fresh_pending_note(self)
             if pending is not None:                          # Antwort auf eine Rueckfrage ("Desktop"): das Bisherige bleibt, nur Leeres wird ergaenzt
+                filled = lambda key: isinstance(params.get(key), str) and bool(params[key].strip())
+                new_request = bool(pending["params"].get("content")) and filled("content")        # eigener Text + Text von vorhin: eine neue Notiz
                 for key, value in pending["params"].items():
-                    if value and not (isinstance(params.get(key), str) and params[key].strip()):
+                    if key == "mode":
+                        # Der Router schreibt als Vorgabe "new": das Anhaengen bleibt, ausser der Nutzer will ausdruecklich eine neue Notiz ("create")
+                        if note_tool.wants_append(value) and not new_request and str(params.get("mode") or "").strip().casefold() != "create":
+                            params["mode"] = value
+                            continue
+                    if value and not filled(key):
                         params[key] = value
             content = params.get("content")
 

@@ -62,7 +62,8 @@ assert raises(lambda: dc.check_result("files.find", dict(OK, data={"n": float("n
 assert dc.check_result("files.find", {"success": False, "error": "Nein.", "data": None}) == {"success": False, "error": "Nein.", "data": None}
 assert dc.check_result("folders.list", {"folders": [{"path": "C:\\A", "exists": True, "x": 1}]}) == {"folders": [{"path": "C:\\A", "exists": True}]}
 assert raises(lambda: dc.check_result("folders.list", {"folders": [{"path": "C:\\A", "exists": "ja"}]})) and raises(lambda: dc.check_result("folders.list", {"folders": [{"path": "p", "exists": True}] * 11}))
-assert dc.timeout_for("files.find") > dc.DEFAULT_TIMEOUT and dc.timeout_for("files.read") > dc.DEFAULT_TIMEOUT and dc.timeout_for("notes.write") > dc.DEFAULT_TIMEOUT - 1
+for command in ("files.find", "files.read", "notes.check", "notes.describe", "notes.write"):
+    assert dc.timeout_for(command) > dc.DEFAULT_TIMEOUT, command             # Suche in den Ordnern darf laenger dauern
 
 
 # 3) Server-Seite mit falschem Hub: Parameter werden vorbereitet, Antworten bereinigt, Fehler sind klare Meldungen

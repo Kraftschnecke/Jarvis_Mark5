@@ -11,13 +11,18 @@ Deshalb die engsten Regeln im ganzen Programm:
 - **Nie ueberschreiben:** Gibt es die Datei schon, legt Jarvis "Name (2).txt" an (exklusiv geoeffnet: auch bei Gleichzeitigkeit
   wird nichts ersetzt). Nur auf ausdruecklichen Wunsch ("haenge an") wird an eine bestehende Datei angehaengt.
 - Begrenzt: 20 000 Zeichen je Notiz, Dateien bis 1 MB beim Anhaengen.
+- Anhaengen sucht die Notiz in den freigegebenen Ordnern (nur .txt/.md): genau ein Name -> diese Datei; mehrere -> Rueckfrage
+  welche; keine mit dem Namen -> aehnliche Namen zur Auswahl; gar keine -> Frage, ob eine neue Notiz angelegt werden soll
+  (Antwort mit mode "create", das legt wie "new" eine neue Datei an).
 
 Der Text kommt vom Nutzer oder ist Jarvis' letzte Antwort ("Speichere das"); er wird nur gesaeubert (Steuerzeichen) und nie
 ausgefuehrt oder als Anweisung gelesen.
 """
 
+import difflib
 import os
 import re
+import time
 from datetime import datetime
 
 import folders as folders_module
@@ -31,6 +36,9 @@ MAX_NAME = 80
 MAX_APPEND_FILE_BYTES = 1024 * 1024
 MAX_COPIES = 99
 PREVIEW_CHARS = 200
+SEARCH_SECONDS = 5.0
+MAX_SIMILAR = 5
+SIMILAR_RATIO = 0.6
 
 _NAME = re.compile(r"[\w][\w .()\-]*")
 _APPEND_WORDS = {"append", "anhängen", "anhaengen", "anfügen", "anfuegen", "hinzufügen", "hinzufuegen", "ergänzen", "ergaenzen"}
@@ -39,6 +47,16 @@ _NO_VALUE = {"", "alle", "egal", "none", "null", "-", "n/a", "unbekannt", "leer"
 
 class NoteError(Exception):
     """Ein Grund, warum nicht geschrieben wird; der Text geht als Antwort an den Nutzer."""
+
+
+def wants_append(mode):
+    """Will der Nutzer an eine bestehende Notiz anhaengen? ("create" und alles andere legt eine neue Datei an.)"""
+    return isinstance(mode, str) and mode.strip().casefold() in _APPEND_WORDS
+
+
+def _norm(text):
+    """Klein geschrieben, Umlaute als ae/oe/ue/ss: "Küche" und "Kueche" sind gleich."""
+    return text.casefold().translate(str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"}))
 
 
 def _newline():
@@ -103,12 +121,63 @@ class NoteWriter:
             raise NoteError("Mehrere freigegebene Ordner passen: " + ", ".join(os.path.basename(r) or r for r in matches) + ". Welcher?")
         return matches[0]
 
+    # --- Anhaengen: die Notiz finden ----------------------------------------
+    @staticmethod
+    def _shown(root, relative):
+        return clean_text(f"{os.path.basename(root) or root}{os.sep}{relative}", 80)
+
+    def _find_for_append(self, filename, folder):
+        """Sucht die Notiz, an die angehaengt werden soll. Gibt (Pfad, Freigabe, relativer Pfad) zurueck oder wirft NoteError mit der Rueckfrage."""
+        raw = clean_text(filename, 300).strip() if isinstance(filename, str) else ""
+        if raw.casefold() in _NO_VALUE:
+            raise NoteError("Zu welcher Notiz soll ich das hinzufügen? Nenne mir den Namen der Notiz.")
+        wanted = self._clean_name(raw)
+        stem, extension = os.path.splitext(wanted)
+        explicit = os.path.splitext(raw)[1].casefold() in ALLOWED_EXTENSIONS
+        stem_key = _norm(stem)
+
+        only_root = self._pick_root(folder) if isinstance(folder, str) and folder.strip().casefold() not in _NO_VALUE else None
+        if only_root is None and not self.folders.roots():
+            raise NoteError("Es ist noch kein Ordner freigegeben. Trage Ordner in den Einstellungen unter „Folders“ ein.")
+
+        started = time.monotonic()
+        exact, similar = [], []
+        for real, root, relative in self.folders.walk(lambda: time.monotonic() - started > SEARCH_SECONDS):
+            if only_root is not None and root != only_root:
+                continue
+            base, suffix = os.path.splitext(os.path.basename(real))
+            if suffix.casefold() not in ALLOWED_EXTENSIONS:
+                continue
+            key = _norm(base)
+            if key == stem_key and (not explicit or suffix.casefold() == extension):
+                exact.append((real, root, relative))
+                continue
+            near = max(difflib.SequenceMatcher(None, stem_key, key).ratio(),
+                       0.9 if len(stem_key) >= 3 and len(key) >= 3 and (stem_key in key or key in stem_key) else 0.0)
+            if near >= SIMILAR_RATIO:
+                similar.append((near, relative, root))
+
+        if len(exact) == 1:
+            return exact[0]
+        if exact:
+            names = ", ".join(self._shown(root, relative) for _, root, relative in exact[:MAX_SIMILAR])
+            raise NoteError(f"Es gibt mehrere Notizen mit diesem Namen: {names}. In welchem Ordner ist die richtige?")
+        label = clean_text(stem, 40)
+        if similar:
+            similar.sort(key=lambda item: (-item[0], item[1]))
+            names = ", ".join(self._shown(root, relative) for _, relative, root in similar[:MAX_SIMILAR])
+            raise NoteError(f"Eine Notiz „{label}“ gibt es nicht. Ähnlich heißen: {names}. Welche meinst du? "
+                            f"Oder soll ich eine neue Notiz anlegen? Antworte dann mit „neu“.")
+        raise NoteError(f"Eine Notiz „{label}“ habe ich in den freigegebenen Ordnern nicht gefunden. "
+                        f"Soll ich eine neue Notiz anlegen? Antworte dann mit „neu“ und sag mir, in welchen Ordner.")
+
     def plan(self, filename="", content="", folder="", mode="new"):
         """Prueft alles und sagt, was geschehen wuerde. Wirft NoteError. Schreibt nichts."""
         text = self._clean_content(content)
+        if wants_append(mode):
+            return self._plan_append(filename, text, folder)
         name = self._clean_name(filename)
         root = self._pick_root(folder)
-        append = isinstance(mode, str) and mode.strip().casefold() in _APPEND_WORDS
 
         try:
             real = self.folders.resolve(os.path.join(root, name), must_exist=False)
@@ -121,10 +190,7 @@ class NoteWriter:
         if exists and not os.path.isfile(real):
             raise NoteError("Unter diesem Namen gibt es schon etwas, das keine Datei ist.")
         renamed_from = None
-        if exists and append:
-            if os.path.getsize(real) + len(text) > MAX_APPEND_FILE_BYTES:
-                raise NoteError("Die Datei ist schon zu groß zum Anhängen (über 1 MB).")
-        elif exists:
+        if exists:
             renamed_from = name
             base, extension = os.path.splitext(name)
             for number in range(2, MAX_COPIES + 2):
@@ -139,8 +205,21 @@ class NoteWriter:
             except AccessError as error:
                 raise NoteError(str(error)) from error
 
-        return {"path": real, "root": root, "name": name, "text": text, "append": bool(exists and append),
+        return {"path": real, "root": root, "name": name, "text": text, "append": False,
                 "renamed_from": renamed_from}
+
+    def _plan_append(self, filename, text, folder):
+        found, root, relative = self._find_for_append(filename, folder)
+        try:
+            real = self.folders.resolve(found)
+        except AccessError as error:
+            raise NoteError(str(error)) from error
+        if not os.path.isfile(real):
+            raise NoteError("Unter diesem Namen gibt es etwas, das keine Datei ist.")
+        if os.path.getsize(real) + len(text) > MAX_APPEND_FILE_BYTES:
+            raise NoteError("Die Datei ist schon zu groß zum Anhängen (über 1 MB).")
+        return {"path": real, "root": root, "name": os.path.basename(real), "text": text, "append": True,
+                "renamed_from": None, "shown": self._shown(root, relative)}
 
     def check(self, filename="", content="", folder="", mode="new"):
         """Fehlertext, wenn die Notiz so nicht geschrieben wird (sonst None). Fuer die Pruefung vor der Rueckfrage."""
@@ -156,7 +235,7 @@ class NoteWriter:
             plan = self.plan(filename, content, folder, mode)
         except NoteError as error:
             return [f"Das geht nicht: {error}"]
-        place = f"{os.path.basename(plan['root']) or plan['root']}{os.sep}{plan['name']}"
+        place = plan.get("shown") or f"{os.path.basename(plan['root']) or plan['root']}{os.sep}{plan['name']}"
         if plan["append"]:
             first = f"Anhängen an die Datei: {place}"
         elif plan["renamed_from"]:

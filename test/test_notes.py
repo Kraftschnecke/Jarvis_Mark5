@@ -137,7 +137,9 @@ assert content_of(docs / "Tagebuch.txt") == f"Montag{NL}{NL}Dienstag{NL}"
 (docs / "Ohne.txt").write_bytes(b"ohne Zeilenende")
 writer.write("Ohne", "Mehr", mode="Anhängen")
 assert content_of(docs / "Ohne.txt") == f"ohne Zeilenende{NL}{NL}Mehr{NL}"
-r = writer.write("Neu per Anhaengen", "x", mode="append")
+r = writer.write("Neu per Anhaengen", "x", mode="append")                                 # gibt es nicht: Rueckfrage statt heimlich neu anlegen
+assert not r.success and "Soll ich eine neue Notiz anlegen" in r.error and "Neu per Anhaengen.txt" not in listing()
+r = writer.write("Neu per Anhaengen", "x", mode="create")                                  # auf Wunsch ("neu"): neue Datei
 assert r.success and not r.data["appended"] and "Neu per Anhaengen.txt" in listing()
 (docs / "Leerdatei.txt").write_bytes(b"")
 writer.write("Leerdatei", "Start", mode="append")
@@ -222,7 +224,8 @@ except (OSError, NotImplementedError, AttributeError):
     can_link = False
 if can_link:
     refused(lambda: writer.plan("Link", "x", folder="Notizen"), "nicht in einem freigegebenen")
-    refused(lambda: writer.plan("Link", "x", folder="Notizen", mode="append"), "nicht in einem freigegebenen")
+    refused(lambda: writer.plan("Link", "x", folder="Notizen", mode="append"), "Eine Notiz „Link“ habe ich")          # ein Link nach draussen ist gar nicht sichtbar
+    refused(lambda: writer.plan("Link", "x", folder="Notizen", mode="create"), "nicht in einem freigegebenen")
     refused(lambda: writer.plan("LinkOrdner", "x", folder="Notizen"), "nicht in einem freigegebenen")
     assert content_of(other / "fremd.txt") == "fremd" and listing(other) == ["fremd.txt"]
 (notes / "Ordner.txt").mkdir()

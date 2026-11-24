@@ -190,7 +190,8 @@ def note_context(question):
     return (
         f'The user was just asked this question about the note they want to save: "{safe}" If the message is a short answer to it '
         "(a folder name, the note text or a file name), choose TASK WRITE_NOTE and put the answer in the matching parameter "
-        "(folder, content or filename); leave the other parameters empty. Messages that have nothing to do with it are routed as usual."
+        "(folder, content or filename); leave the other parameters empty. If the question offered to create a new note and the user agrees "
+        "(\"new\", \"yes, create it\"), choose TASK WRITE_NOTE with mode \"create\". Messages that have nothing to do with it are routed as usual."
     )
 
 
