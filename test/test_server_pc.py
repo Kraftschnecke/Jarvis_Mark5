@@ -241,6 +241,7 @@ handlers = {
     "pc.performance": lambda args: seen.append(("pc.performance", args["fresh"])) or PC_NOW,
     "pc.top": lambda args: seen.append("pc.top") or [{"name": "chrome.exe", "ram_mb": 25000, "count": 30}],
     "pc.snapshot": lambda args: seen.append("pc.snapshot") or PC_SNAPSHOT,
+    "folders.list": lambda args: seen.append("folders.list") or {"folders": [{"path": "C:\\Users\\Test\\Dokumente", "exists": True}]},
 }
 
 # 2) Ohne Agent: die drei Fenster bekommen 503 mit klarer Meldung (und nicht die Werte des Servers)
@@ -249,6 +250,13 @@ try:
     for path in ("/api/system", "/api/performance", "/api/pc_lage"):
         status, _, raw = call(httpd, "GET", path, host="localhost:8000")
         assert status == 503 and "nicht erreichbar" in jbody(raw)["error"], (path, status, raw)
+
+    # 2b) Freigegebene Ordner: ohne PC 503; freigeben/entfernen geht ueber den Server nie (nur am PC)
+    status, _, raw = call(httpd, "GET", "/api/folders", host="localhost:8000")
+    assert status == 503 and "nicht erreichbar" in jbody(raw)["error"], (status, raw)
+    for path in ("/api/folders/add", "/api/folders/remove"):
+        status, _, raw = call(httpd, "POST", path, host="localhost:8000", body={"path": "C:\\Users\\Test"})
+        assert status == 400 and "am PC" in jbody(raw)["error"] and "--folders" in jbody(raw)["error"], (path, status, raw)
 
     # 3) Agent verbindet sich (mit eigenen Auftraegen aus der Liste), Fenster zeigen den PC
     stop = threading.Event()
@@ -270,6 +278,9 @@ try:
     assert "Alles super" not in json.dumps(lage["assessment"])
     assert "pc.facts" in seen and ("pc.performance", False) in seen and "pc.snapshot" in seen
 
+    status, _, raw = call(httpd, "GET", "/api/folders", host="localhost:8000")
+    assert status == 200 and jbody(raw)["folders"] == [{"path": "C:\\Users\\Test\\Dokumente", "exists": True}] and "folders.list" in seen
+
     # 4) Der Chat bekommt ebenfalls die Werte des PCs
     info = system_status_tool.get_system_info()
     assert info.success and info.data["computer_name"] == "GOTT-DESKTOP" and ("pc.performance", True) in seen
@@ -286,6 +297,14 @@ try:
     status, _, raw = call(httpd, "GET", "/api/performance", host="localhost:8000")
     assert status == 503 and "nicht erreichbar" in jbody(raw)["error"]
 finally:
+    import folders as folders_module
+    from tools import document_tool, file_search_tool, media_tool, note_tool, volume_tool
+    folders_module.set_default_list(None)
+    file_search_tool.set_default_search(None)
+    document_tool.set_default_reader(None)
+    note_tool.set_default_writer(None)
+    volume_tool.set_remote(None)
+    media_tool.set_remote(None)
     system_status_tool.set_remote(None)
     system_status_tool.set_default_monitor(None)
     pc_health.set_default_health(None)

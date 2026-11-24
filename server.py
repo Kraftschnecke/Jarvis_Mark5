@@ -1146,7 +1146,10 @@ class JarvisHandler(BaseHTTPRequestHandler):
             return self.send_json(200, remote_panel_state(self.server.remote))
 
         if path == "/api/folders":
-            return self.send_json(200, {"folders": folders.default_list().list(), "max": folders.MAX_FOLDERS})
+            try:
+                return self.send_json(200, {"folders": folders.default_list().list(), "max": folders.MAX_FOLDERS})
+            except device_hub.DeviceError as error:
+                return self.send_json(503, {"error": str(error)})
 
         if path == "/api/alarms":
             return self.send_json(200, {"alarms": reminders.default_store().alarms_overview()})

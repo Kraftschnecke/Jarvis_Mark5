@@ -149,6 +149,67 @@ def _media_result(data):
     return data
 
 
+# --- Dateien und Notizen (S6, G5): die Werkzeuge laufen auf dem PC, der Server schickt nur die Parameter ----------------------
+MAX_BODY_TEXT = 12000       # ein Text im Ergebnis (ein Teil einer Datei hat hoechstens 9000 Zeichen)
+MAX_NOTE_TEXT = 30000       # Notiztext im Auftrag (das Werkzeug lehnt ab 20 000 Zeichen selbst ab)
+
+
+def _json(value, depth):
+    """Beliebige JSON-Daten, aber begrenzt: Tiefe, Anzahl, Textlaenge. Alles andere ist ein Fehler."""
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        if len(value) > MAX_BODY_TEXT:
+            raise CommandError(BAD)
+        return value
+    if isinstance(value, (int, float)):
+        return _number(value, False)
+    if depth <= 0:
+        raise CommandError(BAD)
+    if isinstance(value, list):
+        if len(value) > 60:
+            raise CommandError(BAD)
+        return [_json(item, depth - 1) for item in value]
+    if isinstance(value, dict):
+        if len(value) > 40:
+            raise CommandError(BAD)
+        result = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or len(key) > 40:
+                raise CommandError(BAD)
+            result[key] = _json(item, depth - 1)
+        return result
+    raise CommandError(BAD)
+
+
+# Ergebnis eines Werkzeugs auf dem PC: ok/Fehler, ein Fehlertext fuer den Nutzer (das Werkzeug schreibt ihn selbst) und Daten
+TOOL_RESULT = DICT(success=BOOL, error=OPT(STR(400)), data=lambda value: _json(value, 4))
+
+
+def _args(**spec):
+    """Parameter-Pruefung: genau diese Schluessel; ("str", Laenge) oder ("int", von, bis)."""
+    def check(args):
+        if not isinstance(args, dict) or set(args) != set(spec):
+            raise CommandError("Falsche Parameter.")
+        result = {}
+        for key, rule in spec.items():
+            value = args[key]
+            if rule[0] == "str":
+                if not isinstance(value, str) or len(value) > rule[1]:
+                    raise CommandError("Falsche Parameter.")
+            elif isinstance(value, bool) or not isinstance(value, int) or not rule[1] <= value <= rule[2]:
+                raise CommandError("Falsche Parameter.")
+            result[key] = value
+        return result
+    return check
+
+
+_find_args = _args(query=("str", 300), mode=("str", 20), file_type=("str", 40), folder=("str", 100), count=("int", 1, 20))
+_read_args = _args(file=("str", 400), part=("int", 1, 1000), question=("str", 300))
+_note_args = _args(filename=("str", 300), content=("str", MAX_NOTE_TEXT), folder=("str", 100), mode=("str", 40))
+FOLDERS = DICT(folders=LIST(DICT(path=STR(400), exists=BOOL), 10))
+
+
 # Auftrag -> (Parameter pruefen, Ergebnis pruefen). Neue Auftraege kommen als neue Zeilen, auf beiden Seiten.
 COMMANDS = {
     "ping": (_no_args, _ping_result),
@@ -158,11 +219,17 @@ COMMANDS = {
     "pc.snapshot": (_no_args, SNAPSHOT),
     "volume.set": (_volume_args, DICT(percent=_percent)),
     "media.key": (_media_args, _media_result),
+    "folders.list": (_no_args, FOLDERS),
+    "files.find": (_find_args, TOOL_RESULT),
+    "files.read": (_read_args, TOOL_RESULT),
+    "notes.check": (_note_args, TOOL_RESULT),
+    "notes.describe": (_note_args, TOOL_RESULT),
+    "notes.write": (_note_args, TOOL_RESULT),
 }
 
 # Wie lange der Server auf ein Ergebnis wartet (Sekunden); der Rest nimmt DEFAULT_TIMEOUT. Die PC-Lage misst Programme und Laufwerke und braucht laenger.
 DEFAULT_TIMEOUT = 8
-TIMEOUTS = {"pc.snapshot": 30}
+TIMEOUTS = {"pc.snapshot": 30, "files.find": 20, "files.read": 25, "notes.write": 10}
 
 
 def timeout_for(command):

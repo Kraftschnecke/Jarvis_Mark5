@@ -7,6 +7,7 @@ import focus
 import tools.document_tool as document_tool
 import tools.file_search_tool as file_search
 import tools.note_tool as note_tool
+import device_hub
 import folders
 import reminders
 import ringing
@@ -295,7 +296,10 @@ def execute_action(action):
         return ToolResult(success=True, data=data)
 
     if action.name == "list_folders":
-        shown = [f["path"] for f in folders.default_list().list() if f["exists"]]
+        try:
+            shown = [f["path"] for f in folders.default_list().list() if f["exists"]]
+        except device_hub.DeviceError as error:                  # Server-Betrieb: der PC ist nicht erreichbar
+            return ToolResult(success=False, error=str(error))
         if not shown:
             return ToolResult(success=True, data={"folders": [], "info": "Es ist noch kein Ordner freigegeben. Du trägst sie selbst in den Einstellungen unter „Folders“ ein."})
         return ToolResult(success=True, data={"folders": shown, "note": "Ordner kann nur der Nutzer in den Einstellungen ändern."})

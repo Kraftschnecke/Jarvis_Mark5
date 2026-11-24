@@ -60,3 +60,5 @@ hints_state.json
 
 # PC-Agent: Adresse und Token (nie committen)
 agent_config.json
+agent.log
+agent.log.old
