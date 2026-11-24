@@ -80,6 +80,15 @@ def prepared(**params):
     return task
 
 
+def fresh_note(j):
+    return jarvis_module.fresh_pending_note(j)
+
+
+def shown(j, problem):
+    """Wie _guarded: die Rueckfrage ist jetzt Jarvis' letzte Antwort."""
+    j.last_reply = "Sir, " + problem[0].lower() + problem[1:]
+
+
 def make():
     j = object.__new__(Jarvis)
     j.task_registry = registry
@@ -91,11 +100,12 @@ def make():
 j = make()
 problem = Jarvis.prepare_note(j, prepared())
 assert "In welchen Ordner" in problem and j.pending_note["params"]["content"] == j.last_reply
+earlier = j.last_reply
+shown(j, problem)
 hint = j.router_context()
 assert "WRITE_NOTE" in hint and "In welchen Ordner soll die Notiz" in hint and "Desktop" in hint
 
 # 2) Kurze Antwort "Desktop": der Router liefert nur den Ordner; der bisherige Text bleibt (nicht die Rueckfrage als Text)
-j.last_reply = "Sir, in welchen Ordner soll die Notiz? Freigegeben sind: test, Desktop, Documents."
 task = prepared(folder="Desktop")
 assert Jarvis.prepare_note(j, task) is None
 assert task.actions[0].parameters["content"] == "Der Erlkoenig reitet nachts durch den Wald." and task.actions[0].parameters["folder"] == "Desktop"
@@ -104,31 +114,31 @@ assert j.pending_note is None and "WRITE_NOTE" not in j.router_context()
 # 3) Frage nach dem Text: Antwort ist der Text
 j = make()
 j.last_reply = ""
-assert "Was soll in die Notiz" in Jarvis.prepare_note(j, prepared(folder="Desktop"))
+problem = Jarvis.prepare_note(j, prepared(folder="Desktop"))
+assert "Was soll in die Notiz" in problem
+shown(j, problem)
 hint = j.router_context()
 assert "Was soll in die Notiz" in hint
-j.last_reply = "Was soll in die Notiz? Sag mir den Text."
 task = prepared(content="Milch kaufen")
 assert Jarvis.prepare_note(j, task) is None and task.actions[0].parameters["folder"] == "Desktop" and task.actions[0].parameters["content"] == "Milch kaufen"
 
 # 4) Was der Router liefert, wird nie ueberschrieben (nur Leeres ergaenzt); Schema-Platzhalter zaehlen als leer
 j = make()
-Jarvis.prepare_note(j, prepared())
+shown(j, Jarvis.prepare_note(j, prepared()))
 task = prepared(folder="Documents", content="Neuer Text", filename="Idee")
 assert Jarvis.prepare_note(j, task) is None and task.actions[0].parameters == {"filename": "Idee", "content": "Neuer Text", "folder": "Documents", "mode": "new"}
 j = make()
-Jarvis.prepare_note(j, prepared())
-j.last_reply = "Sir, in welchen Ordner soll die Notiz?"
+shown(j, Jarvis.prepare_note(j, prepared()))
 task = prepared(folder="Desktop", content={"description": "x", "type": "string"})
 assert Jarvis.prepare_note(j, task) is None
 assert task.actions[0].parameters["content"] == "Der Erlkoenig reitet nachts durch den Wald."
 
 # 5) Fehler ohne Frage (falscher Ordner) loescht die Notiz; nach zehn Minuten gilt die Frage nicht mehr
 j = make()
-Jarvis.prepare_note(j, prepared())
+shown(j, Jarvis.prepare_note(j, prepared()))
 assert Jarvis.prepare_note(j, prepared(folder="Nirgendwo")) == "Diesen Ordner gibt es nicht." and j.pending_note is None and "WRITE_NOTE" not in j.router_context()
 j = make()
-Jarvis.prepare_note(j, prepared())
+shown(j, Jarvis.prepare_note(j, prepared()))
 clock[0] += jarvis_module.PENDING_NOTE_SECONDS
 assert "WRITE_NOTE" in j.router_context()
 clock[0] += 1
@@ -137,9 +147,31 @@ j.last_reply = "Andere Antwort."
 task = prepared(folder="Desktop")
 assert Jarvis.prepare_note(j, task) is None and task.actions[0].parameters["content"] == "Andere Antwort."       # alte Notiz wird nicht mehr eingemischt
 
+# 5b) Neue Sitzung, kein Text und keine fruehere Antwort: Auf "Erstelle Notiz shortcut in Desktop" steht nie die Rueckfrage als Inhalt in der Notiz
+j = make()
+j.last_reply = ""
+problem = Jarvis.prepare_note(j, prepared())
+assert "Was soll in die Notiz" in problem
+shown(j, problem)
+task = prepared(filename="shortcut", folder="Desktop")
+again = Jarvis.prepare_note(j, task)
+assert again and "Was soll in die Notiz" in again and task.actions[0].parameters["content"] == ""
+shown(j, again)
+task = prepared(content="Milch kaufen")
+assert Jarvis.prepare_note(j, task) is None
+assert task.actions[0].parameters == {"filename": "shortcut", "content": "Milch kaufen", "folder": "Desktop", "mode": "new"}
+
+# 5c) Kam nach der Rueckfrage eine andere Antwort, ist sie vergessen: "Speichere das" meint dann die neue Antwort, kein Hinweis fuer den Router
+j = make()
+shown(j, Jarvis.prepare_note(j, prepared()))
+j.last_reply = "Sir, es sind 18 Grad in Vaexjoe."
+assert j.router_context() == "" and fresh_note(j) is None
+task = prepared(folder="Desktop")
+assert Jarvis.prepare_note(j, task) is None and task.actions[0].parameters["content"] == "Sir, es sind 18 Grad in Vaexjoe."
+
 # 6) Faehigkeit ausgeschaltet: kein Hinweis; halb gebautes Objekt ohne Registry bleibt leer
 j = make()
-Jarvis.prepare_note(j, prepared())
+shown(j, Jarvis.prepare_note(j, prepared()))
 off = TaskRegistry(is_enabled=lambda t: t != "WRITE_NOTE")
 register_all_tasks(off)
 j.task_registry = off

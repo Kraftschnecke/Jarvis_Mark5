@@ -99,6 +99,9 @@ def fresh_pending_note(jarvis):
     pending = getattr(jarvis, "pending_note", None)
     if pending is None or time.monotonic() - pending["time"] > PENDING_NOTE_SECONDS:
         return None
+    last = getattr(jarvis, "last_reply", None)
+    if not isinstance(last, str) or pending["question"][:25].casefold() not in last.casefold():
+        return None                                       # seitdem gab es eine andere Antwort: die Frage ist erledigt oder vergessen
     return pending
 
 
@@ -737,7 +740,8 @@ class Jarvis:
             content = params.get("content")
 
             if not isinstance(content, str) or not content.strip():
-                params["content"] = getattr(self, "last_reply", None) or ""
+                # "Speichere das" meint Jarvis' letzte Antwort - aber nicht seine Rueckfrage zur Notiz (sonst steht die Frage in der Datei)
+                params["content"] = "" if pending is not None else getattr(self, "last_reply", None) or ""
 
             problem = note_tool.default_writer().check(
                 params.get("filename", ""), params.get("content", ""), params.get("folder", ""), params.get("mode", "new")
