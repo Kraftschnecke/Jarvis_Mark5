@@ -138,6 +138,7 @@ write_programs({
     "counter strike": "steam://rungameid/730",
     "counter strike 2": "steam://rungameid/9999",
 })
+program_tool._read_start_apps = lambda: []     # Test unabhaengig vom echten Startmenue
 program_tool.shutil.which = lambda exe: {"notepad.exe": "C:/Windows/notepad.exe"}.get(exe)
 
 
