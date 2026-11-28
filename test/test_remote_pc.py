@@ -78,7 +78,14 @@ try:
     result = system_status_tool.get_system_info()
     assert not result.success and "nicht erreichbar" in result.error
     hub.offline = False
+    # G6: auch System-Befehle, Programme, Prozesse, Zwischenablage, Bildschirm und Browser gehen jetzt an den PC
+    from tools import browser_tool, clipboard_tool, process_tool, program_tool, screen_tool, system_tool
+    for module in (system_tool, program_tool, process_tool, clipboard_tool, screen_tool, browser_tool):
+        assert module._remote is not None and module._remote.hub is hub, module.__name__
 finally:
+    from tools import browser_tool, clipboard_tool, process_tool, program_tool, screen_tool, system_tool
+    for module in (system_tool, program_tool, process_tool, clipboard_tool, screen_tool, browser_tool):
+        module.set_remote(None)
     system_status_tool.set_remote(None)
     system_status_tool.set_default_monitor(None)
     pc_health.set_default_health(None)

@@ -329,4 +329,23 @@ stop2.set()
 runner2.join(timeout=10)
 stop.set()
 
+# 10) Grosse Ergebnisse (Bildschirmfoto): nur mit gueltigem Agent-Token ueber 1 MB, nie ueber 9 MB, Browser/ohne Token nicht
+big = json.dumps({"id": "erfunden", "ok": True, "data": {"success": True, "error": None, "data": {"image": "A" * 2_000_000}}}).encode("utf-8")
+status, _, raw = agent_call(httpd, "/agent/result", token=token, raw=big)
+assert status == 404 and jbody(raw) == {"ok": False}, (status, raw)                         # gelesen und ausgewertet: den Auftrag gibt es nicht
+def refused(abort=400, **kwargs):
+    """Status der Ablehnung. Schliesst der Server die Verbindung schon vor dem Ende des Sendens (grosse Anfrage), meldet das je nach System
+    BrokenPipe, ConnectionReset oder (Windows) ConnectionAborted: das gilt als die erwartete Ablehnung `abort`."""
+    try:
+        return agent_call(httpd, **kwargs)[0]
+    except (ConnectionError, OSError):
+        return abort
+
+
+assert refused(401, path="/agent/result", token="falsch", raw=big) == 401                      # falsches Token: abgelehnt, bevor ausgewertet wird
+assert refused(401, path="/agent/result", token=None, raw=big) == 401                          # ohne Token auch
+assert refused(path="/agent/next", token=token, raw=big) == 400                                # andere Adressen bleiben bei 64 KB
+assert refused(path="/agent/result", token=token, raw=b"x" * (9 * 1024 * 1024 + 1)) == 400
+assert agent_call(httpd, "/agent/result", {"id": "x", "ok": True, "data": {}}, token, origin="http://evil.example")[0] == 403
+
 print("ALL TESTS PASSED")

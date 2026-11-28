@@ -61,7 +61,18 @@ def _read_text():
         user32.CloseClipboard()
 
 
+_remote = None
+
+
+def set_remote(remote):
+    """Server-Betrieb (S6, G6): die Zwischenablage des PCs kommt vom PC-Agent ("clipboard.read"); None = dieser Rechner."""
+    global _remote
+    _remote = remote
+
+
 def read_clipboard(question=""):
+    if _remote is not None:
+        return _remote.call("clipboard.read", {"question": question[:300] if isinstance(question, str) else ""})
     if not sys.platform.startswith("win"):
         return ToolResult(success=False, error="Die Zwischenablage kann Jarvis nur unter Windows lesen.")
 

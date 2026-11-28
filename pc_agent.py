@@ -128,6 +128,40 @@ def default_handlers():
             return envelope(ToolResult(success=True, data={"lines": writer.describe(*call)}))
         return run
 
+    def system_run(args):
+        from tools import system_tool
+        return envelope(system_tool.system_control(args["command"], args["value"]))
+
+    def programs_find(args):
+        from tools import program_tool
+        return envelope(program_tool.find_program(args["program"]))
+
+    def programs_launch(args):
+        from tools import program_tool
+        return envelope(program_tool.launch_program(args["target"]))
+
+    def processes_list(args):
+        from tools import process_tool
+        result = process_tool.get_running_programs()
+        if not result.success:
+            return {"success": False, "error": "Die Prozessliste ließ sich nicht lesen.", "data": None}
+        return {"success": True, "error": None, "data": [str(name)[:100] for name in result.data][:300]}
+
+    def clipboard_read(args):
+        from tools import clipboard_tool
+        return envelope(clipboard_tool.read_clipboard(args["question"]))
+
+    def screen_capture(args):
+        from tools import screen_tool
+        result = screen_tool.describe_screen("")
+        if not result.success:
+            return {"success": False, "error": (result.error or "Die Bildschirmaufnahme hat nicht geklappt.")[:400], "data": None}
+        return {"success": True, "error": None, "data": {"image": result.data[screen_tool.IMAGE_KEY]}}
+
+    def browser_open(args):
+        from tools import browser_tool
+        return envelope(browser_tool.open_website(args["url"], args["query"]))
+
     def folders_list(args):
         import folders
         return {"folders": folders.default_list().list()}
@@ -139,6 +173,13 @@ def default_handlers():
         "notes.check": note("check"),
         "notes.describe": note("describe"),
         "notes.write": note("write"),
+        "system.run": system_run,
+        "programs.find": programs_find,
+        "programs.launch": programs_launch,
+        "processes.list": processes_list,
+        "clipboard.read": clipboard_read,
+        "screen.capture": screen_capture,
+        "browser.open": browser_open,
         "volume.set": volume_set,
         "media.key": media_key,
         "ping": handle_ping,

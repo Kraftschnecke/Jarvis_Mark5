@@ -47,14 +47,15 @@ class _Remote:
     def __init__(self, hub):
         self.hub = hub
 
-    def call(self, command, args):
-        """Auftrag an den PC. Gibt ein ToolResult zurueck; auch PC-aus und Zeitueberschreitung sind ein (klarer) Fehler."""
+    def call(self, command, args, clean=True):
+        """Auftrag an den PC. Gibt ein ToolResult zurueck; auch PC-aus und Zeitueberschreitung sind ein (klarer) Fehler.
+        clean=False nur fuer Daten, die kein Text sind (das Bildschirmfoto): sie werden vom Aufrufer selbst geprueft."""
         try:
             envelope = self.hub.request(command, args)
         except (device_hub.DeviceError, device_commands.CommandError) as error:
             return ToolResult(success=False, error=str(error))
         if envelope["success"]:
-            return ToolResult(success=True, data=_clean_tree(envelope["data"]))
+            return ToolResult(success=True, data=_clean_tree(envelope["data"]) if clean else envelope["data"])
         return ToolResult(success=False, error=clean_text(envelope["error"] or "", 400).strip() or "Das hat nicht geklappt.")
 
 

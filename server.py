@@ -99,6 +99,7 @@ MAX_BODY_BYTES = 64 * 1024
 # abgelehnt wird. Sonst bricht der Server die Verbindung ab, waehrend der
 # Browser noch sendet, und der Browser sieht keine Antwort (Windows: WinError 10053).
 MAX_DRAIN_BYTES = 1024 * 1024
+MAX_AGENT_RESULT_BYTES = 9 * 1024 * 1024        # nur Ergebnisse des PC-Agents (Bildschirmfoto); der Agent muss dafuer angemeldet sein
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -1113,8 +1114,11 @@ class JarvisHandler(BaseHTTPRequestHandler):
         if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
             return self.send_json(415, {"error": "Nur application/json"})
 
-        if length <= 0 or length > MAX_BODY_BYTES:
+        if length <= 0 or length > (MAX_AGENT_RESULT_BYTES if path == "/agent/result" else MAX_BODY_BYTES):
             return self.send_json(400, {"error": "Ungueltige Laenge"})
+
+        if path == "/agent/result" and gate.agent_from_header(self.headers.get("Authorization")) is None:
+            return self.send_json(401, {"error": "Nicht angemeldet."})        # erst anmelden, dann ein grosses Ergebnis auswerten
 
         try:
             data = json.loads(raw.decode("utf-8"))
@@ -1363,18 +1367,20 @@ class JarvisHandler(BaseHTTPRequestHandler):
             length = -1
 
         raw = b""
+        path = urlparse(self.path).path
+        drain_limit = MAX_DRAIN_BYTES
+        if path == "/agent/result" and (self.headers.get("Authorization") or "").startswith("Bearer "):
+            drain_limit = MAX_AGENT_RESULT_BYTES        # ob das Token stimmt, prueft agent_post gleich nach dem Lesen, vor dem Auswerten
 
-        if 0 < length <= MAX_DRAIN_BYTES:
+        if 0 < length <= drain_limit:
             raw = self.rfile.read(length)
-        elif length > MAX_DRAIN_BYTES:
+        elif length > drain_limit:
             self.close_connection = True
 
         self.kind = self.request_kind()
         self.device = None
         self.via_remote = False
         self.own_device_id = None
-
-        path = urlparse(self.path).path
 
         if self.kind is not None and path.startswith("/agent/"):
             return self.agent_post(path, raw, length)          # PC-Agent: Token statt Cookie, kein Browser (S6)

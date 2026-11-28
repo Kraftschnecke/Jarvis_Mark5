@@ -210,6 +210,33 @@ _note_args = _args(filename=("str", 300), content=("str", MAX_NOTE_TEXT), folder
 FOLDERS = DICT(folders=LIST(DICT(path=STR(400), exists=BOOL), 10))
 
 
+# --- Weitere PC-Werkzeuge (S6, G6): System-Befehle, Programme, Prozesse, Zwischenablage, Bildschirm, Browser ------------------
+# Die echten Werkzeuge laufen auf dem PC mit seinen Freigaben (programs.json dort). Der Server schickt nur geprueften Text.
+SYSTEM_COMMANDS = ("mute", "lock", "show_desktop", "brightness_set", "brightness_up", "brightness_down")
+MAX_IMAGE_CHARS = 8_300_000        # ein PNG von hoechstens 6 MB als Base64-Text
+
+
+def _system_args(args):
+    """{"command": einer der festen Befehle, "value": Text bis 10 Zeichen (nur fuer die Helligkeit)}."""
+    if not isinstance(args, dict) or set(args) != {"command", "value"} or args["command"] not in SYSTEM_COMMANDS \
+            or not isinstance(args["value"], str) or len(args["value"]) > 10:
+        raise CommandError("Falsche Parameter.")
+    return {"command": args["command"], "value": args["value"]}
+
+
+_program_find_args = _args(program=("str", 100))
+_program_launch_args = _args(target=("str", 500))
+_clipboard_args = _args(question=("str", 300))
+_browser_args = _args(url=("str", 2000), query=("str", 200))
+PROCESSES = DICT(success=BOOL, error=OPT(STR(400)), data=OPT(LIST(STR(100), 300)))
+SCREEN = DICT(success=BOOL, error=OPT(STR(400)), data=OPT(DICT(image=STR(MAX_IMAGE_CHARS))))
+RESULT_LIMITS = {"screen.capture": MAX_IMAGE_CHARS + 1000}       # nur ein Bild darf gross sein; alles andere hoechstens MAX_RESULT_BYTES
+
+
+def result_limit(command):
+    return RESULT_LIMITS.get(command, MAX_RESULT_BYTES)
+
+
 # Auftrag -> (Parameter pruefen, Ergebnis pruefen). Neue Auftraege kommen als neue Zeilen, auf beiden Seiten.
 COMMANDS = {
     "ping": (_no_args, _ping_result),
@@ -225,11 +252,19 @@ COMMANDS = {
     "notes.check": (_note_args, TOOL_RESULT),
     "notes.describe": (_note_args, TOOL_RESULT),
     "notes.write": (_note_args, TOOL_RESULT),
+    "system.run": (_system_args, TOOL_RESULT),
+    "programs.find": (_program_find_args, TOOL_RESULT),
+    "programs.launch": (_program_launch_args, TOOL_RESULT),
+    "processes.list": (_no_args, PROCESSES),
+    "clipboard.read": (_clipboard_args, TOOL_RESULT),
+    "screen.capture": (_no_args, SCREEN),
+    "browser.open": (_browser_args, TOOL_RESULT),
 }
 
 # Wie lange der Server auf ein Ergebnis wartet (Sekunden); der Rest nimmt DEFAULT_TIMEOUT. Die PC-Lage misst Programme und Laufwerke und braucht laenger.
 DEFAULT_TIMEOUT = 8
-TIMEOUTS = {"pc.snapshot": 30, "files.find": 20, "files.read": 25, "notes.check": 12, "notes.describe": 12, "notes.write": 12}
+TIMEOUTS = {"pc.snapshot": 30, "files.find": 20, "files.read": 25, "notes.check": 12, "notes.describe": 12, "notes.write": 12,
+            "system.run": 20, "programs.find": 12, "programs.launch": 12, "processes.list": 12, "clipboard.read": 12, "screen.capture": 40, "browser.open": 12}
 
 
 def timeout_for(command):
@@ -251,6 +286,6 @@ def check_result(command, data):
         size = len(json.dumps(data, ensure_ascii=False).encode("utf-8"))
     except (TypeError, ValueError):
         raise CommandError(BAD)
-    if size > MAX_RESULT_BYTES:
+    if size > result_limit(command):
         raise CommandError("Ergebnis zu gross.")
     return COMMANDS[command][1](data)

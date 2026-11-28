@@ -7,7 +7,8 @@ automatischen PC-Warnungen fragen dann den PC. Der Agent liefert nur Messwerte; 
 """
 from tools import pc_health
 import remote_files
-from tools import media_tool, system_status_tool, volume_tool
+from tools import (browser_tool, clipboard_tool, media_tool, process_tool, program_tool, screen_tool, system_status_tool, system_tool,
+                   volume_tool)
 
 
 class RemoteMonitor:
@@ -56,6 +57,9 @@ def install(server):
     remote_files.install(server.hub)
     volume_tool.set_remote(server.hub)
     media_tool.set_remote(server.hub)
+    remote = remote_files._Remote(server.hub)          # System-Befehle, Programme, Prozesse, Zwischenablage, Bildschirm, Browser (G6)
+    for module in (system_tool, program_tool, process_tool, clipboard_tool, screen_tool, browser_tool):
+        module.set_remote(remote)
     server.monitor = pc.monitor
     server.health = pc.health
     return pc

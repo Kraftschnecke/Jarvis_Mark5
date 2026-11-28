@@ -108,7 +108,18 @@ def find_program_windows(program):
     )
 
 
+_remote = None
+
+
+def set_remote(remote):
+    """Server-Betrieb (S6, G6): Programme suchen und starten am PC-Agent; dort gilt die programs.json des PCs. None = dieser Rechner."""
+    global _remote
+    _remote = remote
+
+
 def find_program(program):
+    if _remote is not None:
+        return _remote.call("programs.find", {"program": program[:100] if isinstance(program, str) else ""})
     system = platform.system()
 
     if system == "Windows":
@@ -136,6 +147,9 @@ def launch_program(target):
     im Task: Egal welchen Pfad das Sprachmodell vorschlaegt, es startet
     nichts, was du nicht freigegeben hast.
     """
+    if _remote is not None:
+        return _remote.call("programs.launch", {"target": target[:500] if isinstance(target, str) else ""})
+
     try:
         allowed = {
             _normalize(path)

@@ -70,17 +70,32 @@ def _valid_png(text):
     return raw.startswith(PNG_SIGNATURE) and len(raw) <= MAX_BYTES
 
 
+_remote = None
+
+
+def set_remote(remote):
+    """Server-Betrieb (S6, G6): das Bild kommt vom PC-Agent ("screen.capture"); None = dieser Rechner."""
+    global _remote
+    _remote = remote
+
+
 def describe_screen(question=""):
     """Nimmt den Bildschirm auf. Das Bild steckt unter IMAGE_KEY im Ergebnis; den Rest uebernimmt brain.respond_to_task."""
-    if not sys.platform.startswith("win"):
-        return ToolResult(success=False, error="Den Bildschirm kann Jarvis nur unter Windows ansehen.")
+    if _remote is not None:
+        got = _remote.call("screen.capture", {}, clean=False)          # Bild, kein Text: wird unten als PNG geprueft
+        if not got.success:
+            return got
+        image = got.data.get("image") if isinstance(got.data, dict) else None
+    else:
+        if not sys.platform.startswith("win"):
+            return ToolResult(success=False, error="Den Bildschirm kann Jarvis nur unter Windows ansehen.")
 
-    try:
-        image = _capture()
-    except subprocess.TimeoutExpired:
-        return ToolResult(success=False, error="Die Bildschirmaufnahme hat zu lange gedauert.")
-    except Exception:
-        return ToolResult(success=False, error="Die Bildschirmaufnahme hat nicht geklappt.")
+        try:
+            image = _capture()
+        except subprocess.TimeoutExpired:
+            return ToolResult(success=False, error="Die Bildschirmaufnahme hat zu lange gedauert.")
+        except Exception:
+            return ToolResult(success=False, error="Die Bildschirmaufnahme hat nicht geklappt.")
 
     if not _valid_png(image):
         return ToolResult(success=False, error="Die Bildschirmaufnahme hat kein brauchbares Bild geliefert.")

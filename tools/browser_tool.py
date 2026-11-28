@@ -109,10 +109,21 @@ def _open(target):
     return webbrowser.open(target, new=2)
 
 
+_remote = None
+
+
+def set_remote(remote):
+    """Server-Betrieb (S6, G6): die Seite oeffnet sich im Browser des PCs ("browser.open"); None = dieser Rechner."""
+    global _remote
+    _remote = remote
+
+
 def open_website(url="", query=""):
     target, kind, error = resolve(url, query)
     if error:
         return ToolResult(success=False, error=error)
+    if _remote is not None:                 # geprueft ist schon; der PC prueft nochmal und oeffnet
+        return _remote.call("browser.open", {"url": _text(url)[:2000], "query": _text(query)[:200]})
 
     try:
         opened = _open(target)

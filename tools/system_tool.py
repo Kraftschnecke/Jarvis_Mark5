@@ -141,11 +141,23 @@ def _brightness(name, value):
     return ToolResult(success=True, data=data)
 
 
+_remote = None
+
+
+def set_remote(remote):
+    """Server-Betrieb (S6, G6): die Befehle laufen am PC-Agent (Auftrag "system.run"); None = dieser Rechner."""
+    global _remote
+    _remote = remote
+
+
 def system_control(command, value=""):
     name = normalize_command(command)
     if name is None:
         return ToolResult(success=False, error="Das verstehe ich nicht als Rechnerbefehl. Möglich sind: stumm, Bildschirm sperren, "
                                                "Desktop zeigen (Fenster minimieren), Helligkeit setzen, heller, dunkler.")
+    if _remote is not None:
+        text = "" if isinstance(value, bool) or value is None else str(value).strip()[:10]
+        return _remote.call("system.run", {"command": name, "value": text})
     if not sys.platform.startswith("win"):
         return ToolResult(success=False, error="Diese Befehle funktionieren nur unter Windows.")
     if name.startswith("brightness"):
